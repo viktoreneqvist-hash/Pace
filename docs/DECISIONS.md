@@ -85,4 +85,4 @@ Reason:
 Cleaner imports and fewer packaging issues.
 
 Consequences:
-Requires package configuration in pyproject.toml.
+Requires package configuration in pyproject.toml.uv 
