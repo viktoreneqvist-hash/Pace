@@ -58,7 +58,15 @@ Options:
 
 Status:
 
-Pending
+Chosen
+
+Result:
+
+PostgreSQL
+
+Reason: Vi vill lära oss riktig backend- och databasinfrastruktur. PostgreSQL tränar dig på serverdatabas, connection strings, användare, migrations, SQLAlchemy och produktionslik arkitektur.
+
+Future consequence: Mer setup nu, men mindre omskrivning senare.
 
 ## Decision #3
 
