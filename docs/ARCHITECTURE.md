@@ -61,3 +61,15 @@ Responsibilities:
 Responsibilities:
 
 - Store long-term context
+
+## Current Backend Structure
+
+```text
+src/running_agent/
+├── database.py
+├── models/
+│   └── activity.py
+├── repositories/
+│   └── activity_repository.py
+└── services/
+    └── activity_service.py
