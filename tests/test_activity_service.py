@@ -1,11 +1,22 @@
 from datetime import date
 
-from running_agent.database import create_database_tables
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
+
+from running_agent.database import create_database_tables, engine
+from running_agent.models.activity import Activity
 from running_agent.services.activity_service import create_activity, get_all_activities
+
+
+def clear_activities_table() -> None:
+    with Session(engine) as session:
+        session.execute(delete(Activity))
+        session.commit()
 
 
 def test_create_and_get_activity():
     create_database_tables()
+    clear_activities_table()
 
     created_activity = create_activity(
         activity_date=date(2026, 6, 14),
@@ -22,4 +33,5 @@ def test_create_and_get_activity():
     activities = get_all_activities()
 
     assert created_activity.id is not None
-    assert any(activity.external_id == "test-activity-1" for activity in activities)
+    assert len(activities) == 1
+    assert activities[0].external_id == "test-activity-1"
