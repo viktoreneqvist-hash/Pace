@@ -1,10 +1,10 @@
 from datetime import date
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from running_agent.database import engine
 from running_agent.models.activity import Activity
+from running_agent.repositories.activity_repository import list_activities, save_activity
 
 
 def create_activity(
@@ -31,16 +31,9 @@ def create_activity(
     )
 
     with Session(engine) as session:
-        session.add(activity)
-        session.commit()
-        session.refresh(activity)
-
-        return activity
+        return save_activity(session, activity)
 
 
 def get_all_activities() -> list[Activity]:
     with Session(engine) as session:
-        statement = select(Activity)
-        activities = session.scalars(statement).all()
-
-        return list(activities)
+        return list_activities(session)
