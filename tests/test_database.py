@@ -1,7 +1,11 @@
-from running_agent.database import check_database_connection
+from sqlalchemy import inspect
+
+from running_agent.database import create_database_tables, engine
 
 
-def test_database_connection():
-    database_name = check_database_connection()
+def test_create_database_tables():
+    create_database_tables()
 
-    assert database_name == "running_agent" 
+    inspector = inspect(engine)
+
+    assert "activities" in inspector.get_table_names()
