@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 
 from running_agent.database import engine
 from running_agent.models.activity import Activity
-from running_agent.repositories.activity_repository import list_activities, save_activity
+from running_agent.repositories.activity_repository import get_all_activities as repository_get_all_activities
+from running_agent.repositories.activity_repository import save_activity
 
 
 def create_activity(
@@ -36,4 +37,4 @@ def create_activity(
 
 def get_all_activities() -> list[Activity]:
     with Session(engine) as session:
-        return list_activities(session)
+        return repository_get_all_activities(session)

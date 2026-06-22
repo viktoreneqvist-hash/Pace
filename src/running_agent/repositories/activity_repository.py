@@ -12,11 +12,12 @@ def save_activity(session: Session, activity: Activity) -> Activity:
     return activity
 
 
-def list_activities(session: Session) -> list[Activity]:
+def get_all_activities(session: Session) -> list[Activity]:
     statement = select(Activity)
     activities = session.scalars(statement).all()
 
     return list(activities)
+
 
 def get_activity_by_external_id(session: Session, external_id: str) -> Activity | None:
     statement = select(Activity).where(Activity.external_id == external_id)
