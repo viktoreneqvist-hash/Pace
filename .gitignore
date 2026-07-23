@@ -6,6 +6,11 @@ __pycache__/
 
 .env
 
+.local/
+
+data/*.db
+data/*.sqlite
+
 data/raw/
 
 data/processed/

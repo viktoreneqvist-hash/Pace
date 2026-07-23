@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import Date, Float, Integer, String
+from sqlalchemy import Date, Float, Integer, String, UniqueConstraint
 
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -11,6 +11,9 @@ class Base(DeclarativeBase):
 class Activity(Base):
 
     __tablename__ = "activities"
+    __table_args__ = (
+        UniqueConstraint("source", "external_id", name="uq_activities_source_external_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 

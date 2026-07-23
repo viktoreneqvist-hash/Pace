@@ -1,6 +1,6 @@
 import pytest
 
-from running_agent.metrics import calculate_average
+from pace.metrics import calculate_average
 
 
 def test_calculate_average():

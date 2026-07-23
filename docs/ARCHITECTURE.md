@@ -795,15 +795,15 @@ The CLI is the first user interface.
 Initial target commands:
 
 ```bash
-coach --help
-coach db init
-coach sync --days 14
-coach activities
-coach activities --sport run
-coach metrics summary --days 30
-coach note add --date 2026-07-18 --type social_event "Var ute sent"
-coach note list
-coach explain hrv --days 14
+pace --help
+pace db init
+pace sync --days 14
+pace activities
+pace activities --sport run
+pace metrics summary --days 30
+pace note add --date 2026-07-18 --type social_event "Var ute sent"
+pace note list
+pace explain hrv --days 14
 ```
 
 The CLI should:
@@ -907,8 +907,8 @@ Synchronization must be idempotent.
 Running:
 
 ```bash
-coach sync --days 14
-coach sync --days 14
+pace sync --days 14
+pace sync --days 14
 ```
 
 should not create duplicate activities or daily metrics.
@@ -953,7 +953,7 @@ tests/
     └── test_garmin_sync_service.py
 ```
 
-Use temporary SQLite databases in tests.
+Use temporary or in-memory SQLite databases in tests.
 
 Tests must never operate on the real development database or Garmin token directory.
 

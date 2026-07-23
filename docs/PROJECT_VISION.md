@@ -194,14 +194,14 @@ The first interface should be a command-line application.
 Target commands include:
 
 ```bash
-coach db init
-coach sync --days 30
-coach activities
-coach activities --sport run
-coach metrics summary --days 30
-coach note add --date 2026-07-18 --type social_event "Var ute sent och sov dåligt"
-coach note list
-coach explain hrv --days 14
+pace db init
+pace sync --days 30
+pace activities
+pace activities --sport run
+pace metrics summary --days 30
+pace note add --date 2026-07-18 --type social_event "Var ute sent och sov dåligt"
+pace note list
+pace explain hrv --days 14
 ```
 
 The CLI is the first interface, not necessarily the final interface.

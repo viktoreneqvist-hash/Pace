@@ -1,7 +1,7 @@
 from datetime import date
 
-from running_agent.analysis.activity_summary import calculate_total_distance_km
-from running_agent.models.activity import Activity
+from pace.analysis.activity_summary import calculate_total_distance_km
+from pace.models.activity import Activity
 
 
 def test_calculate_total_distance_km():

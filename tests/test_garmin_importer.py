@@ -1,10 +1,10 @@
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from running_agent.database import create_database_tables, engine
-from running_agent.integrations.garmin_importer import import_activity
-from running_agent.models.activity import Activity
-from running_agent.services.activity_service import get_all_activities
+from pace.database import create_database_tables, engine
+from pace.integrations.garmin.importer import import_activity
+from pace.models.activity import Activity
+from pace.services.activity_service import get_all_activities
 
 
 def clear_activities_table() -> None:

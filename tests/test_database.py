@@ -1,6 +1,6 @@
 from sqlalchemy import inspect
 
-from running_agent.database import create_database_tables, engine
+from pace.database import create_database_tables, engine
 
 
 def test_create_database_tables():

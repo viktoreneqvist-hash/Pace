@@ -1,9 +1,9 @@
 from datetime import date
 
-from running_agent.models.activity import Activity
+from pace.models.activity import Activity
 
 
-def map_garmin_activity_to_activity(garmin_activity: dict) -> Activity:
+def normalize_garmin_activity(garmin_activity: dict) -> Activity:
     return Activity(
         date=date.fromisoformat(garmin_activity["date"]),
         sport_type=garmin_activity["sport_type"],
@@ -14,4 +14,4 @@ def map_garmin_activity_to_activity(garmin_activity: dict) -> Activity:
         elevation_gain_m=garmin_activity.get("elevation_gain_m"),
         source="garmin",
         external_id=garmin_activity.get("external_id"),
-    ) 
+    )

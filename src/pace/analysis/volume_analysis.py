@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from running_agent.models.activity import Activity
+from pace.models.activity import Activity
 
 
 def get_total_distance_km(activities: list[Activity]) -> float:

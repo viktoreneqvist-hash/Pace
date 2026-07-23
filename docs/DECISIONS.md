@@ -375,6 +375,39 @@ Storage requirements increase slightly.
 
 ---
 
+# Decision #10
+
+## Problem
+
+The existing codebase was named `running_agent`, used PostgreSQL, and contained a
+Strava integration. This conflicted with the Garmin-only, local-first Pace v1 direction.
+
+## Options
+
+- Continue extending the existing Strava-oriented structure
+- Maintain both Strava and Garmin providers
+- Preserve the historical version and reset the active codebase around Pace
+
+## Chosen
+
+Create an archived Git branch and annotated tag for the final Strava version, then rename
+the active package to `pace`, remove Strava code, and use SQLite as the local default.
+
+## Reason
+
+Pace v1 needs recovery data and deterministic coaching foundations, not multiple provider
+maintenance. Keeping the archive reference preserves the earlier learning work and makes
+the migration reversible without retaining unused runtime code.
+
+## Consequences
+
+- `archive/strava-v0.1.0` and `strava-final-v0.1.0` preserve the pre-migration state.
+- Garmin becomes the only external-provider boundary in the active codebase.
+- Future Garmin authentication and synchronization build on `pace.integrations.garmin`.
+- The packaged command is `pace`; the former standalone `main.py` entry point is removed.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

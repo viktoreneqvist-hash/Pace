@@ -1,9 +1,9 @@
 from datetime import date
 
-from running_agent.integrations.garmin_mapper import map_garmin_activity_to_activity
+from pace.integrations.garmin.normalizers import normalize_garmin_activity
 
 
-def test_map_garmin_activity_to_activity():
+def test_normalize_garmin_activity():
     garmin_activity = {
         "date": "2026-06-14",
         "sport_type": "running",
@@ -15,7 +15,7 @@ def test_map_garmin_activity_to_activity():
         "external_id": "garmin-activity-1",
     }
 
-    activity = map_garmin_activity_to_activity(garmin_activity)
+    activity = normalize_garmin_activity(garmin_activity)
 
     assert activity.date == date(2026, 6, 14)
     assert activity.sport_type == "running"
@@ -23,4 +23,4 @@ def test_map_garmin_activity_to_activity():
     assert activity.duration_s == 3000
     assert activity.average_hr == 150
     assert activity.source == "garmin"
-    assert activity.external_id == "garmin-activity-1" 
+    assert activity.external_id == "garmin-activity-1"

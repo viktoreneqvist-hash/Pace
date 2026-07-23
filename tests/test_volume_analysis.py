@@ -1,12 +1,12 @@
 from datetime import date
 
-from running_agent.analysis.volume_analysis import (
+from pace.analysis.volume_analysis import (
     filter_activities_by_sport_type,
     get_distance_last_n_days,
     get_longest_activity,
     get_total_distance_km,
 )
-from running_agent.models.activity import Activity
+from pace.models.activity import Activity
 
 
 def test_get_total_distance_km():
@@ -55,4 +55,3 @@ def test_filter_activities_by_sport_type():
     assert len(filtered) == 2
     assert all(activity.sport_type == "Run" for activity in filtered)
 
-    

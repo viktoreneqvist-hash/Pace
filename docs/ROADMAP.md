@@ -24,11 +24,11 @@ Align the existing project with the new architecture.
 
 Tasks:
 
-- [ ] Remove Strava integration
-- [ ] Rename project concepts if needed
-- [ ] Update documentation
-- [ ] Clean unused dependencies
-- [ ] Confirm local-first structure
+- [x] Remove Strava integration
+- [x] Rename project concepts to Pace
+- [x] Update documentation
+- [x] Clean unused dependencies
+- [x] Confirm local-first structure
 
 Success criteria:
 

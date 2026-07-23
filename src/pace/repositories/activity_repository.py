@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from running_agent.models.activity import Activity
+from pace.models.activity import Activity
 
 
 def save_activity(session: Session, activity: Activity) -> Activity:

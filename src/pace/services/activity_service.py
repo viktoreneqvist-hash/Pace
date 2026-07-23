@@ -2,10 +2,10 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from running_agent.database import engine
-from running_agent.models.activity import Activity
-from running_agent.repositories.activity_repository import get_all_activities as repository_get_all_activities
-from running_agent.repositories.activity_repository import save_activity
+from pace.database import engine
+from pace.models.activity import Activity
+from pace.repositories.activity_repository import get_all_activities as repository_get_all_activities
+from pace.repositories.activity_repository import save_activity
 
 
 def create_activity(
