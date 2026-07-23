@@ -1,87 +1,338 @@
-# Roadmap
+# Pace — Development Roadmap
 
-## Phase 1 - Foundations
+## Goal
 
-- [ ] Git
+Build a private, local-first endurance coaching system.
 
-- [ ] UV
+The development order is intentionally:
 
-- [ ] FastAPI
+1. Reliable data
+2. Deterministic analysis
+3. Athlete context
+4. Interpretation
+5. AI assistance
 
-- [ ] PostgreSQL
-
-- [ ] SQLAlchemy
-
-Goal:
-
-Understand modern backend development.
+AI is added only after the underlying system can produce trustworthy information.
 
 ---
 
-## Phase 2 - Data Collection
+# Phase 0 — Project Reset
 
-- [ ] Strava API
+## Goal
 
-- [ ] Garmin integration
+Align the existing project with the new architecture.
 
-- [ ] Activity database
+Tasks:
 
-Goal:
+- [ ] Remove Strava integration
+- [ ] Rename project concepts if needed
+- [ ] Update documentation
+- [ ] Clean unused dependencies
+- [ ] Confirm local-first structure
 
-Store activities automatically.
+Success criteria:
+
+- Documentation matches implementation
+- No outdated architectural assumptions remain
 
 ---
 
-## Phase 3 - Analytics
+# Phase 1 — Python Application Foundation
 
-- [ ] Training load
+## Goal
 
-- [ ] Fatigue
+Create a clean and maintainable Python application.
 
-- [ ] Progress metrics
+Tasks:
 
-Goal:
+- [x] Python environment
+- [x] uv dependency management
+- [x] src layout
+- [ ] CLI framework
+- [ ] Configuration system
+- [ ] Logging system
+- [ ] Error handling conventions
 
+Learn:
+
+- Python packaging
+- application structure
+- dependency management
+- configuration management
+
+Success criteria:
+
+The application can run through clear CLI commands.
+
+Example:
+
+```bash
+pace --help
+
+Phase 2 — Database Foundation
+Goal
+Create reliable local data storage.
+Database:
+SQLite
+Tasks:
+
+Database initialization command
+
+SQLAlchemy setup
+
+Migration strategy
+
+Activity model
+
+Daily metric model
+
+Context event model
+
+Sync history model
+Important requirements:
+
+Unique constraints
+
+Duplicate prevention
+
+Test database separation
+Success criteria:
+Running synchronization multiple times does not create duplicates.
+
+
+Phase 3 — Garmin Integration
+Goal
+Automatically collect athlete data.
+Primary source:
+Garmin Connect
+Tasks:
+
+Garmin authentication
+
+Token/session persistence
+
+Activity synchronization
+
+Daily health synchronization
+
+Recovery metric synchronization
+
+Raw payload storage
+
+Data normalization
+Data collected:
+Activities:
+distance
+duration
+heart rate
+power
+cadence
+elevation
+training effect
+Daily metrics:
+HRV
+resting heart rate
+sleep
+stress
+Body Battery
+training readiness
+Success criteria:
+A complete Garmin history can be imported into the local database.
+
+
+Phase 4 — Deterministic Metrics
+Goal
 Generate useful insights without AI.
+All calculations happen in Python.
+Tasks:
+Training volume
 
----
+Weekly running distance
 
-## Phase 4 - LLM Integration
+Weekly cycling duration
 
-- [ ] OpenAI API
+Training frequency
 
-- [ ] Structured outputs
+Longest sessions
 
-- [ ] Tool calling
+Training progression
+Recovery metrics
 
-Goal:
+HRV baseline
 
-Explain analytics.
+HRV deviation
 
----
+Resting heart-rate baseline
 
-## Phase 5 - Memory
+Sleep trends
 
-- [ ] User profile
+Recovery trends
+Training analysis
 
-- [ ] Injury history
+Intensity distribution
 
-- [ ] Training history
+Consistency metrics
 
-Goal:
+Training load estimation
+Requirements:
+Metrics must be:
+deterministic
+tested
+explainable
+Success criteria:
+The system can answer factual questions about training history without AI.
 
-Long-term coaching context.
 
----
+Phase 5 — Context Memory
+Goal
+Store information Garmin cannot know.
+Tasks:
 
-## Phase 6 - Agent
+Context event model
 
-- [ ] Planning
+Add context through CLI
 
-- [ ] Research retrieval
+Query context by date
 
-- [ ] Multi-step reasoning
+Link context to metrics
+Initial context types:
+illness
+injury
+pain
+alcohol
+poor sleep
+travel
+work stress
+social events
+schedule constraints
+athlete feedback
+Example:
+pace note add \
+--type social_event \
+--date 2026-07-20 \
+"Late evening and poor sleep"
+Success criteria:
+The system can combine physiological data with athlete-provided context.
 
-Goal:
 
-Full coaching agent.
+Phase 6 — Athlete State
+Goal
+Create a structured representation of the athlete's current situation.
+The system should understand:
+current goal
+training phase
+recent training
+recovery status
+active injuries
+schedule constraints
+confidence in signals
+Tasks:
+
+Define athlete state model
+
+Build state calculation
+
+Update state after synchronization
+
+Test state transitions
+Success criteria:
+The system can summarize the athlete's current condition without reading raw history.
+
+
+Phase 7 — Rule Engine
+Goal
+Create transparent coaching logic.
+Rules should interpret metrics and context.
+Initial rules:
+Recovery
+Example:
+If:
+HRV below baseline
+poor sleep
+recent alcohol/social event
+Then:
+reduce confidence that training fatigue is the only explanation
+recommend monitoring
+Injury
+Example:
+If:
+active Achilles pain
+increasing running load
+Then:
+flag progression risk
+suggest conservative approach
+Requirements:
+Rules must be:
+explicit
+testable
+explainable
+Success criteria:
+The system can produce structured interpretations without AI.
+
+
+Phase 8 — Explanation Engine
+Goal
+Convert structured insights into understandable coaching feedback.
+Before AI:
+Use templates.
+Example:
+Input:
+HRV below baseline
+Late social event recorded
+Confidence low
+Output:
+HRV has been below your normal range for two days.
+A recent late evening may explain part of this change.
+Continue monitoring before changing training.
+Success criteria:
+The system can communicate reasoning clearly.
+
+
+Phase 9 — AI Integration
+Goal
+Add AI as a reasoning and communication layer.
+AI should receive:
+metrics
+athlete state
+relevant context
+rule outputs
+AI should not receive:
+raw database dumps
+credentials
+unnecessary history
+Tasks:
+
+Structured outputs
+
+Tool calling
+
+Context retrieval
+
+Coaching conversation
+Use cases:
+explain trends
+answer questions
+summarize weeks
+discuss training decisions
+Phase 10 — Advanced Coaching Agent
+Goal
+Build a true coaching assistant.
+Capabilities:
+training planning
+workout generation
+race preparation
+scientific literature retrieval
+adaptive recommendations
+long-term memory
+Prerequisites:
+All previous phases must be reliable.
+Current Priority
+The immediate development order is:
+Garmin integration
+Database reliability
+Deterministic metrics
+Context memory
+Athlete state
+Rule engine
+AI coach
+The project should resist adding complexity before these foundations work.
