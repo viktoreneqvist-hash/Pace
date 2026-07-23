@@ -5,6 +5,7 @@ description = "A private, local-first endurance coaching system."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "alembic>=1.18.5",
     "sqlalchemy>=2.0.50",
 ]
 
