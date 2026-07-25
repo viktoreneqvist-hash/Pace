@@ -440,6 +440,44 @@ requiring the user to delete existing training data.
 
 ---
 
+# Decision #12
+
+## Problem
+
+Pace needs a Garmin client that can authenticate interactively once, persist a
+local session safely, and make a small first synchronization without coupling
+the rest of the application to Garmin-specific APIs.
+
+## Options
+
+- Use the legacy `garth` package directly
+- Copy the older client from the reference project
+- Use the maintained `garminconnect` client behind a small Pace wrapper
+
+## Chosen
+
+Use `garminconnect` 0.3.6 behind `pace.integrations.garmin.client`.
+
+## Reason
+
+The current library owns Garmin's authentication flow, MFA prompt, token
+refresh, retry limits, and token-file permissions. Pace retains a small
+provider boundary, so authentication errors and raw provider details do not
+spread into the CLI, database, or future coaching logic.
+
+## Consequences
+
+- `pace garmin login` asks for the password only in the terminal and never
+  saves it to Pace's database or repository.
+- Reusable tokens are stored in `.local/garmin_tokens/`, which is Git-ignored;
+  the library writes its token file with owner-only permissions.
+- `pace sync --days 7` currently imports activities only, in one atomic
+  database operation, and records the result in `sync_runs`.
+- Daily recovery endpoints remain a separate, future batch rather than being
+  silently added to the first network integration.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

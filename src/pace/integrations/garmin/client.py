@@ -1,0 +1,127 @@
+"""Small, Pace-owned boundary around the Garmin Connect library.
+
+Only this module imports ``garminconnect``. That keeps provider-specific
+authentication and error types out of the rest of the application.
+"""
+
+from collections.abc import Callable
+from datetime import date
+from pathlib import Path
+from typing import Any
+
+from garminconnect import (
+    Garmin,
+    GarminConnectAuthenticationError,
+    GarminConnectConnectionError,
+    GarminConnectTooManyRequestsError,
+)
+
+
+class GarminIntegrationError(RuntimeError):
+    """A provider failure Pace can present safely to the CLI."""
+
+
+class GarminAuthenticationRequiredError(GarminIntegrationError):
+    """No valid saved Garmin session is available."""
+
+
+class GarminRateLimitError(GarminIntegrationError):
+    """Garmin has asked Pace to stop making requests for now."""
+
+
+def prepare_token_directory(token_dir: Path) -> Path:
+    """Create the private directory that holds Garmin refresh tokens."""
+
+    expanded_dir = token_dir.expanduser()
+    expanded_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    expanded_dir.chmod(0o700)
+    return expanded_dir
+
+
+class GarminConnectClient:
+    """Authenticate with Garmin and retrieve provider payloads.
+
+    ``garminconnect`` writes ``garmin_tokens.json`` inside the supplied
+    directory with owner-only permissions. Pace supplies the directory but
+    never reads, prints, or stores the token contents itself.
+    """
+
+    def __init__(self, api: Garmin, token_dir: Path) -> None:
+        self._api = api
+        self._token_dir = prepare_token_directory(token_dir)
+
+    @classmethod
+    def login_with_credentials(
+        cls,
+        *,
+        email: str,
+        password: str,
+        token_dir: Path,
+        prompt_mfa: Callable[[], str],
+    ) -> "GarminConnectClient":
+        """Log in once and persist a reusable Garmin session token."""
+
+        api = Garmin(email=email, password=password, prompt_mfa=prompt_mfa)
+        client = cls(api, token_dir)
+
+        try:
+            api.login(str(client._token_dir))
+        except GarminConnectTooManyRequestsError as error:
+            raise GarminRateLimitError(
+                "Garmin begränsar inloggningsförsök just nu. Vänta och försök igen senare."
+            ) from error
+        except GarminConnectAuthenticationError as error:
+            raise GarminAuthenticationRequiredError(
+                "Garmin kunde inte verifiera inloggningen. Kontrollera e-post, lösenord och MFA-kod."
+            ) from error
+        except GarminConnectConnectionError as error:
+            raise GarminIntegrationError(
+                "Kunde inte ansluta till Garmin. Kontrollera nätverket och försök igen."
+            ) from error
+
+        return client
+
+    @classmethod
+    def from_saved_tokens(cls, token_dir: Path) -> "GarminConnectClient":
+        """Restore a saved Garmin session without asking for a password."""
+
+        api = Garmin()
+        client = cls(api, token_dir)
+
+        try:
+            api.login(str(client._token_dir))
+        except GarminConnectTooManyRequestsError as error:
+            raise GarminRateLimitError(
+                "Garmin begränsar förfrågningar just nu. Vänta och kör synken igen senare."
+            ) from error
+        except (GarminConnectAuthenticationError, GarminConnectConnectionError) as error:
+            raise GarminAuthenticationRequiredError(
+                "Ingen giltig Garmin-session finns lokalt. Kör 'pace garmin login' först."
+            ) from error
+
+        return client
+
+    def get_activities(
+        self,
+        start_date: date,
+        end_date: date,
+    ) -> list[dict[str, Any]]:
+        """Fetch activities in an inclusive calendar-date window."""
+
+        try:
+            return self._api.get_activities_by_date(
+                start_date.isoformat(),
+                end_date.isoformat(),
+            )
+        except GarminConnectTooManyRequestsError as error:
+            raise GarminRateLimitError(
+                "Garmin begränsar förfrågningar just nu. Vänta och kör synken igen senare."
+            ) from error
+        except GarminConnectAuthenticationError as error:
+            raise GarminAuthenticationRequiredError(
+                "Garmin-sessionen är inte längre giltig. Kör 'pace garmin login' igen."
+            ) from error
+        except GarminConnectConnectionError as error:
+            raise GarminIntegrationError(
+                "Kunde inte hämta aktiviteter från Garmin. Försök igen senare."
+            ) from error

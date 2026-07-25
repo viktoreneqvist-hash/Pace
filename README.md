@@ -13,9 +13,12 @@ athlete context. See `docs/PROJECT_VISION.md` and `docs/ARCHITECTURE.md` for the
 - External provider: Garmin Connect only
 - Interface direction: `pace` CLI
 
-Garmin authentication and synchronization are deliberately not implemented yet. This reset
-creates the structure for them without introducing credentials or network calls.
+Garmin login stores a reusable session token locally in `.local/garmin_tokens/`. Pace never
+stores the Garmin password in the database or repository. The first activity sync is intentionally
+limited to seven calendar days; daily recovery data comes in a later batch.
 
 ```bash
 uv run pace --help
+uv run pace garmin login
+uv run pace sync --days 7
 ```
