@@ -41,7 +41,10 @@ def _value(payload: dict[str, Any], *keys: str) -> Any:
 def normalize_garmin_activity(garmin_activity: dict[str, Any]) -> Activity:
     """Convert a Garmin activity payload into Pace's internal activity model."""
 
-    summary = garmin_activity.get("summaryDTO") or {}
+    # Garmin's activity-list endpoint returns summary fields at the top level.
+    # Some older or detailed payloads nest the same fields under ``summaryDTO``.
+    # Supporting both shapes keeps Pace's normalized contract stable.
+    summary = garmin_activity.get("summaryDTO") or garmin_activity
     activity_type = garmin_activity.get("activityType") or {}
     provider_sport_type = _value(activity_type, "typeKey", "type") or "other"
 

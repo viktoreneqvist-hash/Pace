@@ -22,3 +22,27 @@ def test_normalize_garmin_activity():
     assert activity.average_heart_rate == 150
     assert activity.provider == "garmin"
     assert activity.provider_activity_id == "mock-garmin-1"
+
+
+def test_normalize_activity_list_payload_with_top_level_summary_fields():
+    activity = normalize_garmin_activity(
+        {
+            "activityId": 123,
+            "activityName": "Bike ride",
+            "startTimeGMT": "2026-06-14T05:30:00.0",
+            "activityType": {"typeKey": "cycling"},
+            "duration": 3600,
+            "distance": 25_000,
+            "elevationGain": 250,
+            "averageHR": 140,
+            "maxHR": 165,
+            "averageSpeed": 6.94,
+        }
+    )
+
+    assert activity.sport_type == "ride"
+    assert activity.duration_seconds == 3600
+    assert activity.distance_meters == 25_000
+    assert activity.elevation_gain_meters == 250
+    assert activity.average_heart_rate == 140
+    assert activity.maximum_heart_rate == 165
