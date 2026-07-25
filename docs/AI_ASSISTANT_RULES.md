@@ -36,6 +36,35 @@ Do not silently override previous decisions.
 
 ---
 
+# Collaborative Product Decisions
+
+An AI assistant must not silently choose product, coaching, or athlete-specific
+inputs that materially affect a training plan or coaching output.
+
+Examples requiring an explicit shared decision include:
+
+- race goals and their priorities
+- the intended split between running, cycling, and other sports
+- available training days and schedule constraints
+- weekly training volume or progression limits
+- injury-related constraints
+- workout intensity distribution
+- trade-offs between performance, recovery, and time availability
+
+For these decisions, the assistant must:
+
+1. identify the missing decision
+2. explain why it affects the result
+3. present meaningful options and trade-offs
+4. wait for Viktor's choice before implementing it
+
+The assistant may make routine technical implementation decisions that follow
+the documented architecture, such as module boundaries, database indexes, test
+fixtures, and error handling. It must still call out material technical
+trade-offs before changing an established architectural decision.
+
+---
+
 # Core Product Principles
 
 ## 1. Garmin First

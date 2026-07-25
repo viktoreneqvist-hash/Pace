@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 
 from pace.analysis.volume_analysis import (
     filter_activities_by_sport_type,
@@ -6,13 +6,31 @@ from pace.analysis.volume_analysis import (
     get_longest_activity,
     get_total_distance_km,
 )
-from pace.models.activity import Activity
+from pace.database.models import Activity
+
+
+def activity(
+    identifier: str,
+    activity_date: date,
+    sport_type: str,
+    distance_km: float,
+    duration_seconds: int,
+) -> Activity:
+    return Activity(
+        provider="test",
+        provider_activity_id=identifier,
+        sport_type=sport_type,
+        start_time=datetime.combine(activity_date, datetime.min.time(), tzinfo=UTC),
+        distance_meters=distance_km * 1000,
+        duration_seconds=duration_seconds,
+        raw_payload={},
+    )
 
 
 def test_get_total_distance_km():
     activities = [
-        Activity(date=date(2026, 6, 1), sport_type="Run", distance_km=10.0, duration_s=3000, source="test"),
-        Activity(date=date(2026, 6, 2), sport_type="Run", distance_km=5.5, duration_s=1800, source="test"),
+        activity("1", date(2026, 6, 1), "run", 10.0, 3000),
+        activity("2", date(2026, 6, 2), "run", 5.5, 1800),
     ]
 
     assert get_total_distance_km(activities) == 15.5
@@ -20,9 +38,9 @@ def test_get_total_distance_km():
 
 def test_get_distance_last_n_days():
     activities = [
-        Activity(date=date(2026, 6, 1), sport_type="Run", distance_km=10.0, duration_s=3000, source="test"),
-        Activity(date=date(2026, 6, 8), sport_type="Run", distance_km=7.0, duration_s=2400, source="test"),
-        Activity(date=date(2026, 6, 10), sport_type="Run", distance_km=5.0, duration_s=1800, source="test"),
+        activity("1", date(2026, 6, 1), "run", 10.0, 3000),
+        activity("2", date(2026, 6, 8), "run", 7.0, 2400),
+        activity("3", date(2026, 6, 10), "run", 5.0, 1800),
     ]
 
     assert get_distance_last_n_days(activities, end_date=date(2026, 6, 10), days=7) == 12.0
@@ -30,14 +48,14 @@ def test_get_distance_last_n_days():
 
 def test_get_longest_activity():
     activities = [
-        Activity(date=date(2026, 6, 1), sport_type="Run", distance_km=10.0, duration_s=3000, source="test"),
-        Activity(date=date(2026, 6, 2), sport_type="Run", distance_km=21.1, duration_s=5400, source="test"),
+        activity("1", date(2026, 6, 1), "run", 10.0, 3000),
+        activity("2", date(2026, 6, 2), "run", 21.1, 5400),
     ]
 
     longest = get_longest_activity(activities)
 
     assert longest is not None
-    assert longest.distance_km == 21.1
+    assert longest.distance_meters == 21_100
 
 
 def test_get_longest_activity_empty_list():
@@ -45,13 +63,12 @@ def test_get_longest_activity_empty_list():
 
 def test_filter_activities_by_sport_type():
     activities = [
-        Activity(date=date(2026, 6, 1), sport_type="Run", distance_km=10.0, duration_s=3000, source="test"),
-        Activity(date=date(2026, 6, 2), sport_type="Bike", distance_km=20.0, duration_s=3600, source="test"),
-        Activity(date=date(2026, 6, 3), sport_type="Run", distance_km=5.0, duration_s=1500, source="test"),
+        activity("1", date(2026, 6, 1), "run", 10.0, 3000),
+        activity("2", date(2026, 6, 2), "ride", 20.0, 3600),
+        activity("3", date(2026, 6, 3), "run", 5.0, 1500),
     ]
 
-    filtered = filter_activities_by_sport_type(activities, "Run")
+    filtered = filter_activities_by_sport_type(activities, "run")
 
     assert len(filtered) == 2
-    assert all(activity.sport_type == "Run" for activity in filtered)
-
+    assert all(activity.sport_type == "run" for activity in filtered)

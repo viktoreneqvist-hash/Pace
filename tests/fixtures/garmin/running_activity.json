@@ -1,0 +1,19 @@
+{
+  "activityId": "mock-garmin-1",
+  "activityName": "Morning Run",
+  "startTimeGMT": "2026-06-14T05:30:00+00:00",
+  "activityType": {
+    "typeKey": "running"
+  },
+  "summaryDTO": {
+    "distance": 10000,
+    "duration": 3000,
+    "elevationGain": 120.0,
+    "averageHR": 150,
+    "maxHR": 175,
+    "averageSpeed": 3.33,
+    "averageCadence": 170,
+    "aerobicTrainingEffect": 3.4,
+    "anaerobicTrainingEffect": 0.1
+  }
+}

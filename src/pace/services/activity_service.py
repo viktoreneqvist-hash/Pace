@@ -1,40 +1,45 @@
-from datetime import date
+from datetime import datetime
+from uuid import uuid4
 
-from sqlalchemy.orm import Session
-
-from pace.database import engine
-from pace.models.activity import Activity
+from pace.database.models import Activity
+from pace.database.session import session_scope
 from pace.repositories.activity_repository import get_all_activities as repository_get_all_activities
-from pace.repositories.activity_repository import save_activity
+from pace.repositories.activity_repository import upsert_activity
 
 
 def create_activity(
-    activity_date: date,
+    start_time: datetime,
     sport_type: str,
-    distance_km: float,
-    duration_s: int,
-    average_hr: int | None = None,
-    max_hr: int | None = None,
-    elevation_gain_m: float | None = None,
-    source: str = "manual",
-    external_id: str | None = None,
+    distance_meters: float | None,
+    duration_seconds: int,
+    average_heart_rate: int | None = None,
+    maximum_heart_rate: int | None = None,
+    elevation_gain_meters: float | None = None,
+    provider: str = "manual",
+    provider_activity_id: str | None = None,
 ) -> Activity:
+    """Create or update a manually entered activity."""
+
     activity = Activity(
-        date=activity_date,
+        provider=provider,
+        provider_activity_id=provider_activity_id or f"manual-{uuid4()}",
         sport_type=sport_type,
-        distance_km=distance_km,
-        duration_s=duration_s,
-        average_hr=average_hr,
-        max_hr=max_hr,
-        elevation_gain_m=elevation_gain_m,
-        source=source,
-        external_id=external_id,
+        start_time=start_time,
+        distance_meters=distance_meters,
+        duration_seconds=duration_seconds,
+        average_heart_rate=average_heart_rate,
+        maximum_heart_rate=maximum_heart_rate,
+        elevation_gain_meters=elevation_gain_meters,
+        raw_payload={},
     )
 
-    with Session(engine) as session:
-        return save_activity(session, activity)
+    with session_scope() as session:
+        saved_activity, _ = upsert_activity(session, activity)
+        return saved_activity
 
 
 def get_all_activities() -> list[Activity]:
-    with Session(engine) as session:
+    """Return every stored activity in chronological order."""
+
+    with session_scope() as session:
         return repository_get_all_activities(session)

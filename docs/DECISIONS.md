@@ -408,6 +408,38 @@ the migration reversible without retaining unused runtime code.
 
 ---
 
+# Decision #11
+
+## Problem
+
+Pace needs a safe way to evolve its local SQLite schema as activities, recovery
+metrics, context events, and synchronization history are introduced over time.
+
+## Options
+
+- Create tables directly from SQLAlchemy models on every application start
+- Maintain SQL files manually
+- Use versioned Alembic migrations generated from SQLAlchemy metadata and reviewed in Git
+
+## Chosen
+
+Use Alembic migrations for the Pace SQLite schema.
+
+## Reason
+
+Migration files make schema changes explicit, repeatable, and reviewable. They
+allow a local Pace database to move safely from one version to the next without
+requiring the user to delete existing training data.
+
+## Consequences
+
+- Each schema change requires a reviewed migration file.
+- Tests apply the real migrations to an isolated SQLite database.
+- The application must not use `Base.metadata.create_all()` as its normal setup path.
+- The initial migration creates `activities`, `daily_metrics`, `context_events`, and `sync_runs`.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

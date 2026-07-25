@@ -1,24 +1,68 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pace.models.activity import Activity
+from pace.database.models import Activity
 
 
-def save_activity(session: Session, activity: Activity) -> Activity:
-    session.add(activity)
-    session.commit()
-    session.refresh(activity)
+def get_activity_by_provider_id(
+    session: Session,
+    provider: str,
+    provider_activity_id: str,
+) -> Activity | None:
+    """Find an activity by its provider-owned identifier."""
+
+    statement = select(Activity).where(
+        Activity.provider == provider,
+        Activity.provider_activity_id == provider_activity_id,
+    )
+    return session.scalar(statement)
+
+
+def upsert_activity(session: Session, activity: Activity) -> tuple[Activity, bool]:
+    """Create or update an activity without creating a duplicate.
+
+    Pace is a local, single-user application. A read-then-write upsert keeps the
+    operation explicit while the unique database constraint remains the final
+    protection against duplicate provider records.
+    """
+
+    existing = get_activity_by_provider_id(
+        session,
+        activity.provider,
+        activity.provider_activity_id,
+    )
+
+    if existing is None:
+        session.add(activity)
+        session.flush()
+        return activity, True
+
+    for field_name in (
+        "name",
+        "sport_type",
+        "start_time",
+        "duration_seconds",
+        "distance_meters",
+        "elevation_gain_meters",
+        "average_heart_rate",
+        "maximum_heart_rate",
+        "average_speed_mps",
+        "average_cadence",
+        "average_power",
+        "training_effect_aerobic",
+        "training_effect_anaerobic",
+        "raw_payload",
+    ):
+        setattr(existing, field_name, getattr(activity, field_name))
+
+    session.flush()
+    return existing, False
 
     return activity
 
 
 def get_all_activities(session: Session) -> list[Activity]:
-    statement = select(Activity)
+    statement = select(Activity).order_by(Activity.start_time)
     activities = session.scalars(statement).all()
 
     return list(activities)
-
-
-def get_activity_by_external_id(session: Session, external_id: str) -> Activity | None:
-    statement = select(Activity).where(Activity.external_id == external_id)
-    return session.scalars(statement).first()

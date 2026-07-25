@@ -1,10 +1,37 @@
-"""Shared test configuration.
-
-Tests use an isolated in-memory SQLite database and therefore never touch the
-local development database at ``data/pace.db``.
-"""
+"""Shared test configuration for an isolated migrated SQLite database."""
 
 import os
+import tempfile
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
+import pytest
+from sqlalchemy import delete
 
 
-os.environ.setdefault("PACE_DATABASE_URL", "sqlite+pysqlite:///:memory:")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+TEST_DATABASE_PATH = Path(tempfile.gettempdir()) / "pace-test-suite.db"
+
+TEST_DATABASE_PATH.unlink(missing_ok=True)
+os.environ["PACE_DATABASE_URL"] = f"sqlite:///{TEST_DATABASE_PATH}"
+
+
+def pytest_sessionstart() -> None:
+    """Create a fresh test database by applying the real Alembic migrations."""
+
+    alembic_config = Config(PROJECT_ROOT / "alembic.ini")
+    alembic_config.set_main_option("sqlalchemy.url", os.environ["PACE_DATABASE_URL"])
+    command.upgrade(alembic_config, "head")
+
+
+@pytest.fixture(autouse=True)
+def clear_database() -> None:
+    """Keep tests independent while using the same migrated test database."""
+
+    from pace.database.models import Activity, ContextEvent, DailyMetric, SyncRun
+    from pace.database.session import SessionFactory
+
+    with SessionFactory.begin() as session:
+        for model in (Activity, DailyMetric, ContextEvent, SyncRun):
+            session.execute(delete(model))
