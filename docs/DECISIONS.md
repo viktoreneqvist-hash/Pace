@@ -478,6 +478,47 @@ spread into the CLI, database, or future coaching logic.
 
 ---
 
+# Decision #13
+
+## Problem
+
+Daily recovery data comes from several independent Garmin endpoints. Devices
+and subscriptions do not always expose every signal, and a failed recovery
+endpoint must not discard a successful activity synchronization.
+
+## Options
+
+- Fail the entire sync when any recovery endpoint is unavailable
+- Store each endpoint in a separate table and sync run
+- Store one normalized daily record and mark the provider sync as partial
+
+## Chosen
+
+Use one `daily_metrics` record per date and one `sync_runs` record per Pace
+sync. Import resting heart rate, stress, and Body Battery from Garmin's daily
+summary; import sleep, HRV, and training readiness from their specific
+endpoints. Mark the sync `partial` when recovery data is incomplete.
+
+## Reason
+
+The daily summary avoids extra requests for signals it already contains.
+Separating endpoint failures preserves useful facts while keeping the audit
+trail honest. The stored training-readiness score uses Garmin's wake-up
+snapshot when present, because it is the day's pre-training baseline; the
+latest snapshot is only a fallback.
+
+## Consequences
+
+- `pace sync --days 7` now imports available daily recovery signals alongside
+  activities.
+- The first recovery import may require several read-only Garmin requests per
+  day, so rate limiting stops further recovery calls and yields a partial run.
+- Missing device features produce nullable metric fields, not invented values.
+- Raw successful provider payloads are retained in the daily metric for
+  debugging and future re-normalization.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

@@ -2,7 +2,7 @@ from argparse import Namespace
 from datetime import date
 
 from pace.cli import app
-from pace.services.garmin_sync_service import ActivitySyncResult
+from pace.services.garmin_sync_service import GarminSyncResult
 
 
 def test_login_prompts_for_credentials_and_uses_local_token_directory(monkeypatch, capsys):
@@ -38,27 +38,32 @@ def test_sync_uses_last_seven_calendar_days_and_reports_result(monkeypatch, caps
         def __init__(self, client):
             captured["client"] = client
 
-        def sync_activities(self, *, start_date, end_date):
+        def sync(self, *, start_date, end_date):
             captured["start_date"] = start_date
             captured["end_date"] = end_date
-            return ActivitySyncResult(
+            return GarminSyncResult(
                 sync_run_id=1,
+                status="success",
                 start_date=start_date,
                 end_date=end_date,
                 activities_fetched=3,
                 activities_inserted=2,
                 activities_updated=1,
+                daily_metrics_fetched=5,
+                daily_metrics_inserted=5,
+                daily_metrics_updated=0,
+                recovery_errors=(),
             )
 
     monkeypatch.setattr(app, "GarminConnectClient", FakeGarminConnectClient)
-    monkeypatch.setattr(app, "GarminActivitySyncService", FakeSyncService)
+    monkeypatch.setattr(app, "GarminSyncService", FakeSyncService)
 
     exit_code = app.run_sync(Namespace(days=7), today=date(2026, 7, 25))
 
     assert exit_code == 0
     assert captured["start_date"] == date(2026, 7, 19)
     assert captured["end_date"] == date(2026, 7, 25)
-    assert "3 hämtade, 2 nya, 1 uppdaterade" in capsys.readouterr().out
+    assert "3 hämtade, 2 nya, 1 uppdaterade aktiviteter" in capsys.readouterr().out
 
 
 def test_sync_rejects_a_non_positive_day_count():

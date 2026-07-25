@@ -11,7 +11,7 @@ from pace.integrations.garmin import (
     GarminIntegrationError,
     GarminRateLimitError,
 )
-from pace.services.garmin_sync_service import GarminActivitySyncService
+from pace.services.garmin_sync_service import GarminSyncService
 
 
 def positive_days(value: str) -> int:
@@ -110,7 +110,7 @@ def run_sync(args: Namespace, *, today: date | None = None) -> int:
 
     try:
         client = GarminConnectClient.from_saved_tokens(settings.garmin_token_dir)
-        result = GarminActivitySyncService(client).sync_activities(
+        result = GarminSyncService(client).sync(
             start_date=sync_start_date,
             end_date=sync_end_date,
         )
@@ -131,8 +131,18 @@ def run_sync(args: Namespace, *, today: date | None = None) -> int:
         f"Garmin-synk klar ({result.start_date} till {result.end_date}): "
         f"{result.activities_fetched} hämtade, "
         f"{result.activities_inserted} nya, "
-        f"{result.activities_updated} uppdaterade."
+        f"{result.activities_updated} uppdaterade aktiviteter; "
+        f"{result.daily_metrics_fetched} recovery-dagar, "
+        f"{result.daily_metrics_inserted} nya och "
+        f"{result.daily_metrics_updated} uppdaterade recovery-poster."
     )
+
+    if result.status == "partial":
+        print(
+            "Recovery-datan hämtades delvis. Aktiviteter och tillgängliga "
+            "recovery-värden sparades; kör synken igen senare för resten."
+        )
+
     return 0
 
 

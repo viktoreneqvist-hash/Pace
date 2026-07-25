@@ -1,0 +1,11 @@
+{
+  "dailySleepDTO": {
+    "calendarDate": "2026-06-14",
+    "sleepTimeSeconds": 28800,
+    "sleepScores": {
+      "overall": {
+        "value": 84
+      }
+    }
+  }
+}

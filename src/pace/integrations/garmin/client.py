@@ -125,3 +125,57 @@ class GarminConnectClient:
             raise GarminIntegrationError(
                 "Kunde inte hämta aktiviteter från Garmin. Försök igen senare."
             ) from error
+
+    def get_daily_summary(self, metric_date: date) -> dict[str, Any]:
+        """Fetch Garmin's daily summary, including resting HR and stress."""
+
+        return self._call_daily_endpoint(
+            "den dagliga sammanfattningen",
+            self._api.get_user_summary,
+            metric_date,
+        )
+
+    def get_sleep_data(self, metric_date: date) -> dict[str, Any]:
+        """Fetch the detailed nightly sleep summary for one calendar day."""
+
+        return self._call_daily_endpoint(
+            "sömndata",
+            self._api.get_sleep_data,
+            metric_date,
+        )
+
+    def get_hrv_data(self, metric_date: date) -> dict[str, Any] | None:
+        """Fetch HRV data when the connected Garmin device provides it."""
+
+        return self._call_daily_endpoint(
+            "HRV-data",
+            self._api.get_hrv_data,
+            metric_date,
+        )
+
+    def get_training_readiness(self, metric_date: date) -> list[dict[str, Any]]:
+        """Fetch one or more Garmin training-readiness snapshots for a day."""
+
+        return self._call_daily_endpoint(
+            "training readiness",
+            self._api.get_training_readiness,
+            metric_date,
+        )
+
+    def _call_daily_endpoint(self, label: str, method, metric_date: date):
+        """Translate provider failures consistently for daily recovery calls."""
+
+        try:
+            return method(metric_date.isoformat())
+        except GarminConnectTooManyRequestsError as error:
+            raise GarminRateLimitError(
+                "Garmin begränsar förfrågningar just nu. Vänta och kör synken igen senare."
+            ) from error
+        except GarminConnectAuthenticationError as error:
+            raise GarminAuthenticationRequiredError(
+                "Garmin-sessionen är inte längre giltig. Kör 'pace garmin login' igen."
+            ) from error
+        except GarminConnectConnectionError as error:
+            raise GarminIntegrationError(
+                f"Kunde inte hämta {label} från Garmin. Försök igen senare."
+            ) from error

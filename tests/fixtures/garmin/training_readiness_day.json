@@ -1,0 +1,16 @@
+[
+  {
+    "calendarDate": "2026-06-14",
+    "timestamp": "2026-06-14T08:00:00.000",
+    "score": 71,
+    "recoveryTime": 360,
+    "inputContext": "AFTER_WAKEUP_RESET"
+  },
+  {
+    "calendarDate": "2026-06-14",
+    "timestamp": "2026-06-14T18:00:00.000",
+    "score": 59,
+    "recoveryTime": 240,
+    "inputContext": "AFTER_ACTIVITY"
+  }
+]
