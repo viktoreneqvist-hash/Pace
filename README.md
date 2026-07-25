@@ -22,4 +22,5 @@ signals: HRV, sleep, stress, Body Battery, resting heart rate, and training read
 uv run pace --help
 uv run pace garmin login
 uv run pace sync --days 7
+uv run pace metrics summary
 ```

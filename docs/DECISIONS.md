@@ -519,6 +519,51 @@ latest snapshot is only a fallback.
 
 ---
 
+# Decision #14
+
+## Problem
+
+Pace needs factual, reproducible training and recovery summaries before it can
+interpret fatigue or recommend training. The system must not hide arbitrary
+coaching thresholds inside its first calculations.
+
+## Options
+
+- Calculate only total activity volume
+- Introduce training-load and readiness rules immediately
+- Build explicit rolling summaries first, then add interpretation later
+
+## Chosen
+
+Build deterministic summaries with two seven-day training windows and a
+28-day recovery baseline. The recovery baseline is the arithmetic mean of all
+available daily values in the trailing 28 calendar days. HRV, resting heart
+rate, and sleep duration expose their data-point counts alongside the values.
+
+## Reason
+
+Two adjacent seven-day windows make volume changes transparent without calling
+them good or bad. A 28-day window is stable enough to become a personal
+reference as history accumulates, while explicit data counts prevent a short
+history from masquerading as a complete baseline.
+
+## Consequences
+
+- `pace metrics summary` reports running distance, cycling duration, total
+  duration, activity and active-day counts, longest run/ride, and change from
+  the preceding seven-day window.
+- The same command reports 28-day baseline, seven-day average, latest value,
+  and percentage deviation for HRV, resting heart rate, and sleep duration.
+- A zero previous training volume yields no percentage change rather than an
+  invented infinite increase.
+- Calendar windows use the currently stored UTC activity timestamps. A future
+  athlete-profile timezone is needed before Pace can promise local-day
+  analysis for activities around midnight.
+- No thresholds, risk labels, or coaching recommendations are created in this
+  batch; those belong to the later athlete-state and rule-engine phases.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

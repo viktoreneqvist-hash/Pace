@@ -1,8 +1,10 @@
 """Command-line entry point for the Pace application."""
 
 from argparse import ArgumentParser, ArgumentTypeError, Namespace
+from dataclasses import asdict
 from datetime import date, timedelta
 from getpass import getpass
+import json
 
 from pace.config.settings import settings
 from pace.integrations.garmin import (
@@ -12,6 +14,7 @@ from pace.integrations.garmin import (
     GarminRateLimitError,
 )
 from pace.services.garmin_sync_service import GarminSyncService
+from pace.services.metric_service import MetricService
 
 
 def positive_days(value: str) -> int:
@@ -26,6 +29,15 @@ def positive_days(value: str) -> int:
         raise ArgumentTypeError("--days måste vara minst 1.")
 
     return days
+
+
+def iso_date(value: str) -> date:
+    """Parse an ISO calendar date supplied to the CLI."""
+
+    try:
+        return date.fromisoformat(value)
+    except ValueError as error:
+        raise ArgumentTypeError("Datum måste ha formatet YYYY-MM-DD.") from error
 
 
 def build_parser() -> ArgumentParser:
@@ -67,6 +79,22 @@ def build_parser() -> ArgumentParser:
         help="antal kalenderdagar inklusive idag (standard: 7)",
     )
     sync_parser.set_defaults(handler=run_sync)
+
+    metrics_parser = subparsers.add_parser(
+        "metrics",
+        help="beräkna deterministiska tränings- och recovery-mått",
+    )
+    metrics_subparsers = metrics_parser.add_subparsers(dest="metrics_command")
+    metrics_summary_parser = metrics_subparsers.add_parser(
+        "summary",
+        help="visa fakta för träning och recovery",
+    )
+    metrics_summary_parser.add_argument(
+        "--end-date",
+        type=iso_date,
+        help="sista datum i analysen, YYYY-MM-DD (standard: idag)",
+    )
+    metrics_summary_parser.set_defaults(handler=run_metrics_summary)
 
     return parser
 
@@ -143,6 +171,21 @@ def run_sync(args: Namespace, *, today: date | None = None) -> int:
             "recovery-värden sparades; kör synken igen senare för resten."
         )
 
+    return 0
+
+
+def _json_default(value: object) -> str:
+    if isinstance(value, date):
+        return value.isoformat()
+    raise TypeError(f"Kan inte serialisera {type(value).__name__} till JSON.")
+
+
+def run_metrics_summary(args: Namespace, *, today: date | None = None) -> int:
+    """Print a reproducible, structured factual summary from local Pace data."""
+
+    end_date = args.end_date or today or date.today()
+    summary = MetricService().get_summary(end_date=end_date)
+    print(json.dumps(asdict(summary), default=_json_default, indent=2))
     return 0
 
 

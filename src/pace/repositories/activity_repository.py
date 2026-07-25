@@ -1,3 +1,5 @@
+from datetime import UTC, date, datetime, time
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -66,3 +68,21 @@ def get_all_activities(session: Session) -> list[Activity]:
     activities = session.scalars(statement).all()
 
     return list(activities)
+
+
+def get_activities_in_date_range(
+    session: Session,
+    *,
+    start_date: date,
+    end_date: date,
+) -> list[Activity]:
+    """Return activities whose local calendar date falls inside a range."""
+
+    start_time = datetime.combine(start_date, time.min, tzinfo=UTC)
+    end_time = datetime.combine(end_date, time.max, tzinfo=UTC)
+    statement = (
+        select(Activity)
+        .where(Activity.start_time >= start_time, Activity.start_time <= end_time)
+        .order_by(Activity.start_time)
+    )
+    return list(session.scalars(statement).all())

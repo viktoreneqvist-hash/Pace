@@ -1,5 +1,7 @@
 """Persistence operations for daily recovery metrics."""
 
+from datetime import date
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -42,3 +44,19 @@ def upsert_daily_metric(
 
     session.flush()
     return existing, False
+
+
+def get_daily_metrics_in_date_range(
+    session: Session,
+    *,
+    start_date: date,
+    end_date: date,
+) -> list[DailyMetric]:
+    """Return daily metrics in ascending calendar-date order."""
+
+    statement = (
+        select(DailyMetric)
+        .where(DailyMetric.date >= start_date, DailyMetric.date <= end_date)
+        .order_by(DailyMetric.date)
+    )
+    return list(session.scalars(statement).all())
