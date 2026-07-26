@@ -62,6 +62,7 @@ from pace.services.training_plan_service import (
     TrainingPlanService,
 )
 from pace.services.training_preference_service import (
+    SUPPORTED_COACHING_AMBITIONS,
     SUPPORTED_SPORT_ROLES,
     TrainingPreferenceInput,
     TrainingPreferenceService,
@@ -562,6 +563,14 @@ def build_parser() -> ArgumentParser:
         "--sport-role", choices=sorted(SUPPORTED_SPORT_ROLES), required=True
     )
     preferences_set_parser.add_argument(
+        "--ambition",
+        choices=sorted(SUPPORTED_COACHING_AMBITIONS),
+        help=(
+            "cautious = större marginaler, balanced = standard, "
+            "ambitious = mer offensivt utkast när fakta stödjer det"
+        ),
+    )
+    preferences_set_parser.add_argument(
         "--day",
         action="append",
         required=True,
@@ -572,6 +581,13 @@ def build_parser() -> ArgumentParser:
         "show", help="visa sparad tillgänglighet och sportroll"
     )
     preferences_show_parser.set_defaults(handler=run_preferences_show)
+    preferences_ambition_parser = preferences_subparsers.add_parser(
+        "ambition", help="ändra ambitionsläge utan att skriva om tillgängliga dagar"
+    )
+    preferences_ambition_parser.add_argument(
+        "--ambition", choices=sorted(SUPPORTED_COACHING_AMBITIONS), required=True
+    )
+    preferences_ambition_parser.set_defaults(handler=run_preferences_ambition)
 
     zones_parser = subparsers.add_parser(
         "zones",
@@ -1120,6 +1136,7 @@ def run_preferences_set(args: Namespace) -> int:
             TrainingPreferenceInput(
                 sport_role=args.sport_role,
                 available_days=tuple(args.day),
+                coaching_ambition=args.ambition,
             )
         )
     except ValueError as error:
@@ -1127,6 +1144,7 @@ def run_preferences_set(args: Namespace) -> int:
         return 2
     print(
         f"Planpreferenser sparade: {preference.sport_role}, "
+        f"ambition {preference.coaching_ambition}, "
         f"{len(preference.available_days)} tillgängliga dagar."
     )
     return 0
@@ -1141,11 +1159,24 @@ def run_preferences_show(_args: Namespace) -> int:
         json.dumps(
             {
                 "sport_role": preference.sport_role,
+                "coaching_ambition": preference.coaching_ambition,
                 "available_days": preference.available_days,
             },
             indent=2,
         )
     )
+    return 0
+
+
+def run_preferences_ambition(args: Namespace) -> int:
+    try:
+        preference = TrainingPreferenceService().set_coaching_ambition(
+            coaching_ambition=args.ambition
+        )
+    except ValueError as error:
+        print(f"Ambitionsläget kunde inte sparas: {error}")
+        return 2
+    print(f"Ambitionsläge sparat: {preference.coaching_ambition}.")
     return 0
 
 

@@ -568,6 +568,31 @@ def test_coach_parser_accepts_a_quick_question_and_an_interactive_dialogue():
     assert chat_args.plan_id == 3
 
 
+def test_preferences_parser_accepts_coaching_ambition():
+    parser = app.build_parser()
+
+    args = parser.parse_args(
+        [
+            "preferences",
+            "set",
+            "--sport-role",
+            "ride_primary",
+            "--ambition",
+            "ambitious",
+            "--day",
+            "mon:any",
+        ]
+    )
+
+    assert args.ambition == "ambitious"
+
+    change_args = parser.parse_args(
+        ["preferences", "ambition", "--ambition", "cautious"]
+    )
+
+    assert change_args.ambition == "cautious"
+
+
 def test_coach_renderer_marks_a_replacement_as_unsaved():
     answer = CoachDialogueAnswer(
         answer="Byt passet.",

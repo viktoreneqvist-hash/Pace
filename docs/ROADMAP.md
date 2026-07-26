@@ -329,8 +329,18 @@ until the library is large enough to need them.
   validate its plan session, date, availability, sport, zone, and target gates
 - [x] Never write, accept, or overwrite a plan from dialogue; keep persistent
   changes behind the existing separate revision-draft flow
-- [ ] Decide and build how athlete-selected coaching ambition
+- [x] Decide and build how athlete-selected coaching ambition
   (Försiktig/Balanserad/Offensiv) affects coaching judgment
+
+### Batch K3 — Athlete-selected coaching ambition
+
+- [x] Store `cautious`, `balanced`, or `ambitious` with default balanced for
+  existing athletes and expose a one-command update
+- [x] Send the ambition preference to plan drafting and coach dialogue
+- [x] Keep it as model-owned coaching intent, never as a hard Python volume or
+  intensity rule, and require the coach to explain its effect or limitation
+- [x] Preserve every existing factual, availability, intensity-evidence, draft,
+  and explicit-acceptance boundary
 
 ## Explicitly deferred
 

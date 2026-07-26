@@ -239,6 +239,7 @@ def test_initial_plan_is_a_persisted_draft_with_selected_fact_catalog_only():
     assert generator.requests[0].mode == "initial_draft"
     catalog = generator.requests[0].context["fact_catalog"]
     assert catalog["training_preference"]["value"]["sport_role"] == "run_primary"
+    assert catalog["training_preference"]["value"]["coaching_ambition"] == "balanced"
     assert "note" not in str(catalog["relevant_context"])
 
 

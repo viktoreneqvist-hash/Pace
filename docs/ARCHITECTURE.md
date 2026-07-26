@@ -472,6 +472,16 @@ availability, sport, zone, and target eligibility. The draft is not persisted
 or applied. A separate revision draft and explicit acceptance remain required
 for a durable plan change.
 
+#### Coaching ambition
+
+The single local training-preference profile also stores athlete intent as
+`cautious`, `balanced`, or `ambitious`. This is supplied as an explicit fact to
+plan drafting and coach dialogue. It is not a Python workload formula, target,
+or override: the model may propose more margin or a more assertive progression,
+volume, or quality decision only when the selected facts support it, and must
+make that reasoning reviewable. All availability, data-quality, target-
+eligibility, draft, and acceptance boundaries remain unchanged.
+
 #### `context_events`
 
 Stores structured athlete explanations and life events.

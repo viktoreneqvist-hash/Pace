@@ -612,6 +612,9 @@ def _fact_catalog(
             "explicit_athlete_preference",
             {
                 "sport_role": preference.sport_role,
+                "coaching_ambition": getattr(
+                    preference, "coaching_ambition", "balanced"
+                ),
                 "available_days": preference.available_days,
             },
         ),

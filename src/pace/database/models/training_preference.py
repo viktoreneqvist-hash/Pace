@@ -15,6 +15,9 @@ class TrainingPreference(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     sport_role: Mapped[str] = mapped_column(String(20), nullable=False)
+    coaching_ambition: Mapped[str] = mapped_column(
+        String(20), default="balanced", nullable=False
+    )
     available_days: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON, default=list, nullable=False
     )

@@ -89,6 +89,14 @@ class CoachDialogueService:
             knowledge_briefs=knowledge_briefs,
         )
         context["active_plan"] = _serialize_active_plan(plan)
+        preference = self._preference_service.get_preference()
+        if preference is not None:
+            context["athlete_preferences"] = {
+                "sport_role": preference.sport_role,
+                "coaching_ambition": getattr(
+                    preference, "coaching_ambition", "balanced"
+                ),
+            }
         answer = self._client.answer(
             CoachDialogueRequest(
                 question=clean_question,

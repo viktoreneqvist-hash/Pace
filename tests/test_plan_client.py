@@ -88,3 +88,4 @@ def test_plan_client_instructs_a_direct_coach_tone_without_routine_care_referral
     assert "direct, unsentimental Swedish endurance coach" in SYSTEM_INSTRUCTIONS
     assert "routine care-provider referrals" in SYSTEM_INSTRUCTIONS
     assert "toughness into recklessness" in SYSTEM_INSTRUCTIONS
+    assert "Coaching ambition" in SYSTEM_INSTRUCTIONS

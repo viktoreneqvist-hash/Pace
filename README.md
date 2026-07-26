@@ -50,6 +50,8 @@ availability, history freshness, structured targets, and plan versioning.
 
 ```bash
 uv run pace preferences set --sport-role ride_primary --day mon:any --day tue:any
+uv run pace preferences ambition --ambition ambitious
+uv run pace preferences show
 uv run pace zones show --sport ride
 uv run pace plan readiness
 uv run pace plan draft --days 14
@@ -69,6 +71,12 @@ primary target; cycling pace is never generated. Running pace and cycling
 power require an eligible, verified same-sport fact. Existing draft plans from
 before the current contract remain readable but must be regenerated before
 they can be accepted or revised.
+
+Coaching ambition is athlete intent, not a training command: `cautious` asks
+for larger margins, `balanced` is the default, and `ambitious` lets the coach
+consider more assertive progression or quality only where local facts support
+it. It never weakens Python's data-quality, availability, intensity-evidence,
+or explicit-acceptance boundaries.
 
 `pace plan review` is a readable terminal view. `pace plan report` writes a
 self-contained private report to `reports/plan-<id>.html`; open that file in a

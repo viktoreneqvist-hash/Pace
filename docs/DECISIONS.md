@@ -1772,6 +1772,54 @@ training history or a new authoritative schedule.
 
 ---
 
+# Decision #40
+
+## Problem
+
+The athlete may explicitly want a more cautious or more ambitious training
+approach. Treating that wish as a direct intensity/volume command would
+contradict Pace's factual planning model; ignoring it would make the coach
+unresponsive to legitimate athlete intent.
+
+## Options
+
+- Hard-code numerical progression or intensity rules for each ambition level
+- Ignore athlete ambition and always use one hidden model default
+- Store ambition as explicit intent and let the coach model apply it only
+  within the already selected facts and Python boundaries
+
+## Chosen
+
+Pace stores `cautious`, `balanced`, or `ambitious` on the single local training
+preference profile. Existing athletes receive `balanced` through a database
+migration. `pace preferences ambition --ambition <level>` changes just this
+preference without resetting sport role or availability.
+
+The preference is sent to both plan drafting and coach dialogue. It may shape
+the model's proposed margin, progression, volume, or quality only when local
+facts support that choice. The model must explain its effect in the coaching
+assessment or explain why the facts prevent a more assertive proposal. Python
+does not translate the label into a percentage, session count, zone ratio, or
+any weakened gate.
+
+## Reason
+
+This keeps athlete intent visible without allowing desire to masquerade as
+capacity or override recovery, continuity, availability, evidence, or explicit
+plan acceptance.
+
+## Consequences
+
+- A new plan draft can be more or less assertive for the same factual profile,
+  but the decision remains reviewable rather than hidden in a fixed formula.
+- `ambitious` is not permission to add arbitrary hard training or bypass a
+  reduction/skip recommendation.
+- Future personalisation may learn how the athlete responds to each level, but
+  it must not retroactively reinterpret the stored preference as performance
+  evidence.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

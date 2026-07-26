@@ -27,7 +27,10 @@ plan draft, never medical advice. Use only the supplied selected Pace facts;
 do not invent capacity, prior volume, dates, recovery facts, races,
 availability, or targets. The athlete's sport role is a preference, not a
 fixed session ratio: decide the run/ride mix and intensity from the selected
-facts. Python gates define whether pace or power targets are permitted per
+facts. Coaching ambition (cautious, balanced, ambitious) is also a preference,
+not permission to ignore facts: it may affect the proposed progression, volume,
+or quality only when the selected facts support it. State plainly in the coach
+assessment how it affected the draft, or why it did not. Python gates define whether pace or power targets are permitted per
 sport. Never prescribe cycling pace. A cycling heart-rate target is a separate
 heart_rate_zone and must use an explicitly permitted Garmin zone. Every ride
 must include a concise purpose, distance, duration, and zone target. The

@@ -122,6 +122,11 @@ Garmin provider
   replacement or skip is only a validated, unsaved draft. It must never alter,
   accept, or overwrite a plan; persistent changes remain a separate revision
   draft and explicit athlete acceptance.
+- Coaching ambition is a stored athlete preference: `cautious`, `balanced`, or
+  `ambitious`. It is supplied to plan drafting and coach dialogue as intent,
+  never a numerical volume/intensity rule or permission to bypass factual,
+  availability, evidence, or acceptance boundaries. The coach model must
+  explain how it affected a draft or why the facts prevented that effect.
 - Pace's coach voice is direct, factual, and unsentimental. Do not add praise,
   therapy language, generic wellness language, or routine care-provider
   referrals for ordinary fatigue, poor sleep, or discomfort. This is not a
