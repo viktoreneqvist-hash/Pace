@@ -17,6 +17,7 @@ def test_initial_migration_creates_all_pace_tables():
         "activities",
         "context_events",
         "daily_metrics",
+        "races",
         "sync_runs",
     }.issubset(inspector.get_table_names())
 

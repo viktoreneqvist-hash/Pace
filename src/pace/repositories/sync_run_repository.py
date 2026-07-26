@@ -1,6 +1,6 @@
 """Persistence operations for synchronization audit records."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,6 +18,29 @@ def get_latest_completed_sync_run(session: Session) -> SyncRun | None:
         .limit(1)
     )
     return session.scalar(statement)
+
+
+def get_completed_sync_runs_through_date(
+    session: Session,
+    *,
+    provider: str,
+    end_date: date,
+) -> list[SyncRun]:
+    """Return successful or partial completed coverage windows through one date."""
+
+    statement = (
+        select(SyncRun)
+        .where(
+            SyncRun.provider == provider,
+            SyncRun.status.in_(("success", "partial")),
+            SyncRun.completed_at.is_not(None),
+            SyncRun.requested_start_date.is_not(None),
+            SyncRun.requested_end_date.is_not(None),
+            SyncRun.requested_end_date <= end_date,
+        )
+        .order_by(SyncRun.requested_start_date, SyncRun.requested_end_date, SyncRun.id)
+    )
+    return list(session.scalars(statement))
 
 
 def create_sync_run(

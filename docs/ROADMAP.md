@@ -196,6 +196,31 @@ Consider planning, workout generation, research retrieval, and adaptive
 recommendations only after the earlier layers have stable contracts and
 evidence-backed product decisions.
 
+### Batch J1 — Race and planning readiness
+
+- [x] Store explicit upcoming run and ride races with A/B/C priority, desired
+  time as a goal only, and per-race taper override
+- [x] Default taper policy: A full, B partial, C none; permit an explicit
+  override or restoration of the priority default
+- [x] Add `pace plan readiness` with a 28-day contiguous Garmin-sync coverage
+  requirement and explicit coverage facts
+- [x] Treat active `pain` or `illness` as a planning blocker
+- [x] Use general-goal mode when no upcoming race exists; do not block on it
+- [x] Keep J1 read-only with respect to training plans: no workouts, plan
+  versions, AI plan calls, or automatic changes
+
+### Batch J2 — Deterministic performance history
+
+Build Pace-owned facts about durable volume, frequency, long sessions,
+progression, and sufficient Garmin performance evidence before introducing
+pace, power, or zone targets into a plan.
+
+### Batch J3 — Reviewable short-horizon plan drafts
+
+Create a block view to an explicit A-race and a detailed one- or two-week
+draft. Capture structured pass outcomes and optional, explicitly shared
+feedback for a later revision draft; never overwrite an accepted plan.
+
 ## Explicitly deferred
 
 - Multi-user accounts

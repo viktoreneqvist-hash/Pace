@@ -7,6 +7,7 @@ from pace.database.models.activity import Activity
 from pace.database.models.base import Base, TimestampMixin
 from pace.database.models.context_event import ContextEvent
 from pace.database.models.daily_metric import DailyMetric
+from pace.database.models.race import Race
 from pace.database.models.sync_run import SyncRun
 
 __all__ = [
@@ -14,6 +15,7 @@ __all__ = [
     "Base",
     "ContextEvent",
     "DailyMetric",
+    "Race",
     "SyncRun",
     "TimestampMixin",
 ]

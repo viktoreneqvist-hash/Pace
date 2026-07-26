@@ -17,6 +17,7 @@ from pace.analysis.models import (
 from pace.services.garmin_sync_service import GarminSyncResult
 from pace.explanations.models import ExplanationItem, ExplanationSummary
 from pace.ai.models import ContextEventDraft, PaceAIAnswer
+from pace.planning.models import HistoryCoverage, PlanReadiness
 
 
 def test_login_prompts_for_credentials_and_uses_local_token_directory(
@@ -523,3 +524,101 @@ def test_ask_parser_accepts_a_reproducible_end_date():
 
     assert args.question == "Hur ser läget ut?"
     assert args.end_date == date(2026, 7, 25)
+
+
+def test_race_add_passes_only_explicit_race_choices_to_the_service(monkeypatch, capsys):
+    captured: dict[str, object] = {}
+
+    class FakeRaceService:
+        def add_race(self, race_input):
+            captured["input"] = race_input
+            return SimpleNamespace(
+                name=race_input.name,
+                race_date=race_input.race_date,
+                priority=race_input.priority,
+                taper_override=None,
+            )
+
+    monkeypatch.setattr(app, "RaceService", FakeRaceService)
+    monkeypatch.setattr(app, "resolved_taper", lambda _race: "full")
+
+    exit_code = app.run_race_add(
+        Namespace(
+            name="Stockholm Marathon",
+            sport="run",
+            date=date(2026, 10, 10),
+            distance_km=42.195,
+            priority="A",
+            desired_time=10_800,
+            taper=None,
+        )
+    )
+
+    assert exit_code == 0
+    assert captured["input"].distance_meters == 42_195
+    assert captured["input"].desired_time_seconds == 10_800
+    assert "taper full" in capsys.readouterr().out
+
+
+def test_plan_readiness_prints_deterministic_planning_gates(monkeypatch, capsys):
+    readiness = PlanReadiness(
+        as_of_date=date(2026, 7, 25),
+        status="blocked",
+        history=HistoryCoverage(
+            required_calendar_days=28,
+            covered_calendar_days=7,
+            required_start_date=date(2026, 6, 28),
+            covered_start_date=date(2026, 7, 19),
+            covered_end_date=date(2026, 7, 25),
+            is_contiguous=False,
+        ),
+        upcoming_races=(),
+        blockers=(),
+        limitations=("requires_28_contiguous_garmin_history_days",),
+    )
+
+    class FakePlanReadinessService:
+        def get_readiness(self, *, as_of_date):
+            assert as_of_date == date(2026, 7, 25)
+            return readiness
+
+    monkeypatch.setattr(app, "PlanReadinessService", FakePlanReadinessService)
+
+    exit_code = app.run_plan_readiness(
+        Namespace(end_date=None),
+        today=date(2026, 7, 25),
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "blocked"
+    assert payload["history"]["covered_calendar_days"] == 7
+
+
+def test_race_and_plan_parsers_accept_the_j1_contract():
+    parser = app.build_parser()
+
+    race_args = parser.parse_args(
+        [
+            "race",
+            "add",
+            "Stockholm Marathon",
+            "--date",
+            "2026-10-10",
+            "--sport",
+            "run",
+            "--distance-km",
+            "42.195",
+            "--priority",
+            "A",
+            "--desired-time",
+            "3:00:00",
+        ]
+    )
+    readiness_args = parser.parse_args(
+        ["plan", "readiness", "--end-date", "2026-07-25"]
+    )
+
+    assert race_args.desired_time == 10_800
+    assert race_args.distance_km == 42.195
+    assert readiness_args.end_date == date(2026, 7, 25)

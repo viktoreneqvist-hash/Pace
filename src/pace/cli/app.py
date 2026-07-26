@@ -32,6 +32,15 @@ from pace.explanations.hrv import render_explanation_summary
 from pace.ai.client import OpenAIResponsesClient, PaceAIError
 from pace.ai.models import ContextEventDraft, PaceAIAnswer
 from pace.services.ai_ask_service import PaceAskService
+from pace.services.plan_readiness_service import PlanReadinessService
+from pace.services.race_service import (
+    SUPPORTED_RACE_PRIORITIES,
+    SUPPORTED_RACE_SPORT_TYPES,
+    SUPPORTED_TAPER_CHOICES,
+    RaceInput,
+    RaceService,
+    resolved_taper,
+)
 
 
 def positive_days(value: str) -> int:
@@ -60,6 +69,36 @@ def iso_date(value: str) -> date:
         return date.fromisoformat(value)
     except ValueError as error:
         raise ArgumentTypeError("Datum måste ha formatet YYYY-MM-DD.") from error
+
+
+def positive_distance_km(value: str) -> float:
+    """Parse a positive race distance in the athlete-facing unit."""
+
+    try:
+        distance_km = float(value)
+    except ValueError as error:
+        raise ArgumentTypeError("Distans måste vara ett tal i kilometer.") from error
+    if distance_km <= 0:
+        raise ArgumentTypeError("Distans måste vara större än noll.")
+    return distance_km
+
+
+def duration_seconds(value: str) -> int:
+    """Parse an optional race goal time in H:MM:SS format."""
+
+    parts = value.split(":")
+    if len(parts) != 3:
+        raise ArgumentTypeError("Önskad tid måste ha formatet H:MM:SS.")
+    try:
+        hours, minutes, seconds = (int(part) for part in parts)
+    except ValueError as error:
+        raise ArgumentTypeError("Önskad tid måste ha formatet H:MM:SS.") from error
+    if hours < 0 or not 0 <= minutes < 60 or not 0 <= seconds < 60:
+        raise ArgumentTypeError("Önskad tid måste ha formatet H:MM:SS.")
+    total_seconds = hours * 3600 + minutes * 60 + seconds
+    if total_seconds <= 0:
+        raise ArgumentTypeError("Önskad tid måste vara större än noll.")
+    return total_seconds
 
 
 def build_parser() -> ArgumentParser:
@@ -251,6 +290,87 @@ def build_parser() -> ArgumentParser:
         help="sista datum i faktaunderlaget, YYYY-MM-DD (standard: idag)",
     )
     ask_parser.set_defaults(handler=run_ask)
+
+    race_parser = subparsers.add_parser(
+        "race",
+        help="hantera kommande lopp för framtida planering",
+    )
+    race_subparsers = race_parser.add_subparsers(dest="race_command")
+    race_add_parser = race_subparsers.add_parser(
+        "add",
+        help="spara ett kommande A-, B- eller C-lopp",
+    )
+    race_add_parser.add_argument("name", help="loppets namn")
+    race_add_parser.add_argument("--date", type=iso_date, required=True)
+    race_add_parser.add_argument(
+        "--sport",
+        choices=sorted(SUPPORTED_RACE_SPORT_TYPES),
+        required=True,
+    )
+    race_add_parser.add_argument(
+        "--distance-km",
+        type=positive_distance_km,
+        required=True,
+    )
+    race_add_parser.add_argument(
+        "--priority",
+        choices=sorted(SUPPORTED_RACE_PRIORITIES),
+        required=True,
+        help="A = huvudmål, B = delmål, C = hårt träningspass",
+    )
+    race_add_parser.add_argument(
+        "--desired-time",
+        type=duration_seconds,
+        help="önskad tid H:MM:SS; ett mål, inte ett kapacitetsbevis",
+    )
+    race_add_parser.add_argument(
+        "--taper",
+        choices=sorted(SUPPORTED_TAPER_CHOICES),
+        help="skriv över A/B/C-standard för just detta lopp",
+    )
+    race_add_parser.set_defaults(handler=run_race_add)
+
+    race_list_parser = race_subparsers.add_parser(
+        "list",
+        help="visa kommande lopp och deras taper-policy",
+    )
+    race_list_parser.add_argument(
+        "--as-of-date",
+        type=iso_date,
+        help="visa lopp från detta datum, YYYY-MM-DD (standard: idag)",
+    )
+    race_list_parser.set_defaults(handler=run_race_list)
+
+    race_update_parser = race_subparsers.add_parser(
+        "update",
+        help="ändra prioritet eller taper för ett befintligt lopp",
+    )
+    race_update_parser.add_argument("--id", type=int, required=True)
+    race_update_parser.add_argument(
+        "--priority",
+        choices=sorted(SUPPORTED_RACE_PRIORITIES),
+    )
+    race_update_parser.add_argument(
+        "--taper",
+        choices=sorted(SUPPORTED_TAPER_CHOICES),
+    )
+    race_update_parser.set_defaults(handler=run_race_update)
+
+    plan_parser = subparsers.add_parser(
+        "plan",
+        help="visa objektiva förutsättningar inför framtida planering",
+    )
+    plan_subparsers = plan_parser.add_subparsers(dest="plan_command")
+    plan_readiness_parser = plan_subparsers.add_parser(
+        "readiness",
+        help="kontrollera Garmin-historik, aktiva hälsoblockerare och lopp",
+    )
+    plan_readiness_parser.add_argument(
+        "--end-date",
+        type=iso_date,
+        help="planeringsdatum YYYY-MM-DD (standard: idag)",
+    )
+    plan_readiness_parser.set_defaults(handler=run_plan_readiness)
 
     return parser
 
@@ -474,6 +594,84 @@ def run_ask(args: Namespace, *, today: date | None = None) -> int:
         return 1
 
     print(_render_ai_answer(answer, as_of_date=end_date))
+    return 0
+
+
+def run_race_add(args: Namespace) -> int:
+    """Persist one athlete-confirmed race without generating a plan."""
+
+    try:
+        race = RaceService().add_race(
+            RaceInput(
+                name=args.name,
+                sport_type=args.sport,
+                race_date=args.date,
+                distance_meters=args.distance_km * 1000,
+                priority=args.priority,
+                desired_time_seconds=args.desired_time,
+                taper_override=args.taper,
+            )
+        )
+    except ValueError as error:
+        print(f"Loppet kunde inte sparas: {error}")
+        return 2
+
+    print(
+        f"Lopp sparat: {race.name} ({race.race_date}), prioritet {race.priority}, "
+        f"taper {resolved_taper(race)}."
+    )
+    return 0
+
+
+def run_race_list(args: Namespace, *, today: date | None = None) -> int:
+    """Print future race facts without assessing race readiness or capacity."""
+
+    as_of_date = args.as_of_date or today or date.today()
+    races = RaceService().list_upcoming_races(as_of_date=as_of_date)
+    payload = [
+        {
+            "id": race.id,
+            "name": race.name,
+            "sport_type": race.sport_type,
+            "race_date": race.race_date,
+            "distance_meters": race.distance_meters,
+            "priority": race.priority,
+            "desired_time_seconds": race.desired_time_seconds,
+            "taper_override": race.taper_override,
+            "taper": resolved_taper(race),
+        }
+        for race in races
+    ]
+    print(json.dumps(payload, default=_json_default, indent=2))
+    return 0
+
+
+def run_race_update(args: Namespace) -> int:
+    """Update only the approved race priority and taper choices."""
+
+    try:
+        race = RaceService().update_race(
+            race_id=args.id,
+            priority=args.priority,
+            taper_override=args.taper,
+        )
+    except ValueError as error:
+        print(f"Loppet kunde inte uppdateras: {error}")
+        return 2
+
+    print(
+        f"Lopp uppdaterat: {race.name}, prioritet {race.priority}, "
+        f"taper {resolved_taper(race)}."
+    )
+    return 0
+
+
+def run_plan_readiness(args: Namespace, *, today: date | None = None) -> int:
+    """Print deterministic planning gates without generating a plan."""
+
+    end_date = args.end_date or today or date.today()
+    readiness = PlanReadinessService().get_readiness(as_of_date=end_date)
+    print(json.dumps(asdict(readiness), default=_json_default, indent=2))
     return 0
 
 

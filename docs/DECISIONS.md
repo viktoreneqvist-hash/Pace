@@ -1064,6 +1064,62 @@ the chance of unrelated history influencing an answer.
 
 ---
 
+# Decision #27
+
+## Problem
+
+Pace needs to prepare for future plan generation without trusting
+self-reported training volume or personal bests as evidence, quietly choosing
+race priorities, or generating a plan while an active pain or illness event is
+known.
+
+## Options
+
+- Ask the athlete for a static volume, personal-best, and availability profile
+- Let an LLM infer races, capacity, and taper policy from conversation alone
+- Store explicit upcoming races, measure imported Garmin coverage in Python,
+  and expose a read-only readiness gate before any plan generation
+
+## Chosen
+
+Batch J1 adds local `races` and `pace plan readiness`.
+
+An upcoming race has sport, date, distance, A/B/C priority, an optional desired
+time, and an optional taper override. Priority defaults are full taper for A,
+partial taper for B, and no taper for C. An athlete can explicitly override a
+single race or restore the priority default. Desired time is an athlete goal,
+not evidence of current capacity.
+
+`pace plan readiness` requires 28 contiguous locally recorded Garmin-sync
+calendar days. It treats completed `success` and `partial` sync windows as
+coverage, reports their exact date range, and blocks planning for active
+`pain` or `illness` events. No upcoming race is a general-goal mode, not a
+blocker. J1 creates no workouts or plan versions.
+
+## Reason
+
+Future Pace planning must be constrained by actual recent history. A visible
+readiness gate prevents a short or unknown import window from looking like a
+complete baseline, and it makes known health context an explicit stop condition
+instead of a hidden prompt instruction. Race intent remains athlete-owned while
+capacity remains a later deterministic analysis problem.
+
+## Consequences
+
+- Pace does not ask the athlete to manually declare previous volume or PB as a
+  planning fact.
+- Multiple A/B/C races can be stored; selecting a block-defining A race belongs
+  to the later plan-draft decision.
+- A one-day stale analysis date can still use the newest completed sync end
+  date; readiness reports that end date instead of pretending today's data was
+  imported.
+- J2 must add deterministic performance-history facts before Pace can issue
+  pace, power, or zone targets.
+- J3 may create only reviewable short-horizon plan revisions; it must never
+  overwrite an accepted plan automatically.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

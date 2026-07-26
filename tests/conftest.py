@@ -29,9 +29,9 @@ def pytest_sessionstart() -> None:
 def clear_database() -> None:
     """Keep tests independent while using the same migrated test database."""
 
-    from pace.database.models import Activity, ContextEvent, DailyMetric, SyncRun
+    from pace.database.models import Activity, ContextEvent, DailyMetric, Race, SyncRun
     from pace.database.session import SessionFactory
 
     with SessionFactory.begin() as session:
-        for model in (Activity, DailyMetric, ContextEvent, SyncRun):
+        for model in (Activity, DailyMetric, ContextEvent, Race, SyncRun):
             session.execute(delete(model))
