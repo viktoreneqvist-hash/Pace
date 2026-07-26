@@ -31,3 +31,32 @@ def get_context_events_for_date(
         .order_by(ContextEvent.start_date)
     )
     return list(session.scalars(statement))
+
+
+def get_context_events_in_date_range(
+    session: Session,
+    *,
+    start_date: date,
+    end_date: date,
+) -> list[ContextEvent]:
+    """Return events that overlap an inclusive calendar-date window."""
+
+    if end_date < start_date:
+        raise ValueError("end_date cannot be earlier than start_date.")
+
+    statement = (
+        select(ContextEvent)
+        .where(
+            ContextEvent.start_date <= end_date,
+            or_(ContextEvent.end_date.is_(None), ContextEvent.end_date >= start_date),
+        )
+        .order_by(ContextEvent.start_date, ContextEvent.id)
+    )
+    return list(session.scalars(statement))
+
+
+def get_all_context_events(session: Session) -> list[ContextEvent]:
+    """Return every stored event in chronological order."""
+
+    statement = select(ContextEvent).order_by(ContextEvent.start_date, ContextEvent.id)
+    return list(session.scalars(statement))

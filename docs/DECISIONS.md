@@ -770,6 +770,49 @@ unobserved v1 use case.
 
 ---
 
+# Decision #21
+
+## Problem
+
+Pace needs athlete-provided facts that Garmin cannot observe, but an open-ended
+note by default would incorrectly make a one-night event or one drink appear
+relevant forever.
+
+## Options
+
+- Store free-form notes without types or dates
+- Make every context event open-ended until manually closed
+- Use a small typed contract with finite notes by default and explicit ongoing
+  events
+
+## Chosen
+
+The first context-memory slice supports `illness`, `pain`, `travel`,
+`alcohol`, `poor_sleep`, `work_stress`, and `schedule_constraint`.
+
+Every note requires a type, start date, and private description. A note without
+an end date closes on the start date. `--ongoing` explicitly creates an active
+event with no end date; a finite range uses `--end-date`.
+
+## Reason
+
+This captures the most useful non-Garmin context while keeping terminology
+small and avoiding diagnostic injury semantics. Explicit lifecycle behavior
+prevents accidental long-lived context from influencing later state or rules.
+
+## Consequences
+
+- `pace note add` stores a validated event without interpreting its effect on
+  training or recovery.
+- `pace note list --from ... --to ...` returns only events overlapping the
+  requested date range.
+- `severity`, `confidence`, and `affected_metrics` stay available in the data
+  model but are not required from the athlete in this first CLI slice.
+- Context notes remain local and are not automatically sent to a future AI
+  model.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

@@ -18,6 +18,11 @@ from pace.integrations.garmin import (
     GarminRateLimitError,
 )
 from pace.services.garmin_sync_service import MAX_SYNC_DAYS, GarminSyncService
+from pace.services.context_service import (
+    SUPPORTED_CONTEXT_EVENT_TYPES,
+    ContextEventInput,
+    ContextService,
+)
 from pace.services.metric_service import MetricService
 
 
@@ -107,6 +112,63 @@ def build_parser() -> ArgumentParser:
         ),
     )
     sync_parser.set_defaults(handler=run_sync)
+
+    note_parser = subparsers.add_parser(
+        "note",
+        help="spara och visa lokal atletkontext",
+    )
+    note_subparsers = note_parser.add_subparsers(dest="note_command")
+    note_add_parser = note_subparsers.add_parser(
+        "add",
+        help="spara en strukturerad context-not",
+    )
+    note_add_parser.add_argument(
+        "--type",
+        dest="event_type",
+        choices=sorted(SUPPORTED_CONTEXT_EVENT_TYPES),
+        required=True,
+        help="typ av kontext som Garmin inte kan observera",
+    )
+    note_add_parser.add_argument(
+        "--date",
+        dest="start_date",
+        type=iso_date,
+        required=True,
+        help="första datumet för händelsen, YYYY-MM-DD",
+    )
+    note_add_parser.add_argument(
+        "--end-date",
+        type=iso_date,
+        help="sista datumet för en tidsbegränsad händelse, YYYY-MM-DD",
+    )
+    note_add_parser.add_argument(
+        "--ongoing",
+        action="store_true",
+        help="markera händelsen som pågående i stället för tidsbegränsad",
+    )
+    note_add_parser.add_argument(
+        "note",
+        help="kort privat beskrivning; citeras om den innehåller mellanslag",
+    )
+    note_add_parser.set_defaults(handler=run_note_add)
+
+    note_list_parser = note_subparsers.add_parser(
+        "list",
+        help="visa sparade context-noter",
+    )
+    note_list_parser.add_argument(
+        "--from",
+        dest="start_date",
+        type=iso_date,
+        help="första datum i ett överlappande filter, YYYY-MM-DD",
+    )
+    note_list_parser.add_argument(
+        "--to",
+        dest="end_date",
+        type=iso_date,
+        help="sista datum i ett överlappande filter, YYYY-MM-DD",
+    )
+    note_list_parser.set_defaults(handler=run_note_list)
 
     metrics_parser = subparsers.add_parser(
         "metrics",
@@ -231,6 +293,44 @@ def run_sync(args: Namespace, *, today: date | None = None) -> int:
             "recovery-värden sparades; kör samma batch igen senare för resten."
         )
 
+    return 0
+
+
+def run_note_add(args: Namespace) -> int:
+    """Store one athlete-provided context fact without interpreting it."""
+
+    try:
+        event = ContextService().add_event(
+            ContextEventInput(
+                event_type=args.event_type,
+                start_date=args.start_date,
+                end_date=args.end_date,
+                ongoing=args.ongoing,
+                note=args.note,
+            )
+        )
+    except ValueError as error:
+        print(f"Context-noten kunde inte sparas: {error}")
+        return 2
+
+    duration = "pågående" if event.end_date is None else str(event.end_date)
+    print(f"Context-not sparad: {event.event_type}, från {event.start_date} till {duration}.")
+    return 0
+
+
+def run_note_list(args: Namespace) -> int:
+    """Print local context events as structured data requested by the athlete."""
+
+    try:
+        events = ContextService().list_events(
+            start_date=args.start_date,
+            end_date=args.end_date,
+        )
+    except ValueError as error:
+        print(f"Context-noter kunde inte hämtas: {error}")
+        return 2
+
+    print(json.dumps([asdict(event) for event in events], default=_json_default, indent=2))
     return 0
 
 

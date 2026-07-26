@@ -74,7 +74,7 @@ Before beginning the next batch:
 - [x] CLI help and database initialization pass against isolated local state
 - [x] Independent review finds no unresolved P0 or P1 technical risk
 
-## Next: Batch E — Context memory
+## Batch E — Context memory
 
 ### Goal
 
@@ -83,11 +83,12 @@ a date or analysis window.
 
 ### Small first slice
 
-- Define the supported event contract from concrete use cases
-- Add `pace note add` with explicit date, type, note, and optional end date
-- Add `pace note list` with date filtering
-- Query active or overlapping events through the repository
-- Add validation and tests for date overlap and missing required input
+- [x] Define the supported event contract from concrete use cases
+- [x] Add `pace note add` with explicit date, type, note, optional end date,
+  and explicit `--ongoing`
+- [x] Add `pace note list` with overlap date filtering
+- [x] Query active or overlapping events through the repository
+- [x] Add validation and tests for date overlap and missing required input
 
 ### Constraints
 
@@ -102,7 +103,11 @@ a date or analysis window.
 ### Success criteria
 
 Pace can store and retrieve structured athlete context by date without changing
-the deterministic Garmin facts.
+the deterministic Garmin facts. This first slice supports `illness`, `pain`,
+`travel`, `alcohol`, `poor_sleep`, `work_stress`, and `schedule_constraint`.
+
+An ordinary note closes on its start date unless an explicit end date is given.
+Only `--ongoing` creates an active, open-ended event.
 
 ## Later batches
 

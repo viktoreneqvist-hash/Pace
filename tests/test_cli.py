@@ -276,3 +276,66 @@ def test_metrics_summary_prints_structured_local_facts(monkeypatch, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["training"]["current"]["running_distance_km"] == 20
     assert payload["recovery"][0]["metric"] == "hrv"
+
+
+def test_note_add_and_list_use_the_context_service(monkeypatch, capsys):
+    captured: dict[str, object] = {}
+
+    class FakeContextService:
+        def add_event(self, event_input):
+            captured["input"] = event_input
+            return SimpleNamespace(
+                event_type="poor_sleep",
+                start_date=date(2026, 7, 25),
+                end_date=date(2026, 7, 25),
+            )
+
+        def list_events(self, *, start_date, end_date):
+            captured["range"] = (start_date, end_date)
+            return []
+
+    monkeypatch.setattr(app, "ContextService", FakeContextService)
+
+    add_exit_code = app.run_note_add(
+        Namespace(
+            event_type="poor_sleep",
+            start_date=date(2026, 7, 25),
+            end_date=None,
+            ongoing=False,
+            note="Somnade sent.",
+        )
+    )
+    list_exit_code = app.run_note_list(
+        Namespace(
+            start_date=date(2026, 7, 19),
+            end_date=date(2026, 7, 25),
+        )
+    )
+
+    assert add_exit_code == 0
+    assert list_exit_code == 0
+    assert captured["input"].event_type == "poor_sleep"
+    assert captured["range"] == (date(2026, 7, 19), date(2026, 7, 25))
+    output = capsys.readouterr().out
+    assert "Context-not sparad" in output
+    assert "[]" in output
+
+
+def test_note_parser_limits_the_first_context_contract():
+    parser = app.build_parser()
+
+    args = parser.parse_args(
+        [
+            "note",
+            "add",
+            "--type",
+            "pain",
+            "--date",
+            "2026-07-25",
+            "--ongoing",
+            "Känning i vänster vad.",
+        ]
+    )
+
+    assert args.event_type == "pain"
+    assert args.ongoing is True
