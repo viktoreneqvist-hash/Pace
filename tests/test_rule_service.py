@@ -176,3 +176,26 @@ def test_sleep_duration_rule_triggers_for_one_night_ten_percent_below_baseline()
     assert evaluations["sleep_duration_short_night"].facts[
         "decrease_percent_threshold"
     ] == 10
+
+
+def test_sleep_duration_rule_uses_seven_day_data_gate():
+    end_date = date(2026, 7, 25)
+    with session_scope() as session:
+        session.add_all(
+            [
+                DailyMetric(
+                    date=end_date - timedelta(days=offset),
+                    sleep_duration_seconds=28_800,
+                    raw_payload={},
+                )
+                for offset in range(7)
+            ]
+        )
+
+    evaluations = _evaluations_by_rule_id(end_date=end_date)
+
+    assert evaluations["sleep_duration_baseline_data_quality"].status == "sufficient_data"
+    assert evaluations["sleep_duration_baseline_data_quality"].facts[
+        "required_baseline_days"
+    ] == 7
+    assert evaluations["sleep_duration_short_night"].status == "not_triggered"

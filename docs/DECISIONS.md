@@ -975,12 +975,13 @@ interpretations.
 
 ## Chosen
 
-Resting heart rate and sleep duration each require 14 observed baseline days.
-The resting-heart-rate rule requires two adjacent calendar days at least 5%
-above its own current baseline. The sleep rule requires one latest sleep
-duration at least 10% below its own current baseline. Both outcomes are
-observations only; they produce neither a context check-in nor a training
-recommendation.
+Resting heart rate requires 14 observed baseline days. Sleep duration requires
+7 observed baseline days because one night's duration is a more immediate,
+discrete signal. The resting-heart-rate rule requires two adjacent calendar
+days at least 5% above its own current baseline. The sleep rule requires one
+latest sleep duration at least 10% below its own current baseline. Both
+outcomes are observations only; they produce neither a context check-in nor a
+training recommendation.
 
 Training readiness, Body Battery, average stress, and recovery time remain
 Garmin-owned values. Pace shows their latest local value, source date, and
@@ -992,10 +993,11 @@ rules, or a combined score from them.
 Resting heart rate and sleep already have Pace-owned, reproducible metrics, so
 they are the smallest reliable expansion of the verified pipeline. A 5% two-day
 resting-heart-rate threshold filters small day-to-day variation. A single sleep
-duration can be a meaningful discrete night, but the 10% threshold avoids
-treating a few minutes of variation as a signal. Garmin's composite values may
-already incorporate overlapping data, so using them as separate Pace rule input
-would obscure provenance and risk double-counting.
+duration can be a meaningful discrete night, so its observation gate can start
+after seven days; the 10% threshold still avoids treating a few minutes of
+variation as a signal. Garmin's composite values may already incorporate
+overlapping data, so using them as separate Pace rule input would obscure
+provenance and risk double-counting.
 
 ## Consequences
 

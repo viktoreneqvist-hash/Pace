@@ -161,7 +161,8 @@ deterministic templates.
 Extend the tested deterministic pipeline to the two existing Pace-owned
 recovery metrics before introducing any AI layer.
 
-- [x] Add a 14-day data-quality gate for resting heart rate and sleep duration
+- [x] Add a 14-day data-quality gate for resting heart rate and a 7-day gate
+  for sleep duration
 - [x] Detect two adjacent resting-heart-rate days at least 5% above baseline
 - [x] Detect one sleep duration at least 10% below baseline
 - [x] Keep resting heart rate and sleep independent; do not create a combined

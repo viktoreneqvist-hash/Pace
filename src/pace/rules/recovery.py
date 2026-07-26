@@ -7,6 +7,7 @@ from pace.state.models import AthleteState, RecoveryDayObservation
 
 
 MIN_RECOVERY_BASELINE_DAYS = 14
+MIN_SLEEP_BASELINE_DAYS = 7
 RESTING_HEART_RATE_INCREASE_PERCENT = 5
 SLEEP_DURATION_DECREASE_PERCENT = 10
 
@@ -79,6 +80,7 @@ def evaluate_sleep_duration_baseline_data_quality(state: AthleteState) -> RuleEv
         state,
         metric="sleep_duration",
         rule_id="sleep_duration_baseline_data_quality",
+        required_baseline_days=MIN_SLEEP_BASELINE_DAYS,
     )
 
 
@@ -87,9 +89,17 @@ def evaluate_sleep_duration_short_night(state: AthleteState) -> RuleEvaluation:
 
     summary = _metric_summary(state, "sleep_duration")
     quality = _metric_quality(state, "sleep_duration")
-    base_facts = _base_facts(summary, quality)
-    if quality.baseline_data_points < MIN_RECOVERY_BASELINE_DAYS:
-        return _insufficient_data("sleep_duration_short_night", base_facts)
+    base_facts = _base_facts(
+        summary,
+        quality,
+        required_baseline_days=MIN_SLEEP_BASELINE_DAYS,
+    )
+    if quality.baseline_data_points < MIN_SLEEP_BASELINE_DAYS:
+        return _insufficient_data(
+            "sleep_duration_short_night",
+            base_facts,
+            required_baseline_days=MIN_SLEEP_BASELINE_DAYS,
+        )
     if summary.baseline_value in (None, 0) or summary.latest_date is None:
         return _missing_data("sleep_duration_short_night", base_facts)
 
@@ -126,15 +136,16 @@ def _baseline_quality_evaluation(
     *,
     metric: str,
     rule_id: str,
+    required_baseline_days: int = MIN_RECOVERY_BASELINE_DAYS,
 ) -> RuleEvaluation:
     quality = _metric_quality(state, metric)
-    is_sufficient = quality.baseline_data_points >= MIN_RECOVERY_BASELINE_DAYS
+    is_sufficient = quality.baseline_data_points >= required_baseline_days
     return RuleEvaluation(
         rule_id=rule_id,
         status="sufficient_data" if is_sufficient else "insufficient_data",
         facts={
             "observed_baseline_days": quality.baseline_data_points,
-            "required_baseline_days": MIN_RECOVERY_BASELINE_DAYS,
+            "required_baseline_days": required_baseline_days,
             "expected_baseline_days": quality.expected_baseline_days,
         },
         limitations=(
@@ -145,20 +156,30 @@ def _baseline_quality_evaluation(
     )
 
 
-def _base_facts(summary, quality) -> dict[str, object]:
+def _base_facts(
+    summary,
+    quality,
+    *,
+    required_baseline_days: int = MIN_RECOVERY_BASELINE_DAYS,
+) -> dict[str, object]:
     return {
         "observed_baseline_days": quality.baseline_data_points,
-        "required_baseline_days": MIN_RECOVERY_BASELINE_DAYS,
+        "required_baseline_days": required_baseline_days,
         "baseline_value": summary.baseline_value,
         "latest_date": summary.latest_date,
     }
 
 
-def _insufficient_data(rule_id: str, facts: dict[str, object]) -> RuleEvaluation:
+def _insufficient_data(
+    rule_id: str,
+    facts: dict[str, object],
+    *,
+    required_baseline_days: int = MIN_RECOVERY_BASELINE_DAYS,
+) -> RuleEvaluation:
     return RuleEvaluation(
         rule_id=rule_id,
         status="insufficient_data",
-        facts=facts,
+        facts={**facts, "required_baseline_days": required_baseline_days},
         limitations=("insufficient_recovery_baseline_data",),
     )
 
