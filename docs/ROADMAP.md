@@ -156,6 +156,20 @@ deterministic templates.
 - [x] Never store a response automatically; context remains an explicit note
 - [x] Keep rule JSON available separately through `pace rules evaluate`
 
+### Recovery expansion — before Batch I
+
+Extend the tested deterministic pipeline to the two existing Pace-owned
+recovery metrics before introducing any AI layer.
+
+- [x] Add a 14-day data-quality gate for resting heart rate and sleep duration
+- [x] Detect two adjacent resting-heart-rate days at least 5% above baseline
+- [x] Detect one sleep duration at least 10% below baseline
+- [x] Keep resting heart rate and sleep independent; do not create a combined
+  readiness score or a context check-in for either signal
+- [x] Show Garmin training readiness, Body Battery, stress, and recovery time
+  with source date and freshness, without Pace-owned rules or baselines
+- [x] Extend the deterministic `rules evaluate` and `explain` outputs
+
 ### Batch I — AI assistance
 
 Use AI only for language, discussion, and bounded reasoning over compact

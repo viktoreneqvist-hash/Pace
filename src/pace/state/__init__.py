@@ -5,7 +5,8 @@ from pace.state.models import (
     AthleteState,
     AthleteStateDataQuality,
     ContextEventState,
-    HrvObservation,
+    GarminCurrentFact,
+    RecoveryDayObservation,
     RecoveryDataQuality,
     SyncDataQuality,
 )
@@ -15,7 +16,8 @@ __all__ = [
     "AthleteState",
     "AthleteStateDataQuality",
     "ContextEventState",
-    "HrvObservation",
+    "GarminCurrentFact",
     "RecoveryDataQuality",
+    "RecoveryDayObservation",
     "SyncDataQuality",
 ]

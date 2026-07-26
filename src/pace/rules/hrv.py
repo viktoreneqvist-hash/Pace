@@ -3,7 +3,7 @@
 from datetime import timedelta
 
 from pace.rules.models import RuleEvaluation
-from pace.state.models import AthleteState, HrvObservation
+from pace.state.models import AthleteState, RecoveryDayObservation
 
 
 MIN_HRV_BASELINE_DAYS = 14
@@ -59,12 +59,12 @@ def evaluate_hrv_context_present(state: AthleteState) -> RuleEvaluation:
         )
 
     latest_observation = _observation_for_date(
-        state.recent_hrv_observations,
+        state.recent_recovery_observations,
         hrv_summary.latest_date,
     )
     previous_date = hrv_summary.latest_date - timedelta(days=1)
     previous_observation = _observation_for_date(
-        state.recent_hrv_observations,
+        state.recent_recovery_observations,
         previous_date,
     )
     if latest_observation is None or previous_observation is None:
@@ -84,13 +84,18 @@ def evaluate_hrv_context_present(state: AthleteState) -> RuleEvaluation:
         )
 
     both_days_below_baseline = (
-        latest_observation.value < hrv_summary.baseline_value
-        and previous_observation.value < hrv_summary.baseline_value
+        latest_observation.hrv_value is not None
+        and previous_observation.hrv_value is not None
+        and latest_observation.hrv_value < hrv_summary.baseline_value
+        and previous_observation.hrv_value < hrv_summary.baseline_value
     )
     signal_facts = {
         **base_facts,
         "signal_dates": (previous_observation.date, latest_observation.date),
-        "signal_values": (previous_observation.value, latest_observation.value),
+        "signal_values": (
+            previous_observation.hrv_value,
+            latest_observation.hrv_value,
+        ),
         "two_consecutive_days_below_baseline": both_days_below_baseline,
     }
     if not both_days_below_baseline:
@@ -138,12 +143,16 @@ def _hrv_summary(state: AthleteState):
 
 
 def _observation_for_date(
-    observations: tuple[HrvObservation, ...],
+    observations: tuple[RecoveryDayObservation, ...],
     target_date,
-) -> HrvObservation | None:
+) -> RecoveryDayObservation | None:
     """Find the exact calendar-day HRV fact required by the selected rule."""
 
     return next(
-        (observation for observation in observations if observation.date == target_date),
+        (
+            observation
+            for observation in observations
+            if observation.date == target_date and observation.hrv_value is not None
+        ),
         None,
     )

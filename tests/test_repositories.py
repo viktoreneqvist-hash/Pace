@@ -13,7 +13,10 @@ from pace.repositories.context_event_repository import (
     create_context_event,
     get_context_events_for_date,
 )
-from pace.repositories.daily_metric_repository import upsert_daily_metric
+from pace.repositories.daily_metric_repository import (
+    get_latest_daily_metric_with_value,
+    upsert_daily_metric,
+)
 from pace.repositories.sync_run_repository import (
     complete_sync_run,
     create_sync_run,
@@ -149,6 +152,34 @@ def test_daily_metric_upsert_updates_one_record_per_day():
         assert changed_again is True
         assert daily_metric.hrv_value == 60.0
         assert daily_metric.raw_payload == {"source": "second"}
+
+
+def test_latest_garmin_status_value_is_queried_by_field_and_date():
+    with session_scope() as session:
+        session.add_all(
+            [
+                DailyMetric(
+                    date=date(2026, 7, 10),
+                    training_readiness=64,
+                    raw_payload={},
+                ),
+                DailyMetric(
+                    date=date(2026, 7, 20),
+                    training_readiness=71,
+                    raw_payload={},
+                ),
+            ]
+        )
+        session.flush()
+        latest = get_latest_daily_metric_with_value(
+            session,
+            field_name="training_readiness",
+            end_date=date(2026, 7, 25),
+        )
+
+    assert latest is not None
+    assert latest.date == date(2026, 7, 20)
+    assert latest.training_readiness == 71
 
 
 def test_context_events_can_be_queried_by_date_overlap():

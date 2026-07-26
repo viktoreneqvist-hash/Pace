@@ -955,6 +955,59 @@ interface.
 
 ---
 
+# Decision #25
+
+## Problem
+
+Pace already calculates baselines for resting heart rate and sleep duration,
+and stores several Garmin-owned status values. Before an AI layer is added, the
+system needs to extend its own deterministic coverage without turning multiple
+signals into an opaque readiness score or double-counting Garmin's proprietary
+interpretations.
+
+## Options
+
+- Build an AI layer before expanding deterministic recovery coverage
+- Combine HRV, resting heart rate, sleep, and Garmin scores into one readiness
+  value
+- Add separate, explicit resting-heart-rate and sleep rules while displaying
+  Garmin-owned values as dated facts only
+
+## Chosen
+
+Resting heart rate and sleep duration each require 14 observed baseline days.
+The resting-heart-rate rule requires two adjacent calendar days at least 5%
+above its own current baseline. The sleep rule requires one latest sleep
+duration at least 10% below its own current baseline. Both outcomes are
+observations only; they produce neither a context check-in nor a training
+recommendation.
+
+Training readiness, Body Battery, average stress, and recovery time remain
+Garmin-owned values. Pace shows their latest local value, source date, and
+whether it belongs to the requested state date. It does not create baselines,
+rules, or a combined score from them.
+
+## Reason
+
+Resting heart rate and sleep already have Pace-owned, reproducible metrics, so
+they are the smallest reliable expansion of the verified pipeline. A 5% two-day
+resting-heart-rate threshold filters small day-to-day variation. A single sleep
+duration can be a meaningful discrete night, but the 10% threshold avoids
+treating a few minutes of variation as a signal. Garmin's composite values may
+already incorporate overlapping data, so using them as separate Pace rule input
+would obscure provenance and risk double-counting.
+
+## Consequences
+
+- `pace rules evaluate` reports separate evidence for HRV, resting heart rate,
+  and sleep duration; no result is a recovery or readiness score.
+- `pace explain` presents the three Pace-owned signal chains independently.
+- Garmin status is visible but never changes a Pace rule result.
+- Active exercise heart rate, pulse zones, intensity, training load, pain, and
+  goal-aware recommendations remain later explicit product decisions.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

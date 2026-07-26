@@ -1,7 +1,9 @@
 from datetime import date
 
 from pace.explanations.hrv import explain_hrv_rules, render_explanation_summary
+from pace.explanations.recovery import explain_garmin_current_facts, explain_recovery_rules
 from pace.rules.models import RuleEvaluation, RuleEvaluationSummary
+from pace.state.models import GarminCurrentFact
 
 
 def _rule_summary(*evaluations: RuleEvaluation) -> RuleEvaluationSummary:
@@ -93,3 +95,71 @@ def test_explanation_describes_selected_context_without_claiming_causality():
     assert summary.items[0].explanation_id == "hrv_pattern_with_context"
     assert "dålig sömn, alkohol" in summary.items[0].text
     assert "inte en orsak" in summary.items[0].text
+
+
+def test_recovery_explanations_keep_resting_heart_rate_and_sleep_separate():
+    summary = _rule_summary(
+        _quality_evaluation(status="sufficient_data", observed_days=14),
+        _hrv_context_evaluation(status="not_triggered", facts={}),
+        RuleEvaluation(
+            rule_id="resting_heart_rate_baseline_data_quality",
+            status="sufficient_data",
+            facts={},
+            limitations=(),
+        ),
+        RuleEvaluation(
+            rule_id="resting_heart_rate_elevation",
+            status="triggered",
+            facts={
+                "increase_percent_threshold": 5,
+                "signal_dates": (date(2026, 7, 24), date(2026, 7, 25)),
+            },
+            limitations=(),
+        ),
+        RuleEvaluation(
+            rule_id="sleep_duration_baseline_data_quality",
+            status="sufficient_data",
+            facts={},
+            limitations=(),
+        ),
+        RuleEvaluation(
+            rule_id="sleep_duration_short_night",
+            status="triggered",
+            facts={
+                "decrease_percent_threshold": 10,
+                "signal_date": date(2026, 7, 25),
+            },
+            limitations=(),
+        ),
+    )
+
+    items = explain_recovery_rules(summary)
+
+    assert items[0].explanation_id == "resting_heart_rate_elevated"
+    assert "5 %" in items[0].text
+    assert items[1].explanation_id == "sleep_duration_short_night"
+    assert "10 %" in items[1].text
+
+
+def test_garmin_current_facts_are_presented_without_creating_rules():
+    items = explain_garmin_current_facts(
+        (
+            GarminCurrentFact(
+                signal="training_readiness",
+                value=71,
+                source_date=date(2026, 7, 25),
+                is_current=True,
+            ),
+            GarminCurrentFact(
+                signal="recovery_time_hours",
+                value=18,
+                source_date=date(2026, 7, 24),
+                is_current=False,
+            ),
+        )
+    )
+
+    assert items[0].explanation_id == "garmin_current_facts"
+    assert "använder inte dessa Garmin-värden i egna regler" in items[0].text
+    assert items[1].explanation_id == "garmin_stale_facts"
+    assert "2026-07-24" in items[1].text

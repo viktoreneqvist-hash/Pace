@@ -127,3 +127,52 @@ def test_hrv_context_rule_does_not_trigger_without_selected_context():
     assert context_evaluation.status == "not_triggered"
     assert context_evaluation.facts["two_consecutive_days_below_baseline"] is True
     assert context_evaluation.facts["relevant_context_event_types"] == ()
+
+
+def test_resting_heart_rate_rule_requires_two_days_at_least_five_percent_elevated():
+    end_date = date(2026, 7, 25)
+    with session_scope() as session:
+        session.add_all(
+            [
+                DailyMetric(
+                    date=end_date - timedelta(days=offset),
+                    resting_heart_rate=54 if offset in (0, 1) else 50,
+                    raw_payload={},
+                )
+                for offset in range(14)
+            ]
+        )
+
+    evaluations = _evaluations_by_rule_id(end_date=end_date)
+
+    assert (
+        evaluations["resting_heart_rate_baseline_data_quality"].status
+        == "sufficient_data"
+    )
+    assert evaluations["resting_heart_rate_elevation"].status == "triggered"
+    assert evaluations["resting_heart_rate_elevation"].facts[
+        "increase_percent_threshold"
+    ] == 5
+
+
+def test_sleep_duration_rule_triggers_for_one_night_ten_percent_below_baseline():
+    end_date = date(2026, 7, 25)
+    with session_scope() as session:
+        session.add_all(
+            [
+                DailyMetric(
+                    date=end_date - timedelta(days=offset),
+                    sleep_duration_seconds=23_400 if offset == 0 else 28_800,
+                    raw_payload={},
+                )
+                for offset in range(14)
+            ]
+        )
+
+    evaluations = _evaluations_by_rule_id(end_date=end_date)
+
+    assert evaluations["sleep_duration_baseline_data_quality"].status == "sufficient_data"
+    assert evaluations["sleep_duration_short_night"].status == "triggered"
+    assert evaluations["sleep_duration_short_night"].facts[
+        "decrease_percent_threshold"
+    ] == 10

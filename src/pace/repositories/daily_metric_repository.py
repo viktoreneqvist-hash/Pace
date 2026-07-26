@@ -22,6 +22,14 @@ DAILY_METRIC_UPDATE_FIELDS = (
     "recovery_time_hours",
 )
 
+GARMIN_STATUS_FIELDS = (
+    "training_readiness",
+    "body_battery_high",
+    "body_battery_low",
+    "average_stress",
+    "recovery_time_hours",
+)
+
 
 def get_daily_metric_by_date(session: Session, metric_date) -> DailyMetric | None:
     """Find a daily metric record for one calendar date."""
@@ -101,3 +109,24 @@ def get_daily_metrics_in_date_range(
         .order_by(DailyMetric.date)
     )
     return list(session.scalars(statement).all())
+
+
+def get_latest_daily_metric_with_value(
+    session: Session,
+    *,
+    field_name: str,
+    end_date: date,
+) -> DailyMetric | None:
+    """Return the latest record with one Garmin-owned status value by date."""
+
+    if field_name not in GARMIN_STATUS_FIELDS:
+        raise ValueError(f"Unsupported Garmin status field: {field_name}.")
+
+    field = getattr(DailyMetric, field_name)
+    statement = (
+        select(DailyMetric)
+        .where(DailyMetric.date <= end_date, field.is_not(None))
+        .order_by(DailyMetric.date.desc(), DailyMetric.id.desc())
+        .limit(1)
+    )
+    return session.scalar(statement)

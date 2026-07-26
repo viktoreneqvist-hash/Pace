@@ -19,11 +19,23 @@ class ContextEventState:
 
 
 @dataclass(frozen=True, slots=True)
-class HrvObservation:
-    """One normalized HRV observation retained for deterministic rules."""
+class RecoveryDayObservation:
+    """One normalized recovery day retained for deterministic rules."""
 
     date: date
-    value: float
+    hrv_value: float | None
+    resting_heart_rate: float | None
+    sleep_duration_hours: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class GarminCurrentFact:
+    """One Garmin-owned status value with explicit source-date freshness."""
+
+    signal: str
+    value: float | None
+    source_date: date | None
+    is_current: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,4 +85,5 @@ class AthleteState:
     metrics: PaceMetricSummary
     relevant_context: AthleteContextWindow
     data_quality: AthleteStateDataQuality
-    recent_hrv_observations: tuple[HrvObservation, ...]
+    recent_recovery_observations: tuple[RecoveryDayObservation, ...]
+    garmin_current_facts: tuple[GarminCurrentFact, ...]

@@ -4,14 +4,18 @@ from datetime import date
 
 from pace.database.session import session_scope
 from pace.repositories.context_event_repository import get_context_events_in_date_range
-from pace.repositories.daily_metric_repository import get_daily_metrics_in_date_range
+from pace.repositories.daily_metric_repository import (
+    get_daily_metrics_in_date_range,
+    get_latest_daily_metric_with_value,
+)
 from pace.repositories.sync_run_repository import get_latest_completed_sync_run
 from pace.state.models import (
     AthleteContextWindow,
     AthleteState,
     AthleteStateDataQuality,
     ContextEventState,
-    HrvObservation,
+    GarminCurrentFact,
+    RecoveryDayObservation,
     RecoveryDataQuality,
     SyncDataQuality,
 )
@@ -40,6 +44,14 @@ class AthleteStateService:
                 start_date=current_window.start_date,
                 end_date=current_window.end_date,
             )
+            latest_garmin_metrics = {
+                field_name: get_latest_daily_metric_with_value(
+                    session,
+                    field_name=field_name,
+                    end_date=end_date,
+                )
+                for field_name in _GARMIN_STATUS_FIELDS
+            }
 
         context = AthleteContextWindow(
             start_date=current_window.start_date,
@@ -85,9 +97,61 @@ class AthleteStateService:
             metrics=metrics,
             relevant_context=context,
             data_quality=data_quality,
-            recent_hrv_observations=tuple(
-                HrvObservation(date=metric.date, value=metric.hrv_value)
+            recent_recovery_observations=tuple(
+                RecoveryDayObservation(
+                    date=metric.date,
+                    hrv_value=metric.hrv_value,
+                    resting_heart_rate=(
+                        None
+                        if metric.resting_heart_rate is None
+                        else float(metric.resting_heart_rate)
+                    ),
+                    sleep_duration_hours=(
+                        None
+                        if metric.sleep_duration_seconds is None
+                        else metric.sleep_duration_seconds / 3600
+                    ),
+                )
                 for metric in daily_metrics
-                if metric.hrv_value is not None
+            ),
+            garmin_current_facts=_garmin_current_facts(
+                latest_garmin_metrics=latest_garmin_metrics,
+                end_date=end_date,
             ),
         )
+
+
+_GARMIN_STATUS_FIELDS = (
+    "training_readiness",
+    "body_battery_high",
+    "body_battery_low",
+    "average_stress",
+    "recovery_time_hours",
+)
+
+
+def _garmin_current_facts(
+    *,
+    latest_garmin_metrics,
+    end_date: date,
+) -> tuple[GarminCurrentFact, ...]:
+    """Return the latest local Garmin-owned values without interpreting them."""
+
+    facts: list[GarminCurrentFact] = []
+    for field_name in _GARMIN_STATUS_FIELDS:
+        latest_metric = latest_garmin_metrics[field_name]
+        facts.append(
+            GarminCurrentFact(
+                signal=field_name,
+                value=(
+                    None
+                    if latest_metric is None
+                    else float(getattr(latest_metric, field_name))
+                ),
+                source_date=None if latest_metric is None else latest_metric.date,
+                is_current=(
+                    latest_metric is not None and latest_metric.date == end_date
+                ),
+            )
+        )
+    return tuple(facts)
