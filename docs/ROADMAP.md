@@ -118,6 +118,16 @@ context. Define freshness and confidence explicitly. Do not infer goal
 priority, sport allocation, injury limits, intensity distribution, or training
 progression without owner decisions.
 
+- [x] Add a dynamic, read-only athlete state with no new database table
+- [x] Include existing deterministic metrics unchanged
+- [x] Include only context overlapping the current seven-day window, including
+  explicitly ongoing events
+- [x] Include the latest completed sync audit record and explicit recovery
+  coverage counts as data quality
+- [x] Add `pace state show` JSON output with optional `--end-date`
+- [x] Keep state free from readiness labels, physiology claims, and coaching
+  recommendations
+
 ### Batch G — Rule engine
 
 Add transparent, tested rules over athlete state. Rules produce structured

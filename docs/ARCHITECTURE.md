@@ -873,9 +873,13 @@ src/pace/
 │   ├── context_event_repository.py
 │   └── sync_run_repository.py
 ├── services/
+│   ├── athlete_state_service.py
+│   ├── context_service.py
 │   ├── garmin_sync_service.py
 │   ├── activity_service.py
 │   └── metric_service.py
+├── state/
+│   └── models.py
 └── timezones.py
 ```
 

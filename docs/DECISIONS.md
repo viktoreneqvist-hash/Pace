@@ -813,6 +813,50 @@ prevents accidental long-lived context from influencing later state or rules.
 
 ---
 
+# Decision #22
+
+## Problem
+
+Rules and future AI assistance need one compact, auditable representation of
+Pace's current facts. Reconstructing training facts, recovery coverage, sync
+status, and relevant context separately in each consumer would duplicate data
+selection logic and make omissions difficult to notice.
+
+## Options
+
+- Let every future rule or interface query the database independently
+- Persist mutable athlete-state rows in a new database table
+- Build a dynamic, read-only structured snapshot from the stable v1 layers
+
+## Chosen
+
+`pace state show` builds an `AthleteState` dynamically in Python. It contains
+the existing deterministic metric summary, context events overlapping the
+current seven-day training window, and data-quality facts: the latest completed
+sync record plus observed recovery coverage counts.
+
+Context events are included only when they overlap the current window. An
+explicitly ongoing event overlaps that window until it is closed. State exposes
+facts such as a partial sync or incomplete baseline; it does not assign a
+readiness score, infer physiology, or make coaching recommendations.
+
+## Reason
+
+The existing source tables already contain the canonical facts, and state is a
+small derived view. Dynamic construction avoids cache invalidation and a new
+migration while keeping the exact selection contract visible and testable.
+
+## Consequences
+
+- No athlete-state table or migration is added in Batch F.
+- Rules and later bounded AI input receive one compact contract rather than raw
+  database rows or Garmin payloads.
+- `--end-date` makes historical snapshots reproducible without Garmin calls.
+- Goal priority, sport allocation, pain limits, intensity distribution, and
+  training progression remain explicit future owner decisions.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

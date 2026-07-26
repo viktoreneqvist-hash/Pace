@@ -24,6 +24,7 @@ from pace.services.context_service import (
     ContextService,
 )
 from pace.services.metric_service import MetricService
+from pace.services.athlete_state_service import AthleteStateService
 
 
 def positive_days(value: str) -> int:
@@ -186,6 +187,22 @@ def build_parser() -> ArgumentParser:
     )
     metrics_summary_parser.set_defaults(handler=run_metrics_summary)
 
+    state_parser = subparsers.add_parser(
+        "state",
+        help="visa ett lokalt snapshot av fakta, kontext och datakvalitet",
+    )
+    state_subparsers = state_parser.add_subparsers(dest="state_command")
+    state_show_parser = state_subparsers.add_parser(
+        "show",
+        help="visa athlete state utan coachingtolkning",
+    )
+    state_show_parser.add_argument(
+        "--end-date",
+        type=iso_date,
+        help="sista datum i state-fönstret, YYYY-MM-DD (standard: idag)",
+    )
+    state_show_parser.set_defaults(handler=run_state_show)
+
     return parser
 
 
@@ -346,6 +363,15 @@ def run_metrics_summary(args: Namespace, *, today: date | None = None) -> int:
     end_date = args.end_date or today or date.today()
     summary = MetricService().get_summary(end_date=end_date)
     print(json.dumps(asdict(summary), default=_json_default, indent=2))
+    return 0
+
+
+def run_state_show(args: Namespace, *, today: date | None = None) -> int:
+    """Print a local athlete snapshot without external calls or interpretation."""
+
+    end_date = args.end_date or today or date.today()
+    athlete_state = AthleteStateService().get_state(end_date=end_date)
+    print(json.dumps(asdict(athlete_state), default=_json_default, indent=2))
     return 0
 
 

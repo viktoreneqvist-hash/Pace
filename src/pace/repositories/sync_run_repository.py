@@ -2,9 +2,22 @@
 
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pace.database.models import SyncRun
+
+
+def get_latest_completed_sync_run(session: Session) -> SyncRun | None:
+    """Return the most recently completed provider synchronization attempt."""
+
+    statement = (
+        select(SyncRun)
+        .where(SyncRun.completed_at.is_not(None))
+        .order_by(SyncRun.completed_at.desc(), SyncRun.id.desc())
+        .limit(1)
+    )
+    return session.scalar(statement)
 
 
 def create_sync_run(

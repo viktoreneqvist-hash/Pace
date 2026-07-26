@@ -1,4 +1,5 @@
 from argparse import Namespace
+from dataclasses import dataclass
 from datetime import date
 import json
 from pathlib import Path
@@ -339,3 +340,35 @@ def test_note_parser_limits_the_first_context_contract():
 
     assert args.event_type == "pain"
     assert args.ongoing is True
+
+
+def test_state_show_uses_the_read_only_state_service(monkeypatch, capsys):
+    captured: dict[str, date] = {}
+
+    @dataclass
+    class FakeAthleteState:
+        as_of_date: date
+
+    class FakeAthleteStateService:
+        def get_state(self, *, end_date):
+            captured["end_date"] = end_date
+            return FakeAthleteState(as_of_date=end_date)
+
+    monkeypatch.setattr(app, "AthleteStateService", FakeAthleteStateService)
+
+    exit_code = app.run_state_show(
+        Namespace(end_date=None),
+        today=date(2026, 7, 25),
+    )
+
+    assert exit_code == 0
+    assert captured["end_date"] == date(2026, 7, 25)
+    assert json.loads(capsys.readouterr().out) == {"as_of_date": "2026-07-25"}
+
+
+def test_state_show_parser_accepts_a_reproducible_end_date():
+    parser = app.build_parser()
+
+    args = parser.parse_args(["state", "show", "--end-date", "2026-07-25"])
+
+    assert args.end_date == date(2026, 7, 25)

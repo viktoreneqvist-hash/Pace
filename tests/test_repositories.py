@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from pace.database.models import Activity, ContextEvent, DailyMetric
+from pace.database.models import Activity, ContextEvent, DailyMetric, SyncRun
 from pace.database.session import SessionFactory, session_scope
 from pace.repositories.activity_repository import (
     get_activities_in_date_range,
@@ -14,7 +14,11 @@ from pace.repositories.context_event_repository import (
     get_context_events_for_date,
 )
 from pace.repositories.daily_metric_repository import upsert_daily_metric
-from pace.repositories.sync_run_repository import complete_sync_run, create_sync_run
+from pace.repositories.sync_run_repository import (
+    complete_sync_run,
+    create_sync_run,
+    get_latest_completed_sync_run,
+)
 
 
 def test_activity_upsert_updates_an_existing_provider_record():
@@ -188,3 +192,30 @@ def test_sync_run_records_a_partial_result():
         assert completed_run.completed_at is not None
         assert completed_run.activities_inserted == 2
         assert completed_run.error_summary == "Sleep endpoint was unavailable."
+
+
+def test_latest_completed_sync_run_ignores_unfinished_runs():
+    with session_scope() as session:
+        session.add_all(
+            [
+                SyncRun(
+                    provider="garmin",
+                    completed_at=datetime(2026, 7, 24, 12, tzinfo=UTC),
+                    status="success",
+                ),
+                SyncRun(
+                    provider="garmin",
+                    status="running",
+                ),
+                SyncRun(
+                    provider="garmin",
+                    completed_at=datetime(2026, 7, 25, 12, tzinfo=UTC),
+                    status="partial",
+                ),
+            ]
+        )
+        session.flush()
+        latest_sync = get_latest_completed_sync_run(session)
+
+    assert latest_sync is not None
+    assert latest_sync.status == "partial"
