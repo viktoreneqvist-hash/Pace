@@ -59,6 +59,8 @@ uv run pace plan accept --id 2
 uv run pace plan today
 uv run pace plan feedback --session-id 5 --outcome completed
 uv run pace plan revise --id 2 --days 7
+uv run pace coach ask --plan-id 2 "Kan jag cykla i stället för dagens löppass?"
+uv run pace coach chat --plan-id 2
 ```
 
 Every cycling session has distance, duration, and a saved Garmin heart-rate
@@ -74,6 +76,13 @@ browser when you want to read the plan away from the terminal. The directory
 and report use owner-only permissions, are ignored by Git, contain no raw
 Garmin payloads or private feedback/context-note text, and never change a
 plan.
+
+`pace coach ask` is a quick question over one accepted, active plan. `pace
+coach chat` keeps a short dialogue only in the running terminal process; it is
+discarded when the command exits. Both commands rebuild current local facts for
+each turn and may show a same-day plan-adjustment *draft*. A draft is Python
+validated but never saved or applied. Use the existing separate `pace plan
+revise` flow when you want a persistent plan version.
 
 ### Curated coaching knowledge
 

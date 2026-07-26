@@ -319,6 +319,19 @@ until the library is large enough to need them.
 - [x] Keep the library human-reviewed and versioned with the repository;
   defer automatic ingestion, embeddings, and vector search
 
+### Batch K2 — Plan-aware coach dialogue
+
+- [x] Add a quick plan-aware question and a short-lived terminal dialogue over
+  one accepted, active plan
+- [x] Rebuild selected current facts on every turn and retain at most four
+  in-memory dialogue turns, with no persisted AI chat history
+- [x] Permit only a structured same-day keep, skip, or replacement *draft*;
+  validate its plan session, date, availability, sport, zone, and target gates
+- [x] Never write, accept, or overwrite a plan from dialogue; keep persistent
+  changes behind the existing separate revision-draft flow
+- [ ] Decide and build how athlete-selected coaching ambition
+  (Försiktig/Balanserad/Offensiv) affects coaching judgment
+
 ## Explicitly deferred
 
 - Multi-user accounts

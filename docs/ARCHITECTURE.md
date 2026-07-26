@@ -459,6 +459,19 @@ local file under `reports/`, not a web service: it has no external assets,
 does not invoke an LLM, and cannot modify the plan. It deliberately omits raw
 Garmin data and private feedback/context-note text.
 
+#### Coach dialogue
+
+`pace coach ask` and `pace coach chat` read one accepted plan together with a
+fresh athlete-state, rules, explanation, and selected knowledge contract. The
+chat command retains at most four turns in process memory and sends that
+bounded history with the next explicit request; Pace does not save it locally
+or ask the provider to store it. A response may contain a structured same-day
+keep, skip, or replacement draft. Python verifies that the referenced session
+belongs to that accepted plan and date, and verifies a replacement's
+availability, sport, zone, and target eligibility. The draft is not persisted
+or applied. A separate revision draft and explicit acceptance remain required
+for a durable plan change.
+
 #### `context_events`
 
 Stores structured athlete explanations and life events.

@@ -116,6 +116,12 @@ Garmin provider
   local Pace facts, athlete preferences, eligibility gates, or safety rules.
   Do not add automatic source ingestion, raw-paper storage, embeddings, or a
   vector database without a new product decision.
+- K2 coach dialogue reads exactly one accepted, active plan and current selected
+  Pace facts. Its in-terminal dialogue history exists only in process memory
+  and is discarded on exit; it is not application memory. A same-day
+  replacement or skip is only a validated, unsaved draft. It must never alter,
+  accept, or overwrite a plan; persistent changes remain a separate revision
+  draft and explicit athlete acceptance.
 - Pace's coach voice is direct, factual, and unsentimental. Do not add praise,
   therapy language, generic wellness language, or routine care-provider
   referrals for ordinary fatigue, poor sleep, or discomfort. This is not a

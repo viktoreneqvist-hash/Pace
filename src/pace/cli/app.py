@@ -34,6 +34,8 @@ from pace.services.explanation_service import ExplanationService
 from pace.explanations.hrv import render_explanation_summary
 from pace.ai.client import OpenAIResponsesClient, PaceAIError
 from pace.ai.models import ContextEventDraft, PaceAIAnswer
+from pace.coach.client import OpenAICoachDialogueClient
+from pace.coach.models import CoachDialogueAnswer
 from pace.knowledge.library import (
     KnowledgeLibraryError,
     brief_by_id,
@@ -41,6 +43,7 @@ from pace.knowledge.library import (
     source_by_id,
 )
 from pace.services.ai_ask_service import PaceAskService
+from pace.services.coach_dialogue_service import CoachDialogueService
 from pace.services.plan_readiness_service import PlanReadinessService
 from pace.services.race_service import (
     SUPPORTED_RACE_PRIORITIES,
@@ -344,6 +347,25 @@ def build_parser() -> ArgumentParser:
     )
     knowledge_show_parser.add_argument("--id", dest="brief_id", required=True)
     knowledge_show_parser.set_defaults(handler=run_knowledge_show)
+
+    coach_parser = subparsers.add_parser(
+        "coach",
+        help="diskutera dagens accepterade plan med AI-coachen utan att ändra den",
+    )
+    coach_subparsers = coach_parser.add_subparsers(dest="coach_command")
+    coach_ask_parser = coach_subparsers.add_parser(
+        "ask", help="ställ en snabb fråga om dagens accepterade plan"
+    )
+    coach_ask_parser.add_argument("question")
+    coach_ask_parser.add_argument("--plan-id", type=int, required=True)
+    coach_ask_parser.add_argument("--end-date", type=iso_date)
+    coach_ask_parser.set_defaults(handler=run_coach_ask)
+    coach_chat_parser = coach_subparsers.add_parser(
+        "chat", help="öppna en kortlivad coachdialog för dagens accepterade plan"
+    )
+    coach_chat_parser.add_argument("--plan-id", type=int, required=True)
+    coach_chat_parser.add_argument("--end-date", type=iso_date)
+    coach_chat_parser.set_defaults(handler=run_coach_chat)
 
     race_parser = subparsers.add_parser(
         "race",
@@ -938,6 +960,79 @@ def run_knowledge_show(args: Namespace) -> int:
     return 0
 
 
+def _coach_dialogue_service() -> CoachDialogueService:
+    api_key = resolve_openai_api_key(settings)
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY saknas; coachdialogen kan inte startas.")
+    return CoachDialogueService(
+        client=OpenAICoachDialogueClient(api_key=api_key, model=settings.openai_model)
+    )
+
+
+def run_coach_ask(args: Namespace, *, today: date | None = None) -> int:
+    """Ask once about an accepted plan; an adjustment remains only a draft."""
+
+    end_date = args.end_date or today or date.today()
+    try:
+        plan = TrainingPlanService().get_plan(plan_id=args.plan_id)
+        answer = _coach_dialogue_service().ask(
+            question=args.question,
+            plan=plan,
+            end_date=end_date,
+        )
+    except (ValueError, PaceAIError) as error:
+        print(f"Coachdialogen kunde inte genomföras: {error}")
+        return 2
+    print(_render_coach_answer(answer, plan_id=plan.id, as_of_date=end_date))
+    return 0
+
+
+def run_coach_chat(args: Namespace, *, today: date | None = None) -> int:
+    """Run a local-memory-only multi-turn dialogue over one accepted plan."""
+
+    end_date = args.end_date or today or date.today()
+    try:
+        plan = TrainingPlanService().get_plan(plan_id=args.plan_id)
+        service = _coach_dialogue_service()
+        if plan.status != "accepted":
+            raise ValueError("Coachdialog requires an accepted plan.")
+    except (ValueError, PaceAIError) as error:
+        print(f"Coachdialogen kunde inte startas: {error}")
+        return 2
+    print(
+        f"Pace coach ({end_date}) för accepterad plan {plan.id}. "
+        "Skriv 'avsluta' för att stänga. Dialogen sparas inte."
+    )
+    conversation: tuple[dict[str, str], ...] = ()
+    while True:
+        try:
+            question = input("Du: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nCoachdialogen avslutad. Inget sparades.")
+            return 0
+        if question.casefold() in {"avsluta", "exit", "quit"}:
+            print("Coachdialogen avslutad. Inget sparades.")
+            return 0
+        if not question:
+            continue
+        try:
+            answer = service.ask(
+                question=question,
+                plan=plan,
+                end_date=end_date,
+                conversation=conversation,
+            )
+        except (ValueError, PaceAIError) as error:
+            print(f"Coachdialogen kunde inte svara: {error}")
+            continue
+        print(_render_coach_answer(answer, plan_id=plan.id, as_of_date=end_date))
+        conversation = (
+            *conversation,
+            {"role": "athlete", "text": question},
+            {"role": "coach", "text": answer.answer},
+        )[-8:]
+
+
 def run_race_add(args: Namespace) -> int:
     """Persist one athlete-confirmed race without generating a plan."""
 
@@ -1334,6 +1429,82 @@ def _render_ai_answer(answer: PaceAIAnswer, *, as_of_date: date) -> str:
             ]
         )
     return "\n".join(lines)
+
+
+def _render_coach_answer(
+    answer: CoachDialogueAnswer,
+    *,
+    plan_id: int,
+    as_of_date: date,
+) -> str:
+    """Make the non-persistent status of a plan adjustment unmistakable."""
+
+    lines = [f"Pace coach ({as_of_date})", answer.answer]
+    if answer.observations:
+        lines.extend(["", "Observationer:", *[f"- {item}" for item in answer.observations]])
+    if answer.uncertainties:
+        lines.extend(["", "Osäkerheter:", *[f"- {item}" for item in answer.uncertainties]])
+    if answer.knowledge_references:
+        lines.extend(
+            [
+                "",
+                "Kunskapsstöd:",
+                *[
+                    f"- {item} (visa: pace knowledge show --id {item})"
+                    for item in answer.knowledge_references
+                ],
+            ]
+        )
+    adjustment = answer.adjustment_draft
+    if adjustment is not None:
+        lines.extend(["", "Planjusteringsutkast — inte sparat:"])
+        labels = {"keep_plan": "Behåll plan", "skip": "Hoppa över pass", "replace": "Ersätt pass"}
+        lines.extend(
+            [
+                f"- åtgärd: {labels[adjustment.action]}",
+                f"- motivering: {adjustment.rationale}",
+            ]
+        )
+        if adjustment.replaces_session_id is not None:
+            lines.append(f"- berört pass-id: {adjustment.replaces_session_id}")
+        if adjustment.proposed_session is not None:
+            session = adjustment.proposed_session
+            lines.append(
+                "- föreslaget pass: "
+                f"{session.sport_type} · {session.purpose} · "
+                f"{_coach_session_scope(session)} · {_coach_target_display(session)}"
+            )
+        lines.extend(
+            [
+                "Planen är inte ändrad. Om du vill göra en beständig ny planversion, "
+                f"skapa först ett separat revisionsutkast: pace plan revise --id {plan_id} --days 7",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _coach_session_scope(session) -> str:
+    values = []
+    if session.distance_meters is not None:
+        values.append(f"{session.distance_meters / 1_000:g} km")
+    if session.duration_seconds is not None:
+        values.append(f"{session.duration_seconds // 60} min")
+    return " · ".join(values) or "ingen omfattning"
+
+
+def _coach_target_display(session) -> str:
+    target = session.target
+    values = []
+    if session.heart_rate_zone is not None:
+        values.append(f"Z{session.heart_rate_zone}")
+    if target.kind == "rpe":
+        values.append(f"RPE {target.rpe_min}–{target.rpe_max}")
+    if target.kind == "pace":
+        minutes, seconds = divmod(target.pace_seconds_per_km or 0, 60)
+        values.append(f"{minutes}:{seconds:02d} min/km")
+    if target.kind == "power":
+        values.append(f"{target.power_watts} W")
+    return " | ".join(values) or "ingen primär intensitet"
 
 
 def _render_note_add_command(draft: ContextEventDraft) -> str:

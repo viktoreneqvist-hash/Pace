@@ -1722,6 +1722,56 @@ athlete facts, model inferences, and research support.
 
 ---
 
+# Decision #39
+
+## Problem
+
+An athlete needs to ask a practical same-day question — for example whether a
+planned run can be replaced by a ride — without turning a conversational model
+into an unbounded writer of the training plan or retaining a private chat log.
+
+## Options
+
+- Keep only a one-shot factual `pace ask` command
+- Persist an open-ended chat history and let the model edit the accepted plan
+- Add a bounded plan-aware dialogue that returns only validated, unsaved
+  adjustment drafts
+
+## Chosen
+
+K2 adds `pace coach ask --plan-id <id> "question"` and `pace coach chat
+--plan-id <id>`. Both require one accepted plan that is active on the selected
+date. Each turn rebuilds current local facts and sends only the accepted plan,
+selected facts, selected knowledge briefs, and at most four earlier
+in-memory dialogue turns. The process discards that history on exit; requests
+remain provider-stateless with `store=False`.
+
+The model can return a same-day `keep_plan`, `skip`, or `replace` draft.
+Python verifies that any referenced session belongs to the plan and selected
+date. A replacement also has to pass availability, sport, Garmin zone, and
+pace/power-evidence checks. No response writes data, changes a session,
+accepts a plan, or creates a revision. The existing revision flow remains the
+only route to a durable plan version.
+
+## Reason
+
+This gives the athlete an actual coach conversation for day-to-day trade-offs
+while keeping plan authority, facts, privacy boundaries, and persistent state
+outside the model. The output is useful immediately but cannot silently become
+training history or a new authoritative schedule.
+
+## Consequences
+
+- K2 does not yet apply an exact dialogue proposal as a stored revision; that
+  needs a separate, reviewable adjustment-acceptance design.
+- Coaching ambition (Försiktig/Balanserad/Offensiv) remains a new shared
+  product decision rather than an implicit prompt preference.
+- The active chat's selected messages are sent again with the next turn, so
+  the athlete should not put private text into the dialogue that they would
+  not want in that explicit AI request.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

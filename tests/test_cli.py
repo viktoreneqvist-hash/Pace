@@ -17,6 +17,7 @@ from pace.analysis.models import (
 from pace.services.garmin_sync_service import GarminSyncResult
 from pace.explanations.models import ExplanationItem, ExplanationSummary
 from pace.ai.models import ContextEventDraft, PaceAIAnswer
+from pace.coach.models import CoachDialogueAnswer, PlanAdjustmentDraft
 from pace.planning.models import HistoryCoverage, PlanReadiness
 from pace.capacity.models import CapacityProfile
 from pace.performance.models import (
@@ -552,6 +553,39 @@ def test_knowledge_parser_accepts_a_brief_id():
     args = parser.parse_args(["knowledge", "show", "--id", "progression_continuity"])
 
     assert args.brief_id == "progression_continuity"
+
+
+def test_coach_parser_accepts_a_quick_question_and_an_interactive_dialogue():
+    parser = app.build_parser()
+
+    ask_args = parser.parse_args(
+        ["coach", "ask", "Kan jag byta?", "--plan-id", "3", "--end-date", "2026-07-25"]
+    )
+    chat_args = parser.parse_args(["coach", "chat", "--plan-id", "3"])
+
+    assert ask_args.plan_id == 3
+    assert ask_args.end_date == date(2026, 7, 25)
+    assert chat_args.plan_id == 3
+
+
+def test_coach_renderer_marks_a_replacement_as_unsaved():
+    answer = CoachDialogueAnswer(
+        answer="Byt passet.",
+        observations=(),
+        uncertainties=(),
+        knowledge_references=(),
+        adjustment_draft=PlanAdjustmentDraft(
+            action="skip",
+            replaces_session_id=4,
+            rationale="Aktuellt underlag är begränsat.",
+            proposed_session=None,
+        ),
+    )
+
+    rendered = app._render_coach_answer(answer, plan_id=3, as_of_date=date(2026, 7, 25))
+
+    assert "Planjusteringsutkast — inte sparat" in rendered
+    assert "pace plan revise --id 3 --days 7" in rendered
 
 
 def test_race_add_passes_only_explicit_race_choices_to_the_service(monkeypatch, capsys):
