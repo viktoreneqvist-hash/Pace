@@ -133,6 +133,15 @@ progression without owner decisions.
 Add transparent, tested rules over athlete state. Rules produce structured
 interpretations, not hidden calculations or medical diagnoses.
 
+- [x] Add a read-only Python rule service and structured JSON output
+- [x] Require 14 observed HRV baseline days before HRV interpretation
+- [x] Require two consecutive calendar days below the current HRV baseline
+- [x] Select only `poor_sleep`, `alcohol`, `travel`, `work_stress`, and
+  `illness` as first-slice HRV context
+- [x] Use the signal date and two preceding calendar days as the context window
+- [x] Expose evidence and limitations without advice, prose, or diagnosis
+- [x] Add `pace rules evaluate` with optional `--end-date`
+
 ### Batch H — Explanation layer
 
 Turn structured facts and rule output into concise explanations, initially with

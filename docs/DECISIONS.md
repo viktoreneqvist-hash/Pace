@@ -857,6 +857,58 @@ migration while keeping the exact selection contract visible and testable.
 
 ---
 
+# Decision #23
+
+## Problem
+
+Pace needs its first transparent interpretation rule without treating a short
+HRV history, a single below-baseline value, or an unrelated life event as a
+coaching or medical conclusion.
+
+## Options
+
+- Add several readiness and training rules immediately
+- Interpret any single HRV value below its baseline
+- Add a small data-quality gate and one explicit HRV-plus-context rule
+
+## Chosen
+
+Batch G evaluates two read-only Python rules through `pace rules evaluate`.
+`hrv_baseline_data_quality` requires at least 14 observed HRV days in the
+existing 28-day baseline window. `hrv_context_present` requires two consecutive
+calendar days with HRV strictly below that same current baseline.
+
+When that signal exists, the rule checks the signal date and two preceding
+calendar days for only `poor_sleep`, `alcohol`, `travel`, `work_stress`, and
+`illness`. `pain` and `schedule_constraint` are intentionally excluded from
+this HRV rule. Rule JSON contains identifiers, normalized factual values,
+selected context types, and explicit limitation codes; it contains neither
+context-note text nor coaching prose or advice.
+
+## Reason
+
+The 14-day gate stops a short history from looking more certain than it is.
+Requiring two calendar-adjacent observations reduces reactions to a single
+value, while the small context set records plausible competing context without
+claiming causality. Keeping the result structural makes every condition and
+limitation inspectable before an explanation layer is added.
+
+## Consequences
+
+- A current 7-day HRV history yields `insufficient_data`, not a readiness
+  label.
+- A negative HRV pattern without selected context yields `not_triggered`, not
+  a conclusion that training caused it.
+- The current 28-day baseline remains the comparison value; this batch does
+  not introduce a second or clinical baseline calculation.
+- Athlete state carries only the current seven-day window's normalized HRV
+  observations, allowing the rule layer to verify calendar adjacency without
+  querying raw Garmin payloads or reconstructing state independently.
+- Future rules for pain, schedule constraints, training load, goals, and
+  planning require separate owner decisions.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

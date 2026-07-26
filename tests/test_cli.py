@@ -372,3 +372,35 @@ def test_state_show_parser_accepts_a_reproducible_end_date():
     args = parser.parse_args(["state", "show", "--end-date", "2026-07-25"])
 
     assert args.end_date == date(2026, 7, 25)
+
+
+def test_rules_evaluate_uses_the_deterministic_rule_service(monkeypatch, capsys):
+    captured: dict[str, date] = {}
+
+    @dataclass
+    class FakeRuleSummary:
+        as_of_date: date
+
+    class FakeRuleService:
+        def evaluate(self, *, end_date):
+            captured["end_date"] = end_date
+            return FakeRuleSummary(as_of_date=end_date)
+
+    monkeypatch.setattr(app, "RuleService", FakeRuleService)
+
+    exit_code = app.run_rules_evaluate(
+        Namespace(end_date=None),
+        today=date(2026, 7, 25),
+    )
+
+    assert exit_code == 0
+    assert captured["end_date"] == date(2026, 7, 25)
+    assert json.loads(capsys.readouterr().out) == {"as_of_date": "2026-07-25"}
+
+
+def test_rules_evaluate_parser_accepts_a_reproducible_end_date():
+    parser = app.build_parser()
+
+    args = parser.parse_args(["rules", "evaluate", "--end-date", "2026-07-25"])
+
+    assert args.end_date == date(2026, 7, 25)

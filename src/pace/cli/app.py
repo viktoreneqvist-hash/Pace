@@ -24,6 +24,7 @@ from pace.services.context_service import (
     ContextService,
 )
 from pace.services.metric_service import MetricService
+from pace.services.rule_service import RuleService
 from pace.services.athlete_state_service import AthleteStateService
 
 
@@ -203,6 +204,22 @@ def build_parser() -> ArgumentParser:
     )
     state_show_parser.set_defaults(handler=run_state_show)
 
+    rules_parser = subparsers.add_parser(
+        "rules",
+        help="utvärdera transparenta Pace-regler utan coachingråd",
+    )
+    rules_subparsers = rules_parser.add_subparsers(dest="rules_command")
+    rules_evaluate_parser = rules_subparsers.add_parser(
+        "evaluate",
+        help="visa strukturerade regelresultat",
+    )
+    rules_evaluate_parser.add_argument(
+        "--end-date",
+        type=iso_date,
+        help="sista datum i regelutvärderingen, YYYY-MM-DD (standard: idag)",
+    )
+    rules_evaluate_parser.set_defaults(handler=run_rules_evaluate)
+
     return parser
 
 
@@ -372,6 +389,15 @@ def run_state_show(args: Namespace, *, today: date | None = None) -> int:
     end_date = args.end_date or today or date.today()
     athlete_state = AthleteStateService().get_state(end_date=end_date)
     print(json.dumps(asdict(athlete_state), default=_json_default, indent=2))
+    return 0
+
+
+def run_rules_evaluate(args: Namespace, *, today: date | None = None) -> int:
+    """Print structured deterministic rule outcomes without prose or advice."""
+
+    end_date = args.end_date or today or date.today()
+    summary = RuleService().evaluate(end_date=end_date)
+    print(json.dumps(asdict(summary), default=_json_default, indent=2))
     return 0
 
 

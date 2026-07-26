@@ -4,12 +4,14 @@ from datetime import date
 
 from pace.database.session import session_scope
 from pace.repositories.context_event_repository import get_context_events_in_date_range
+from pace.repositories.daily_metric_repository import get_daily_metrics_in_date_range
 from pace.repositories.sync_run_repository import get_latest_completed_sync_run
 from pace.state.models import (
     AthleteContextWindow,
     AthleteState,
     AthleteStateDataQuality,
     ContextEventState,
+    HrvObservation,
     RecoveryDataQuality,
     SyncDataQuality,
 )
@@ -33,6 +35,11 @@ class AthleteStateService:
                 end_date=current_window.end_date,
             )
             latest_sync = get_latest_completed_sync_run(session)
+            daily_metrics = get_daily_metrics_in_date_range(
+                session,
+                start_date=current_window.start_date,
+                end_date=current_window.end_date,
+            )
 
         context = AthleteContextWindow(
             start_date=current_window.start_date,
@@ -78,4 +85,9 @@ class AthleteStateService:
             metrics=metrics,
             relevant_context=context,
             data_quality=data_quality,
+            recent_hrv_observations=tuple(
+                HrvObservation(date=metric.date, value=metric.hrv_value)
+                for metric in daily_metrics
+                if metric.hrv_value is not None
+            ),
         )

@@ -19,6 +19,14 @@ class ContextEventState:
 
 
 @dataclass(frozen=True, slots=True)
+class HrvObservation:
+    """One normalized HRV observation retained for deterministic rules."""
+
+    date: date
+    value: float
+
+
+@dataclass(frozen=True, slots=True)
 class AthleteContextWindow:
     """The current training window and its relevant athlete-provided context."""
 
@@ -65,3 +73,4 @@ class AthleteState:
     metrics: PaceMetricSummary
     relevant_context: AthleteContextWindow
     data_quality: AthleteStateDataQuality
+    recent_hrv_observations: tuple[HrvObservation, ...]

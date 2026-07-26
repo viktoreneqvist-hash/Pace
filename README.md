@@ -36,6 +36,7 @@ uv run pace metrics summary
 uv run pace note add --type poor_sleep --date 2026-07-25 "Somnade sent."
 uv run pace note list --from 2026-07-19 --to 2026-07-25
 uv run pace state show
+uv run pace rules evaluate
 ```
 
 See `AGENTS.md` for implementation invariants, privacy rules, and the local validation

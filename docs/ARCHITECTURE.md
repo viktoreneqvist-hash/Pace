@@ -878,6 +878,9 @@ src/pace/
 │   ├── garmin_sync_service.py
 │   ├── activity_service.py
 │   └── metric_service.py
+├── rules/
+│   ├── hrv.py
+│   └── models.py
 ├── state/
 │   └── models.py
 └── timezones.py
