@@ -41,6 +41,7 @@ from pace.services.race_service import (
     RaceService,
     resolved_taper,
 )
+from pace.services.capacity_service import CapacityService
 
 
 def positive_days(value: str) -> int:
@@ -372,6 +373,22 @@ def build_parser() -> ArgumentParser:
     )
     plan_readiness_parser.set_defaults(handler=run_plan_readiness)
 
+    capacity_parser = subparsers.add_parser(
+        "capacity",
+        help="visa deterministiska fakta om faktisk träningskapacitet",
+    )
+    capacity_subparsers = capacity_parser.add_subparsers(dest="capacity_command")
+    capacity_show_parser = capacity_subparsers.add_parser(
+        "show",
+        help="visa volym, kontinuitet, sportbalans och datakvalitet",
+    )
+    capacity_show_parser.add_argument(
+        "--end-date",
+        type=iso_date,
+        help="analysdatum YYYY-MM-DD (standard: idag)",
+    )
+    capacity_show_parser.set_defaults(handler=run_capacity_show)
+
     return parser
 
 
@@ -672,6 +689,15 @@ def run_plan_readiness(args: Namespace, *, today: date | None = None) -> int:
     end_date = args.end_date or today or date.today()
     readiness = PlanReadinessService().get_readiness(as_of_date=end_date)
     print(json.dumps(asdict(readiness), default=_json_default, indent=2))
+    return 0
+
+
+def run_capacity_show(args: Namespace, *, today: date | None = None) -> int:
+    """Print factual capacity evidence without inferring a future training load."""
+
+    end_date = args.end_date or today or date.today()
+    profile = CapacityService().get_profile(end_date=end_date)
+    print(json.dumps(asdict(profile), default=_json_default, indent=2))
     return 0
 
 

@@ -1120,6 +1120,55 @@ capacity remains a later deterministic analysis problem.
 
 ---
 
+# Decision #28
+
+## Problem
+
+Future Pace plans need a truthful representation of what the athlete has
+actually completed. A generic fitness score, a self-reported volume, or an LLM
+estimate would hide the source facts that must constrain future planning.
+
+## Options
+
+- Let the future plan model infer capacity directly from raw activity history
+- Store a single opaque readiness or fitness score
+- Build a deterministic, inspectable capacity profile over the J1 imported
+  history before any performance targets or plans exist
+
+## Chosen
+
+Batch J2A adds `pace capacity show`. It reports only normalized `run` and
+`ride` facts over the newest contiguous imported Garmin range selected by J1:
+per-sport activity count, active days, duration, complete-or-unknown distance,
+longest activity, duration-based run/ride split, fixed seven-day continuity,
+and longest inactive calendar streak.
+
+It reuses existing recovery coverage facts and J1 race/blocker facts. It does
+not calculate a combined score, pace target, zone target, training load, or
+future volume. It explicitly reports `performance_evidence_pending_j2b` until
+verified detailed Garmin performance evidence is available.
+
+## Reason
+
+The profile gives a future bounded planner a compact factual contract while
+keeping every underlying observation visible. Duration is the only shared unit
+for run/ride balance; distances are retained per sport and remain unknown when
+any source distance is missing. This avoids a false comparison between running
+distance and cycling distance.
+
+## Consequences
+
+- A zero-activity week and a long inactive streak remain visible evidence, not
+  missing data to be filled by an LLM.
+- Active pain or illness does not hide capacity history, but marks the profile
+  as blocked for future plan generation.
+- J2B must fetch and normalize approved detailed run/ride evidence before Pace
+  can validate benchmark, race, pace, power, or zone claims.
+- J3 may use the profile as a boundary, but the exact progression envelope is
+  a separate explicit coaching-policy decision.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

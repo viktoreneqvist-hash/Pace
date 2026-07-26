@@ -215,6 +215,18 @@ Build Pace-owned facts about durable volume, frequency, long sessions,
 progression, and sufficient Garmin performance evidence before introducing
 pace, power, or zone targets into a plan.
 
+#### J2A — Capacity profile
+
+- [x] Add `pace capacity show` over the newest contiguous J1 Garmin-history
+  range
+- [x] Report only observed run/ride volume, frequency, longest activity,
+  duration-based sport balance, fixed-window continuity, and inactive streaks
+- [x] Preserve missing distance as unknown and exclude `other` activities
+- [x] Reuse recovery coverage and active planning blockers without exposing
+  private note text
+- [x] Explicitly defer performance evidence, pace, power, zones, progression
+  limits, and plan generation to later J2/J3 slices
+
 ### Batch J3 — Reviewable short-horizon plan drafts
 
 Create a block view to an explicit A-race and a detailed one- or two-week

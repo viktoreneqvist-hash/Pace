@@ -18,6 +18,7 @@ from pace.services.garmin_sync_service import GarminSyncResult
 from pace.explanations.models import ExplanationItem, ExplanationSummary
 from pace.ai.models import ContextEventDraft, PaceAIAnswer
 from pace.planning.models import HistoryCoverage, PlanReadiness
+from pace.capacity.models import CapacityProfile
 
 
 def test_login_prompts_for_credentials_and_uses_local_token_directory(
@@ -622,3 +623,35 @@ def test_race_and_plan_parsers_accept_the_j1_contract():
     assert race_args.desired_time == 10_800
     assert race_args.distance_km == 42.195
     assert readiness_args.end_date == date(2026, 7, 25)
+
+
+def test_capacity_show_prints_read_only_capacity_facts(monkeypatch, capsys):
+    profile = CapacityProfile(
+        as_of_date=date(2026, 7, 25),
+        status="ready",
+        source_start_date=date(2026, 6, 28),
+        source_end_date=date(2026, 7, 25),
+        history=HistoryCoverage(28, 28, date(2026, 6, 28), date(2026, 6, 28), date(2026, 7, 25), True),
+        sports=(),
+        continuity=None,
+        sport_balance=None,
+        recovery_coverage=(),
+        upcoming_races=(),
+        planning_blockers=(),
+        limitations=("performance_evidence_pending_j2b",),
+    )
+
+    class FakeCapacityService:
+        def get_profile(self, *, end_date):
+            assert end_date == date(2026, 7, 25)
+            return profile
+
+    monkeypatch.setattr(app, "CapacityService", FakeCapacityService)
+
+    exit_code = app.run_capacity_show(
+        Namespace(end_date=None),
+        today=date(2026, 7, 25),
+    )
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "ready"
