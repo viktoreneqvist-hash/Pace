@@ -509,6 +509,11 @@ def test_ask_uses_the_read_only_service_and_marks_context_drafts_as_unsaved(
     output = capsys.readouterr().out
     assert "Context-utkast — inte sparat" in output
     assert "AI:n kan inte spara dem" in output
+    assert "Kopiera detta om uppgifterna stämmer:" in output
+    assert (
+        "uv run pace note add --type alcohol --date 2026-07-24 'Sen kväll.'"
+        in output
+    )
 
 
 def test_ask_parser_accepts_a_reproducible_end_date():

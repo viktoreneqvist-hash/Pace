@@ -5,6 +5,7 @@ from dataclasses import asdict
 from datetime import date, timedelta
 from getpass import getpass
 import json
+import shlex
 
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
@@ -29,7 +30,7 @@ from pace.services.athlete_state_service import AthleteStateService
 from pace.services.explanation_service import ExplanationService
 from pace.explanations.hrv import render_explanation_summary
 from pace.ai.client import OpenAIResponsesClient, PaceAIError
-from pace.ai.models import PaceAIAnswer
+from pace.ai.models import ContextEventDraft, PaceAIAnswer
 from pace.services.ai_ask_service import PaceAskService
 
 
@@ -500,9 +501,33 @@ def _render_ai_answer(answer: PaceAIAnswer, *, as_of_date: date) -> str:
                 f"- till: {duration}",
                 f"- not: {draft.note}",
                 "Bekräfta eller ändra uppgifterna med 'pace note add'; AI:n kan inte spara dem.",
+                "Kopiera detta om uppgifterna stämmer:",
+                _render_note_add_command(draft),
             ]
         )
     return "\n".join(lines)
+
+
+def _render_note_add_command(draft: ContextEventDraft) -> str:
+    """Render a shell-safe command for an athlete-confirmed context draft."""
+
+    command = [
+        "uv",
+        "run",
+        "pace",
+        "note",
+        "add",
+        "--type",
+        draft.event_type,
+        "--date",
+        draft.start_date.isoformat(),
+    ]
+    if draft.ongoing:
+        command.append("--ongoing")
+    elif draft.end_date is not None and draft.end_date != draft.start_date:
+        command.extend(("--end-date", draft.end_date.isoformat()))
+    command.append(draft.note)
+    return shlex.join(command)
 
 
 def main(argv: list[str] | None = None) -> int:
