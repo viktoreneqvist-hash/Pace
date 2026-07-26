@@ -183,6 +183,26 @@ class GarminConnectClient:
                 "Kunde inte hämta aktiviteter från Garmin. Försök igen senare."
             ) from error
 
+    def get_activity_performance_detail(self, activity_id: str) -> dict[str, Any]:
+        """Fetch a scalar activity detail response without route or chart data."""
+
+        return self._call_activity_endpoint(
+            "aktivitetsdetaljer",
+            self._api.get_activity_details,
+            activity_id,
+            maxchart=1,
+            maxpoly=0,
+        )
+
+    def get_activity_splits(self, activity_id: str) -> dict[str, Any]:
+        """Fetch Garmin's split summaries for one already imported activity."""
+
+        return self._call_activity_endpoint(
+            "aktivitets-splits",
+            self._api.get_activity_splits,
+            activity_id,
+        )
+
     def get_daily_summary(self, metric_date: date) -> dict[str, Any]:
         """Fetch Garmin's daily summary, including resting HR and stress."""
 
@@ -227,6 +247,24 @@ class GarminConnectClient:
         except GarminConnectTooManyRequestsError as error:
             raise GarminRateLimitError(
                 "Garmin begränsar förfrågningar just nu. Vänta och kör synken igen senare."
+            ) from error
+        except GarminConnectAuthenticationError as error:
+            raise GarminAuthenticationRequiredError(
+                "Garmin-sessionen är inte längre giltig. Kör 'pace garmin login' igen."
+            ) from error
+        except GarminConnectConnectionError as error:
+            raise GarminIntegrationError(
+                f"Kunde inte hämta {label} från Garmin. Försök igen senare."
+            ) from error
+
+    def _call_activity_endpoint(self, label: str, method, activity_id: str, **kwargs):
+        """Translate provider failures consistently for bounded detail calls."""
+
+        try:
+            return method(activity_id, **kwargs)
+        except GarminConnectTooManyRequestsError as error:
+            raise GarminRateLimitError(
+                "Garmin begränsar förfrågningar just nu. Vänta och kör samma detaljbatch igen senare."
             ) from error
         except GarminConnectAuthenticationError as error:
             raise GarminAuthenticationRequiredError(

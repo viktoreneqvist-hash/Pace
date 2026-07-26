@@ -48,7 +48,7 @@ def _add_contiguous_history() -> None:
         )
 
 
-def test_capacity_profile_reports_actual_training_and_j2b_limitations():
+def test_capacity_profile_reports_actual_training_and_j2c_target_limitations():
     _add_contiguous_history()
 
     profile = CapacityService().get_profile(end_date=date(2026, 7, 26))
@@ -64,7 +64,7 @@ def test_capacity_profile_reports_actual_training_and_j2b_limitations():
     assert profile.sport_balance is not None
     assert profile.sport_balance.running_duration_share_percent == 42.857142857142854
     assert profile.planning_blockers == ()
-    assert "performance_evidence_pending_j2b" in profile.limitations
+    assert "performance_targets_pending_j2c" in profile.limitations
 
 
 def test_capacity_profile_remains_visible_but_is_blocked_for_active_illness():

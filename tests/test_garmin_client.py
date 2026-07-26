@@ -26,6 +26,8 @@ class FakeGarmin:
         self.client = self
         self.login_token_dir: str | None = None
         self.activity_args: tuple[str, str] | None = None
+        self.detail_args: tuple[str, int, int] | None = None
+        self.split_activity_id: str | None = None
         FakeGarmin.instances.append(self)
 
     def login(self, token_dir: str) -> None:
@@ -45,6 +47,14 @@ class FakeGarmin:
     def get_activities_by_date(self, start_date: str, end_date: str):
         self.activity_args = (start_date, end_date)
         return [{"activityId": "one"}]
+
+    def get_activity_details(self, activity_id: str, maxchart: int, maxpoly: int):
+        self.detail_args = (activity_id, maxchart, maxpoly)
+        return {"activityDetailDTO": {}}
+
+    def get_activity_splits(self, activity_id: str):
+        self.split_activity_id = activity_id
+        return {"lapDTOs": []}
 
 
 @pytest.fixture(autouse=True)
@@ -111,6 +121,20 @@ def test_saved_token_session_is_used_for_activity_requests(tmp_path: Path):
     assert api.kwargs == {}
     assert api.activity_args == ("2026-07-01", "2026-07-07")
     assert activities == [{"activityId": "one"}]
+
+
+def test_performance_requests_disable_route_and_chart_data(tmp_path: Path):
+    token_dir = tmp_path / "tokens"
+    token_dir.mkdir()
+    (token_dir / "garmin_tokens.json").touch()
+
+    client = GarminConnectClient.from_saved_tokens(token_dir)
+    client.get_activity_performance_detail("123")
+    client.get_activity_splits("123")
+
+    api = FakeGarmin.instances[0]
+    assert api.detail_args == ("123", 1, 0)
+    assert api.split_activity_id == "123"
 
 
 def test_missing_saved_session_has_a_clear_pace_error(tmp_path: Path):

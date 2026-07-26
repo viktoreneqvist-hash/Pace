@@ -31,3 +31,17 @@ def get_upcoming_races(session: Session, *, as_of_date: date) -> list[Race]:
         .order_by(Race.race_date, Race.id)
     )
     return list(session.scalars(statement))
+
+
+def get_races(
+    session: Session,
+    *,
+    as_of_date: date,
+    include_past: bool,
+) -> list[Race]:
+    """Return races in calendar order, optionally including historical objectives."""
+
+    statement = select(Race).order_by(Race.race_date, Race.id)
+    if not include_past:
+        statement = statement.where(Race.race_date >= as_of_date)
+    return list(session.scalars(statement))

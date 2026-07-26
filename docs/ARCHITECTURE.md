@@ -221,6 +221,12 @@ This layer converts Garmin data into Pace's internal models.
 - preserve the original raw payload
 - create normalized records for persistence
 
+Activity-list and recovery payloads retain their local raw snapshots for
+debugging and re-normalization. The separate J2B performance-detail path is
+more restrictive: it normalizes only approved scalar facts and split summaries
+and never persists route coordinates, polylines, chart samples, or a raw
+activity-detail payload.
+
 ### Internal sport examples
 
 ```text
@@ -345,6 +351,48 @@ UNIQUE(date)
 ```
 
 If multiple daily records are later needed, the uniqueness strategy can be revised.
+
+#### `activity_performance_details`
+
+Stores the small, privacy-minimized subset of a detailed Garmin activity that
+later performance analysis may need.
+
+```text
+id
+activity_id
+duration_seconds
+distance_meters
+average_heart_rate
+maximum_heart_rate
+average_speed_mps
+average_cadence
+average_power
+splits
+created_at
+updated_at
+```
+
+Constraint:
+
+```text
+UNIQUE(activity_id)
+```
+
+`splits` contains only Pace-normalized numeric split summaries. It never holds
+coordinates, a route, chart samples, or an untouched Garmin detail response.
+
+#### `performance_evidence`
+
+Stores an athlete-confirmed relationship between a locally imported Garmin
+activity and an evidence type. J2B supports only a race link: the athlete
+selects the race and matching Garmin activity, while all observed time,
+distance, pace, heart-rate, and power facts remain Garmin-derived.
+
+#### `performance_sync_runs`
+
+Audits every bounded detailed-activity import independently from normal
+activity/recovery syncs. It records the requested window, eligible run/ride
+count, successful stored details, status, and a short error summary.
 
 #### `context_events`
 

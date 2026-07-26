@@ -88,6 +88,6 @@ class CapacityService:
 
 
 def _profile_limitations(readiness_limitations: tuple[str, ...]) -> tuple[str, ...]:
-    """Add J2A's explicit boundary without presenting performance estimates."""
+    """Keep the J2A profile factual after detailed evidence exists separately."""
 
-    return (*readiness_limitations, "performance_evidence_pending_j2b")
+    return (*readiness_limitations, "performance_targets_pending_j2c")

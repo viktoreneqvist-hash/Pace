@@ -8,6 +8,7 @@ from pace.database.session import session_scope
 from pace.repositories.race_repository import (
     create_race,
     get_race_by_id,
+    get_races,
     get_upcoming_races,
 )
 
@@ -47,6 +48,16 @@ class RaceService:
 
         with session_scope() as session:
             return get_upcoming_races(session, as_of_date=as_of_date)
+
+    def list_races(self, *, as_of_date: date, include_past: bool) -> list[Race]:
+        """List race ids needed when explicitly linking a completed race result."""
+
+        with session_scope() as session:
+            return get_races(
+                session,
+                as_of_date=as_of_date,
+                include_past=include_past,
+            )
 
     def update_race(
         self,

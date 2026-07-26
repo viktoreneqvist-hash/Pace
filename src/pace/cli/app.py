@@ -42,6 +42,7 @@ from pace.services.race_service import (
     resolved_taper,
 )
 from pace.services.capacity_service import CapacityService
+from pace.services.performance_history_service import PerformanceHistoryService
 
 
 def positive_days(value: str) -> int:
@@ -340,6 +341,11 @@ def build_parser() -> ArgumentParser:
         type=iso_date,
         help="visa lopp från detta datum, YYYY-MM-DD (standard: idag)",
     )
+    race_list_parser.add_argument(
+        "--include-past",
+        action="store_true",
+        help="inkludera historiska lopp, exempelvis för att länka ett Garmin-resultat",
+    )
     race_list_parser.set_defaults(handler=run_race_list)
 
     race_update_parser = race_subparsers.add_parser(
@@ -388,6 +394,58 @@ def build_parser() -> ArgumentParser:
         help="analysdatum YYYY-MM-DD (standard: idag)",
     )
     capacity_show_parser.set_defaults(handler=run_capacity_show)
+
+    performance_parser = subparsers.add_parser(
+        "performance",
+        help="hantera begränsade Garmin-detaljer och verifierbara loppresultat",
+    )
+    performance_subparsers = performance_parser.add_subparsers(
+        dest="performance_command"
+    )
+    performance_sync_parser = performance_subparsers.add_parser(
+        "sync",
+        help="hämta lokala run/ride-detaljer och splits för en sjudagarsbatch",
+    )
+    performance_sync_parser.add_argument(
+        "--days",
+        type=positive_days,
+        default=7,
+        help="antal kalenderdagar inklusive batchens slutdatum (standard: 7)",
+    )
+    performance_sync_parser.add_argument(
+        "--end-date",
+        type=iso_date,
+        help="sista datum i batchen, YYYY-MM-DD (standard: idag)",
+    )
+    performance_sync_parser.set_defaults(handler=run_performance_sync)
+
+    performance_show_parser = performance_subparsers.add_parser(
+        "show",
+        help="visa tolv veckors detaljtäckning och explicit länkade loppresultat",
+    )
+    performance_show_parser.add_argument(
+        "--end-date",
+        type=iso_date,
+        help="sista datum i analysen, YYYY-MM-DD (standard: idag)",
+    )
+    performance_show_parser.set_defaults(handler=run_performance_show)
+
+    performance_link_race_parser = performance_subparsers.add_parser(
+        "link-race",
+        help="länka ett bekräftat lopp till en detaljerad Garmin-aktivitet",
+    )
+    performance_link_race_parser.add_argument(
+        "--garmin-activity-id",
+        required=True,
+        help="Garmin-id från 'pace performance show'",
+    )
+    performance_link_race_parser.add_argument(
+        "--race-id",
+        type=int,
+        required=True,
+        help="lokalt lopp-id från 'pace race list --include-past'",
+    )
+    performance_link_race_parser.set_defaults(handler=run_performance_link_race)
 
     return parser
 
@@ -644,7 +702,10 @@ def run_race_list(args: Namespace, *, today: date | None = None) -> int:
     """Print future race facts without assessing race readiness or capacity."""
 
     as_of_date = args.as_of_date or today or date.today()
-    races = RaceService().list_upcoming_races(as_of_date=as_of_date)
+    races = RaceService().list_races(
+        as_of_date=as_of_date,
+        include_past=getattr(args, "include_past", False),
+    )
     payload = [
         {
             "id": race.id,
@@ -698,6 +759,71 @@ def run_capacity_show(args: Namespace, *, today: date | None = None) -> int:
     end_date = args.end_date or today or date.today()
     profile = CapacityService().get_profile(end_date=end_date)
     print(json.dumps(asdict(profile), default=_json_default, indent=2))
+    return 0
+
+
+def run_performance_sync(args: Namespace, *, today: date | None = None) -> int:
+    """Import Garmin detail summaries and splits without requesting routes or streams."""
+
+    sync_end_date = getattr(args, "end_date", None) or today or date.today()
+    sync_start_date = sync_end_date - timedelta(days=args.days - 1)
+    try:
+        client = GarminConnectClient.from_saved_tokens(settings.garmin_token_dir)
+        result = PerformanceHistoryService(client).sync_details(
+            start_date=sync_start_date,
+            end_date=sync_end_date,
+        )
+    except GarminAuthenticationRequiredError as error:
+        print(f"Detaljsynken kan inte starta: {error}")
+        return 2
+    except GarminRateLimitError as error:
+        print(f"Detaljsynken stoppades: {error}")
+        return 3
+    except GarminIntegrationError as error:
+        print(f"Detaljsynken misslyckades: {error}")
+        return 2
+    except Exception:
+        print("Detaljsynken misslyckades. Redan sparade detaljer lämnades oförändrade.")
+        return 1
+
+    print(
+        f"Garmin-detaljsynk klar ({result.start_date} till {result.end_date}): "
+        f"{result.candidate_activities} run/ride-kandidater, "
+        f"{result.details_fetched} detaljposter hämtade, "
+        f"{result.details_inserted} nya och {result.details_updated} uppdaterade."
+    )
+    if result.status == "partial":
+        if result.stop_reason == "rate_limit":
+            print("Detaljsynken stoppades av Garmin-gräns. Vänta och kör samma batch igen.")
+            return 3
+        if result.stop_reason == "authentication":
+            print("Garmin-sessionen slutade vara giltig. Logga in igen och kör samma batch.")
+            return 2
+        print("Detaljsynken är delvis klar. Tidigare detaljer bevarades; kör samma batch igen.")
+    return 0
+
+
+def run_performance_show(args: Namespace, *, today: date | None = None) -> int:
+    """Display local performance facts without deriving targets or a plan."""
+
+    end_date = args.end_date or today or date.today()
+    history = PerformanceHistoryService().get_history(end_date=end_date)
+    print(json.dumps(asdict(history), default=_json_default, indent=2))
+    return 0
+
+
+def run_performance_link_race(args: Namespace) -> int:
+    """Persist only an athlete-confirmed race-to-Garmin link."""
+
+    try:
+        PerformanceHistoryService().link_race_evidence(
+            garmin_activity_id=args.garmin_activity_id,
+            race_id=args.race_id,
+        )
+    except ValueError as error:
+        print(f"Loppresultatet kunde inte länkas: {error}")
+        return 2
+    print("Garmin-aktiviteten är länkad som ett bekräftat loppresultat.")
     return 0
 
 

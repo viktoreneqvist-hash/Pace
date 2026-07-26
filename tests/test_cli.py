@@ -19,6 +19,8 @@ from pace.explanations.models import ExplanationItem, ExplanationSummary
 from pace.ai.models import ContextEventDraft, PaceAIAnswer
 from pace.planning.models import HistoryCoverage, PlanReadiness
 from pace.capacity.models import CapacityProfile
+from pace.performance.models import PerformanceDetailCoverage, PerformanceHistory
+from pace.services.performance_history_service import PerformanceSyncResult
 
 
 def test_login_prompts_for_credentials_and_uses_local_token_directory(
@@ -638,7 +640,7 @@ def test_capacity_show_prints_read_only_capacity_facts(monkeypatch, capsys):
         recovery_coverage=(),
         upcoming_races=(),
         planning_blockers=(),
-        limitations=("performance_evidence_pending_j2b",),
+        limitations=("performance_targets_pending_j2c",),
     )
 
     class FakeCapacityService:
@@ -655,3 +657,97 @@ def test_capacity_show_prints_read_only_capacity_facts(monkeypatch, capsys):
 
     assert exit_code == 0
     assert json.loads(capsys.readouterr().out)["status"] == "ready"
+
+
+def test_performance_sync_uses_the_same_bounded_window_without_main_sync(
+    monkeypatch, capsys
+):
+    captured: dict[str, object] = {}
+
+    class FakeGarminConnectClient:
+        @classmethod
+        def from_saved_tokens(cls, token_dir):
+            captured["token_dir"] = token_dir
+            return object()
+
+    class FakePerformanceHistoryService:
+        def __init__(self, client):
+            captured["client"] = client
+
+        def sync_details(self, *, start_date, end_date):
+            captured["window"] = (start_date, end_date)
+            return PerformanceSyncResult(
+                sync_run_id=1,
+                status="success",
+                start_date=start_date,
+                end_date=end_date,
+                candidate_activities=2,
+                details_fetched=2,
+                details_inserted=1,
+                details_updated=1,
+                errors=(),
+            )
+
+    monkeypatch.setattr(app, "GarminConnectClient", FakeGarminConnectClient)
+    monkeypatch.setattr(app, "PerformanceHistoryService", FakePerformanceHistoryService)
+
+    exit_code = app.run_performance_sync(
+        Namespace(days=7, end_date=None), today=date(2026, 7, 25)
+    )
+
+    assert exit_code == 0
+    assert captured["window"] == (date(2026, 7, 19), date(2026, 7, 25))
+    assert "2 run/ride-kandidater" in capsys.readouterr().out
+
+
+def test_performance_show_prints_local_facts_without_target_generation(monkeypatch, capsys):
+    history = PerformanceHistory(
+        as_of_date=date(2026, 7, 25),
+        detail_coverage=PerformanceDetailCoverage(
+            start_date=date(2026, 5, 3),
+            end_date=date(2026, 7, 25),
+            eligible_activities=2,
+            detailed_activities=1,
+            missing_details=1,
+        ),
+        detailed_activities=(),
+        race_evidence=(),
+        limitations=("performance_targets_pending_j2c",),
+    )
+
+    class FakePerformanceHistoryService:
+        def get_history(self, *, end_date):
+            assert end_date == date(2026, 7, 25)
+            return history
+
+    monkeypatch.setattr(app, "PerformanceHistoryService", FakePerformanceHistoryService)
+
+    exit_code = app.run_performance_show(
+        Namespace(end_date=None), today=date(2026, 7, 25)
+    )
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out)["detail_coverage"]["missing_details"] == 1
+
+
+def test_performance_parsers_accept_bounded_sync_and_explicit_race_link():
+    parser = app.build_parser()
+
+    sync_args = parser.parse_args(
+        ["performance", "sync", "--days", "7", "--end-date", "2026-07-25"]
+    )
+    link_args = parser.parse_args(
+        [
+            "performance",
+            "link-race",
+            "--garmin-activity-id",
+            "12345",
+            "--race-id",
+            "8",
+        ]
+    )
+
+    assert sync_args.days == 7
+    assert sync_args.end_date == date(2026, 7, 25)
+    assert link_args.garmin_activity_id == "12345"
+    assert link_args.race_id == 8

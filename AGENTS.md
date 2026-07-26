@@ -66,6 +66,10 @@ Garmin provider
   management without a new decision.
 - Missing source values remain `None`. Do not convert unknown distance,
   recovery, or sleep values to zero.
+- Detailed Garmin performance import is a separate at-most-seven-day command.
+  It fetches only locally stored `run` and `ride` activities and persists a
+  normalized scalar and split contract. Never store or send detailed Garmin
+  routes, coordinates, chart samples, or raw detail payloads.
 
 ## Safety and privacy
 

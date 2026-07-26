@@ -227,6 +227,22 @@ pace, power, or zone targets into a plan.
 - [x] Explicitly defer performance evidence, pace, power, zones, progression
   limits, and plan generation to later J2/J3 slices
 
+#### J2B — Detailed Garmin evidence
+
+- [x] Add an independently audited `pace performance sync` with the same
+  maximum seven-day calendar window as the main Garmin sync
+- [x] Fetch details only for already imported normalized `run` and `ride`
+  activities; never request or retain route or chart data
+- [x] Persist only approved scalar fields and normalized numeric split summaries
+- [x] Add `pace performance show` over the latest twelve weeks with explicit
+  detail coverage, missing-detail facts, and no performance target
+- [x] Let the athlete explicitly link a same-day, same-sport Garmin activity
+  to a stored race; all result values remain Garmin-derived
+- [x] Keep generic activity names, manually entered personal bests, and ordinary
+  training sessions out of the performance-evidence contract
+- [x] Defer exact Pace-defined benchmark protocols and all pace, power, zone,
+  capacity, and planning policy to J2C/J3 owner decisions
+
 ### Batch J3 — Reviewable short-horizon plan drafts
 
 Create a block view to an explicit A-race and a detailed one- or two-week

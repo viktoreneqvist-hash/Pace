@@ -1145,8 +1145,8 @@ and longest inactive calendar streak.
 
 It reuses existing recovery coverage facts and J1 race/blocker facts. It does
 not calculate a combined score, pace target, zone target, training load, or
-future volume. It explicitly reports `performance_evidence_pending_j2b` until
-verified detailed Garmin performance evidence is available.
+future volume. It explicitly reports `performance_targets_pending_j2c` because
+J2A itself does not set pace, power, zone, capacity, or plan targets.
 
 ## Reason
 
@@ -1163,9 +1163,68 @@ distance and cycling distance.
 - Active pain or illness does not hide capacity history, but marks the profile
   as blocked for future plan generation.
 - J2B must fetch and normalize approved detailed run/ride evidence before Pace
-  can validate benchmark, race, pace, power, or zone claims.
+  can validate race or later benchmark claims; J2C remains responsible for the
+  jointly decided target policy.
 - J3 may use the profile as a boundary, but the exact progression envelope is
   a separate explicit coaching-policy decision.
+
+---
+
+# Decision #29
+
+## Problem
+
+Pace needs detailed Garmin performance evidence for future targets and plans,
+but full activity-detail payloads can contain route coordinates and dense chart
+streams. Ordinary training activities and self-reported personal bests are not
+reliable proof of performance capacity.
+
+## Options
+
+- Retain every detailed Garmin payload and infer performance from any activity
+- Ask for manual personal bests and let an LLM estimate capacity
+- Import a bounded, privacy-minimized detail contract and accept only explicit
+  race links plus later owner-defined benchmark protocols as evidence
+
+## Chosen
+
+Batch J2B adds a separate, independently audited `pace performance sync`.
+It uses the established maximum seven-day window and considers only already
+imported normalized `run` and `ride` activities. The Garmin detail request
+explicitly disables route and chart retrieval; Pace persists only selected
+scalar fields and normalized numeric split summaries. No raw detail payload,
+GPS coordinate, polyline, or second-by-second stream is retained.
+
+`pace performance show` reports the last twelve weeks of eligible activity
+detail coverage, missing detail facts, and explicit race evidence. A race
+result exists only after the athlete links a detailed Garmin activity to a
+stored race with matching Stockholm-local date and sport. Garmin remains the
+source for observed result values; the athlete provides only the link.
+
+The schema reserves a benchmark evidence type, but no benchmark can yet be
+created. Exact Pace-defined benchmark protocols are a coaching-policy decision
+and must be selected with the owner before J2C uses them for targets.
+
+## Reason
+
+This preserves the product's core promise: Pace should constrain future
+planning with observed history rather than optimistic self-report or opaque
+model guesses. A separate detail path limits both Garmin rate-limit exposure
+and the sensitive data retained locally while keeping retries idempotent and
+auditable.
+
+## Consequences
+
+- `pace sync` remains the normal activity and recovery import; it never starts
+  a detailed backfill automatically.
+- Re-running a performance-detail batch changes zero records when Garmin's
+  selected facts are identical.
+- A failed detail or split request preserves any previous valid detail for that
+  activity. Rate limits and expired sessions stop the remaining batch after
+  earlier successes are stored.
+- Pace still produces no pace, power, zone, fitness, or training-plan target.
+- J2C must jointly define benchmark protocols and evidence sufficiency before
+  any performance target can be produced.
 
 ---
 
