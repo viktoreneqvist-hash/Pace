@@ -236,13 +236,9 @@ class PerformanceHistoryService:
             }
 
         detailed_activities = tuple(
-            DetailedActivityFact(
-                garmin_activity_id=activity.provider_activity_id,
-                activity_date=athlete_local_date(activity.start_time),
-                sport_type=activity.sport_type,
-                split_count=len(details[activity.id].splits),
-                duration_seconds=details[activity.id].duration_seconds,
-                distance_meters=details[activity.id].distance_meters,
+            self._detailed_activity_fact(
+                activity=activity,
+                detail=details[activity.id],
             )
             for activity in activities
             if activity.id in details
@@ -339,6 +335,23 @@ class PerformanceHistoryService:
             )
 
     @staticmethod
+    def _detailed_activity_fact(
+        *,
+        activity: Activity,
+        detail: ActivityPerformanceDetail,
+    ) -> DetailedActivityFact:
+        scalar_values, scalar_source = _resolved_scalars(activity, detail)
+        return DetailedActivityFact(
+            garmin_activity_id=activity.provider_activity_id,
+            activity_date=athlete_local_date(activity.start_time),
+            sport_type=activity.sport_type,
+            split_count=len(detail.splits),
+            scalar_source=scalar_source,
+            duration_seconds=scalar_values["duration_seconds"],
+            distance_meters=scalar_values["distance_meters"],
+        )
+
+    @staticmethod
     def _race_evidence_fact(
         *,
         activity: Activity,
@@ -346,6 +359,7 @@ class PerformanceHistoryService:
         evidence: PerformanceEvidence,
         race: Race,
     ) -> RaceEvidenceFact:
+        scalar_values, scalar_source = _resolved_scalars(activity, detail)
         return RaceEvidenceFact(
             garmin_activity_id=activity.provider_activity_id,
             activity_date=athlete_local_date(activity.start_time),
@@ -354,12 +368,13 @@ class PerformanceHistoryService:
             race_name=race.name,
             race_date=race.race_date,
             race_distance_meters=race.distance_meters,
-            duration_seconds=detail.duration_seconds,
-            distance_meters=detail.distance_meters,
-            average_speed_mps=detail.average_speed_mps,
-            average_heart_rate=detail.average_heart_rate,
-            average_power=detail.average_power,
+            duration_seconds=scalar_values["duration_seconds"],
+            distance_meters=scalar_values["distance_meters"],
+            average_speed_mps=scalar_values["average_speed_mps"],
+            average_heart_rate=scalar_values["average_heart_rate"],
+            average_power=scalar_values["average_power"],
             split_count=len(detail.splits),
+            scalar_source=scalar_source,
         )
 
 
@@ -381,3 +396,38 @@ def _history_limitations(
         )
     )
     return tuple(limitations)
+
+
+def _resolved_scalars(
+    activity: Activity,
+    detail: ActivityPerformanceDetail,
+) -> tuple[dict[str, int | float | None], str]:
+    """Prefer detail scalars but retain trusted normalized activity facts as fallback."""
+
+    fields = (
+        "duration_seconds",
+        "distance_meters",
+        "average_heart_rate",
+        "maximum_heart_rate",
+        "average_speed_mps",
+        "average_cadence",
+        "average_power",
+    )
+    values: dict[str, int | float | None] = {}
+    detail_count = 0
+    fallback_value_count = 0
+    for field_name in fields:
+        detail_value = getattr(detail, field_name)
+        if detail_value is not None:
+            values[field_name] = detail_value
+            detail_count += 1
+        else:
+            activity_value = getattr(activity, field_name)
+            values[field_name] = activity_value
+            fallback_value_count += int(activity_value is not None)
+    scalar_source = (
+        "activity_summary"
+        if detail_count == 0
+        else "activity_detail" if fallback_value_count == 0 else "mixed"
+    )
+    return values, scalar_source

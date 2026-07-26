@@ -23,6 +23,7 @@ class DetailedActivityFact:
     activity_date: date
     sport_type: str
     split_count: int
+    scalar_source: str
     duration_seconds: int | None
     distance_meters: float | None
 
@@ -44,6 +45,7 @@ class RaceEvidenceFact:
     average_heart_rate: int | None
     average_power: float | None
     split_count: int
+    scalar_source: str
 
 
 @dataclass(frozen=True, slots=True)

@@ -213,6 +213,7 @@ def test_race_evidence_requires_detail_and_an_explicit_same_day_same_sport_link(
     assert len(history.race_evidence) == 1
     assert history.race_evidence[0].race_name == "Synthetic 5k"
     assert history.race_evidence[0].distance_meters == 5_010
+    assert history.race_evidence[0].scalar_source == "activity_detail"
     assert "benchmark_protocols_require_owner_decision" in history.limitations
     with SessionFactory() as session:
         assert session.scalar(select(PerformanceEvidence)) is not None
@@ -239,3 +240,24 @@ def test_race_link_rejects_a_different_activity_day():
         PerformanceHistoryService().link_race_evidence(
             garmin_activity_id="run-1", race_id=race_id
         )
+
+
+def test_performance_history_falls_back_to_normalized_activity_scalars():
+    with session_scope() as session:
+        activity = _activity("run-summary-fallback", date(2026, 7, 20))
+        activity.average_heart_rate = 145
+        session.add(activity)
+        session.flush()
+        session.add(
+            ActivityPerformanceDetail(
+                activity_id=activity.id,
+                splits=[{"split_number": 1, "duration_seconds": 1_800}],
+            )
+        )
+
+    history = PerformanceHistoryService().get_history(end_date=date(2026, 7, 26))
+
+    fact = history.detailed_activities[0]
+    assert fact.duration_seconds == 1_800
+    assert fact.distance_meters == 5_000
+    assert fact.scalar_source == "activity_summary"
