@@ -12,7 +12,7 @@ class TrainingWindowSummary:
     end_date: date
     activity_count: int
     active_days: int
-    running_distance_km: float
+    running_distance_km: float | None
     cycling_duration_hours: float
     total_duration_hours: float
     longest_run_km: float | None

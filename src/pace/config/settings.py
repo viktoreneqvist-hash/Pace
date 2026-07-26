@@ -3,6 +3,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -14,6 +15,7 @@ class Settings:
 
     database_url: str
     garmin_token_dir: Path
+    athlete_timezone: str
 
 
 def load_settings() -> Settings:
@@ -33,10 +35,19 @@ def load_settings() -> Settings:
             str(default_token_dir),
         )
     ).expanduser()
+    athlete_timezone = os.getenv("PACE_ATHLETE_TIMEZONE", "Europe/Stockholm")
+
+    try:
+        ZoneInfo(athlete_timezone)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError(
+            f"PACE_ATHLETE_TIMEZONE is not a valid IANA timezone: {athlete_timezone}"
+        ) from error
 
     return Settings(
         database_url=database_url,
         garmin_token_dir=garmin_token_dir,
+        athlete_timezone=athlete_timezone,
     )
 
 

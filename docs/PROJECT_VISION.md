@@ -73,6 +73,10 @@ Garmin was chosen because it provides both activity data and recovery-related da
 - recovery time
 - device-derived training metrics
 
+Pace stores Garmin activities for traceability, but v1 training calculations
+strictly include only activities normalized as running or cycling. Other
+activity types do not affect totals, counts, active days, or comparisons.
+
 Strava is not part of the planned system.
 
 Existing Strava integration code should be removed rather than maintained as a second provider.
@@ -195,16 +199,22 @@ Target commands include:
 
 ```bash
 pace db init
-pace sync --days 30
+pace sync --days 7
+pace sync --days 7 --end-date 2026-07-18
 pace activities
 pace activities --sport run
-pace metrics summary --days 30
+pace metrics summary --end-date 2026-07-25
 pace note add --date 2026-07-18 --type social_event "Var ute sent och sov dåligt"
 pace note list
 pace explain hrv --days 14
 ```
 
 The CLI is the first interface, not necessarily the final interface.
+
+Activity instants are stored in UTC, while calendar-day queries and metrics use
+the single configured athlete timezone, `Europe/Stockholm`. V1 does not model
+timezone changes during travel; travel may still be stored as ordinary athlete
+context.
 
 A web or mobile interface may be added later if the underlying system proves useful.
 

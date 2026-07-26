@@ -2,337 +2,148 @@
 
 ## Goal
 
-Build a private, local-first endurance coaching system.
+Build a private, local-first endurance coaching system in this order:
+
+```text
+Garmin data
+    -> local database
+    -> deterministic facts
+    -> context memory
+    -> athlete state
+    -> transparent rules
+    -> AI later
+```
+
+The roadmap is deliberately sequential. A later layer must consume stable,
+tested outputs from the layer before it.
+
+## Completed foundation
 
-The development order is intentionally:
+### Batch A — Project reset
 
-1. Reliable data
-2. Deterministic analysis
-3. Athlete context
-4. Interpretation
-5. AI assistance
+- [x] Preserve the final Strava version in `archive/strava-v0.1.0`
+- [x] Preserve tag `strava-final-v0.1.0`
+- [x] Move active development to package `pace`
+- [x] Make Garmin the only v1 provider
+- [x] Align project documentation with the local-first architecture
 
-AI is added only after the underlying system can produce trustworthy information.
+### Batch B — Local database
 
----
+- [x] SQLite engine and SQLAlchemy session management
+- [x] Alembic migration and `pace db init`
+- [x] `activities`, `daily_metrics`, `context_events`, and `sync_runs`
+- [x] Unique activity and daily-metric identities
+- [x] Isolated migrated test database
+- [x] Git-ignore database files and SQLite sidecars
+- [x] Owner-only Pace database directory and file permissions
 
-# Phase 0 — Project Reset
+### Batch C — Garmin ingestion
 
-## Goal
+- [x] Hidden password and MFA input
+- [x] Reusable owner-only local token storage
+- [x] Small Pace-owned Garmin client boundary
+- [x] Activity and daily recovery retrieval
+- [x] Realistic top-level and nested activity normalization
+- [x] Strict `run`, `ride`, or `other` sport contract
+- [x] Atomic activity import and idempotent upserts
+- [x] Endpoint-scoped recovery merging
+- [x] Partial-result handling for unavailable recovery signals
+- [x] Explicit stop behavior for authentication and rate limits
+- [x] Auditable `sync_runs` with actual inserted and changed counts
+- [x] Maximum seven-day batches and historical `--end-date`
+
+### Batch D — Deterministic facts
+
+- [x] Two adjacent seven-day training windows
+- [x] Strict exclusion of every sport except `run` and `ride`
+- [x] Stockholm-local calendar windows over UTC activity instants
+- [x] Explicit missing-distance results instead of invented zeros
+- [x] 28-day HRV, resting-heart-rate, and sleep baselines
+- [x] Seven-day recent recovery averages
+- [x] Observed and expected baseline data-point counts
+- [x] Deterministic `pace metrics summary` output
+- [x] No thresholds, readiness labels, or coaching advice in metrics
+
+## Current quality gate
+
+Before beginning the next batch:
+
+- [x] Ruff passes
+- [x] Full test suite passes
+- [x] Alembic has one head, upgrades a blank database, and reports no drift
+- [x] CLI help and database initialization pass against isolated local state
+- [x] Independent review finds no unresolved P0 or P1 technical risk
+
+## Next: Batch E — Context memory
+
+### Goal
+
+Store facts that Garmin cannot observe and retrieve only the events relevant to
+a date or analysis window.
+
+### Small first slice
+
+- Define the supported event contract from concrete use cases
+- Add `pace note add` with explicit date, type, note, and optional end date
+- Add `pace note list` with date filtering
+- Query active or overlapping events through the repository
+- Add validation and tests for date overlap and missing required input
+
+### Constraints
+
+- Chat history is not application memory.
+- Context notes remain local and are never included wholesale in AI input.
+- Context does not reinterpret metrics inside the metrics layer.
+- Do not add embeddings, a vector database, an LLM, athlete state, or coaching
+  rules in this batch.
+- Injury, goal, schedule, and training-policy semantics that affect coaching
+  require explicit owner decisions before later rule work.
+
+### Success criteria
+
+Pace can store and retrieve structured athlete context by date without changing
+the deterministic Garmin facts.
 
-Align the existing project with the new architecture.
+## Later batches
 
-Tasks:
+### Batch F — Athlete state
 
-- [x] Remove Strava integration
-- [x] Rename project concepts to Pace
-- [x] Update documentation
-- [x] Clean unused dependencies
-- [x] Confirm local-first structure
+Build a compact, structured snapshot from deterministic facts and relevant
+context. Define freshness and confidence explicitly. Do not infer goal
+priority, sport allocation, injury limits, intensity distribution, or training
+progression without owner decisions.
 
-Success criteria:
+### Batch G — Rule engine
 
-- Documentation matches implementation
-- No outdated architectural assumptions remain
+Add transparent, tested rules over athlete state. Rules produce structured
+interpretations, not hidden calculations or medical diagnoses.
 
----
+### Batch H — Explanation layer
 
-# Phase 1 — Python Application Foundation
+Turn structured facts and rule output into concise explanations, initially with
+deterministic templates.
 
-## Goal
+### Batch I — AI assistance
 
-Create a clean and maintainable Python application.
+Use AI only for language, discussion, and bounded reasoning over compact
+structured input. Never send credentials, tokens, raw Garmin payloads, database
+dumps, or unrelated context history.
 
-Tasks:
+### Batch J — Advanced coaching
 
-- [x] Python environment
-- [x] uv dependency management
-- [x] src layout
-- [ ] CLI framework
-- [ ] Configuration system
-- [ ] Logging system
-- [ ] Error handling conventions
+Consider planning, workout generation, research retrieval, and adaptive
+recommendations only after the earlier layers have stable contracts and
+evidence-backed product decisions.
 
-Learn:
+## Explicitly deferred
 
-- Python packaging
-- application structure
-- dependency management
-- configuration management
-
-Success criteria:
-
-The application can run through clear CLI commands.
-
-Example:
-
-```bash
-pace --help
-
-Phase 2 — Database Foundation
-Goal
-Create reliable local data storage.
-Database:
-SQLite
-Tasks:
-
-Database initialization command
-
-SQLAlchemy setup
-
-Migration strategy
-
-Activity model
-
-Daily metric model
-
-Context event model
-
-Sync history model
-Important requirements:
-
-Unique constraints
-
-Duplicate prevention
-
-Test database separation
-Success criteria:
-Running synchronization multiple times does not create duplicates.
-
-
-Phase 3 — Garmin Integration
-Goal
-Automatically collect athlete data.
-Primary source:
-Garmin Connect
-Tasks:
-
-Garmin authentication
-
-Token/session persistence
-
-Activity synchronization
-
-Daily health synchronization
-
-Recovery metric synchronization
-
-Raw payload storage
-
-Data normalization
-Data collected:
-Activities:
-distance
-duration
-heart rate
-power
-cadence
-elevation
-training effect
-Daily metrics:
-HRV
-resting heart rate
-sleep
-stress
-Body Battery
-training readiness
-Success criteria:
-A complete Garmin history can be imported into the local database.
-
-
-Phase 4 — Deterministic Metrics
-Goal
-Generate useful insights without AI.
-All calculations happen in Python.
-Tasks:
-Training volume
-
-Weekly running distance
-
-Weekly cycling duration
-
-Training frequency
-
-Longest sessions
-
-Training progression
-Recovery metrics
-
-HRV baseline
-
-HRV deviation
-
-Resting heart-rate baseline
-
-Sleep trends
-
-Recovery trends
-Training analysis
-
-Intensity distribution
-
-Consistency metrics
-
-Training load estimation
-Requirements:
-Metrics must be:
-deterministic
-tested
-explainable
-Success criteria:
-The system can answer factual questions about training history without AI.
-
-
-Phase 5 — Context Memory
-Goal
-Store information Garmin cannot know.
-Tasks:
-
-Context event model
-
-Add context through CLI
-
-Query context by date
-
-Link context to metrics
-Initial context types:
-illness
-injury
-pain
-alcohol
-poor sleep
-travel
-work stress
-social events
-schedule constraints
-athlete feedback
-Example:
-pace note add \
---type social_event \
---date 2026-07-20 \
-"Late evening and poor sleep"
-Success criteria:
-The system can combine physiological data with athlete-provided context.
-
-
-Phase 6 — Athlete State
-Goal
-Create a structured representation of the athlete's current situation.
-The system should understand:
-current goal
-training phase
-recent training
-recovery status
-active injuries
-schedule constraints
-confidence in signals
-Tasks:
-
-Define athlete state model
-
-Build state calculation
-
-Update state after synchronization
-
-Test state transitions
-Success criteria:
-The system can summarize the athlete's current condition without reading raw history.
-
-
-Phase 7 — Rule Engine
-Goal
-Create transparent coaching logic.
-Rules should interpret metrics and context.
-Initial rules:
-Recovery
-Example:
-If:
-HRV below baseline
-poor sleep
-recent alcohol/social event
-Then:
-reduce confidence that training fatigue is the only explanation
-recommend monitoring
-Injury
-Example:
-If:
-active Achilles pain
-increasing running load
-Then:
-flag progression risk
-suggest conservative approach
-Requirements:
-Rules must be:
-explicit
-testable
-explainable
-Success criteria:
-The system can produce structured interpretations without AI.
-
-
-Phase 8 — Explanation Engine
-Goal
-Convert structured insights into understandable coaching feedback.
-Before AI:
-Use templates.
-Example:
-Input:
-HRV below baseline
-Late social event recorded
-Confidence low
-Output:
-HRV has been below your normal range for two days.
-A recent late evening may explain part of this change.
-Continue monitoring before changing training.
-Success criteria:
-The system can communicate reasoning clearly.
-
-
-Phase 9 — AI Integration
-Goal
-Add AI as a reasoning and communication layer.
-AI should receive:
-metrics
-athlete state
-relevant context
-rule outputs
-AI should not receive:
-raw database dumps
-credentials
-unnecessary history
-Tasks:
-
-Structured outputs
-
-Tool calling
-
-Context retrieval
-
-Coaching conversation
-Use cases:
-explain trends
-answer questions
-summarize weeks
-discuss training decisions
-Phase 10 — Advanced Coaching Agent
-Goal
-Build a true coaching assistant.
-Capabilities:
-training planning
-workout generation
-race preparation
-scientific literature retrieval
-adaptive recommendations
-long-term memory
-Prerequisites:
-All previous phases must be reliable.
-Current Priority
-The immediate development order is:
-Garmin integration
-Database reliability
-Deterministic metrics
-Context memory
-Athlete state
-Rule engine
-AI coach
-The project should resist adding complexity before these foundations work.
+- Multi-user accounts
+- Cloud deployment
+- Web or mobile UI
+- Background sync scheduling
+- Automatic unbounded Garmin backfill
+- Automatic Garmin deletion reconciliation
+- Append-only raw ingestion history
+- Application-level SQLite encryption
+- Embeddings and vector search
+- Medical or clinical interpretation

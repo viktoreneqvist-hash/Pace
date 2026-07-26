@@ -470,11 +470,11 @@ spread into the CLI, database, or future coaching logic.
 - `pace garmin login` asks for the password only in the terminal and never
   saves it to Pace's database or repository.
 - Reusable tokens are stored in `.local/garmin_tokens/`, which is Git-ignored;
-  the library writes its token file with owner-only permissions.
-- `pace sync --days 7` currently imports activities only, in one atomic
-  database operation, and records the result in `sync_runs`.
-- Daily recovery endpoints remain a separate, future batch rather than being
-  silently added to the first network integration.
+  Pace enforces owner-only directory and token-file permissions.
+- `pace sync --days 7` imports activities and available daily recovery data
+  and records the result in `sync_runs`.
+- Pace translates provider authentication, connection, and rate-limit failures
+  at the integration boundary before they reach the CLI.
 
 ---
 
@@ -515,7 +515,8 @@ latest snapshot is only a fallback.
   day, so rate limiting stops further recovery calls and yields a partial run.
 - Missing device features produce nullable metric fields, not invented values.
 - Raw successful provider payloads are retained in the daily metric for
-  debugging and future re-normalization.
+  debugging and future re-normalization. A failed endpoint cannot erase its
+  previous successful normalized values or raw snapshot.
 
 ---
 
@@ -556,11 +557,216 @@ history from masquerading as a complete baseline.
   and percentage deviation for HRV, resting heart rate, and sleep duration.
 - A zero previous training volume yields no percentage change rather than an
   invented infinite increase.
-- Calendar windows use the currently stored UTC activity timestamps. A future
-  athlete-profile timezone is needed before Pace can promise local-day
-  analysis for activities around midnight.
+- Activity instants remain stored in UTC, but calendar windows use the fixed
+  athlete timezone `Europe/Stockholm`.
 - No thresholds, risk labels, or coaching recommendations are created in this
   batch; those belong to the later athlete-state and rule-engine phases.
+
+---
+
+# Decision #15
+
+## Problem
+
+UTC activity timestamps do not by themselves define the athlete's intended
+calendar day around midnight.
+
+## Options
+
+- Use UTC dates everywhere
+- Store a local date on every activity
+- Store UTC instants and derive dates in one configured athlete timezone
+
+## Chosen
+
+Store UTC instants and derive query and analysis dates in
+`Europe/Stockholm`. V1 does not change activity timezone during travel; travel
+can remain an ordinary context event.
+
+## Reason
+
+The athlete trains in one timezone. Deriving the date at the boundary fixes the
+real midnight error without duplicating date fields or building a travel model.
+
+## Consequences
+
+- Repository date ranges convert Stockholm day boundaries to UTC.
+- Deterministic training windows classify each activity by Stockholm date.
+- Changing the timezone is a configuration decision; historical rows do not
+  require migration.
+
+---
+
+# Decision #16
+
+## Problem
+
+Garmin exposes many activity profiles, while Pace v1 is only intended to
+calculate running and cycling facts.
+
+## Options
+
+- Count every Garmin activity in total training
+- Maintain many internal sport families
+- Recognize running and cycling explicitly and exclude everything else
+
+## Chosen
+
+Normalize known running profiles to `run`, known cycling profiles to `ride`,
+and every other or unknown profile to `other`. Only `run` and `ride` count in
+training totals, activity counts, active days, longest sessions, or
+comparisons.
+
+## Reason
+
+Strict inclusion prevents an unfamiliar Garmin profile from silently changing
+Pace's facts. It implements the product scope with one small internal contract.
+
+## Consequences
+
+- Unrelated activities remain locally stored for traceability but are
+  analytically irrelevant.
+- A new Garmin running or cycling profile must be deliberately added to the
+  normalizer and covered by a synthetic test before it counts.
+- No goal priority or running/cycling allocation is inferred.
+
+---
+
+# Decision #17
+
+## Problem
+
+Large historical syncs multiply daily Garmin requests and make rate limits,
+partial progress, and troubleshooting harder.
+
+## Options
+
+- Allow arbitrary date ranges
+- Add persistent cursors, background jobs, and automatic retries
+- Use small explicit, idempotent history batches
+
+## Chosen
+
+Limit one CLI sync to at most seven inclusive days. Use `--end-date` to select
+older seven-day batches and safely repeat a batch when needed.
+
+## Reason
+
+Bounded manual batches are enough for one local user. Idempotent upserts and
+`sync_runs` provide safe recovery without a scheduler or checkpoint subsystem.
+
+## Consequences
+
+- Rate limiting stops the remaining recovery range and returns a retryable exit
+  code without aggressive automatic retries.
+- Already fetched values for the current day are saved before a stop.
+- Importing long history requires several explicit commands.
+
+---
+
+# Decision #18
+
+## Problem
+
+A partial recovery resync can receive fresh data from some Garmin endpoints
+while another endpoint fails. Replacing the whole daily row would erase the
+last known good values from the failed endpoint.
+
+## Options
+
+- Replace the entire daily row on every sync
+- Add append-only provider-ingestion tables and versioned snapshots
+- Update normalized fields and raw payload independently by successful endpoint
+
+## Chosen
+
+Keep one daily row and the latest successful raw snapshot per endpoint. Update
+only fields owned by endpoints that completed. Preserve previous values and raw
+data for endpoints that failed; a successful empty response explicitly clears
+that endpoint's old values.
+
+## Reason
+
+Endpoint-scoped merging prevents data loss and retains useful debugging
+provenance without introducing a second ingestion schema.
+
+## Consequences
+
+- `partial` means available facts were committed and failed endpoint facts were
+  not overwritten.
+- Re-running the same payload reports zero updated rows.
+- Full historical raw versions are not retained; add append-only ingestion only
+  if a concrete audit or reprocessing need appears.
+
+---
+
+# Decision #19
+
+## Problem
+
+The local database and Garmin session are sensitive, but Pace runs for one user
+on a computer without untrusted local accounts.
+
+## Options
+
+- Rely only on default filesystem modes
+- Enforce owner-only files and rely on operating-system disk protection
+- Add SQLCipher and application-managed encryption keys
+
+## Chosen
+
+Use mode `0700` for Pace-owned private directories and `0600` for the SQLite
+database and Garmin token file. Rely on the operating system's disk protection;
+do not add application-level encryption or key management in v1.
+
+## Reason
+
+Owner-only permissions close accidental local exposure and Git ignores prevent
+commits. SQLCipher would add key lifecycle, migration, backup, and support
+complexity without addressing a stated threat.
+
+## Consequences
+
+- `data/`, `.local/`, database sidecars, and tokens remain outside version
+  control.
+- Password and MFA input use hidden terminal prompts.
+- Raw Garmin payloads remain local and must never be copied into future AI
+  context.
+
+---
+
+# Decision #20
+
+## Problem
+
+An activity can disappear from a later Garmin response because it was deleted,
+because the requested range behaved differently, or because the provider
+response was incomplete. Pace must decide whether absence is a delete signal.
+
+## Options
+
+- Treat Pace as an append/update local archive
+- Hard-delete any local activity absent from a successful batch response
+- Add tombstones and a separate reconciliation workflow
+
+## Chosen
+
+Treat v1 as an append/update local archive. Upsert returned activities, but
+never infer deletion from provider absence.
+
+## Reason
+
+Automatic deletion is the only destructive option and requires stronger proof,
+audit counts, and date-range guarantees than the current Garmin boundary
+provides. A tombstone workflow would add schema and product complexity for an
+unobserved v1 use case.
+
+## Consequences
+
+- Garmin edits to an existing activity update its local row.
+- A Garmin-deleted activity remains local and can continue to affect facts.
+- If deletion becomes a real need, add an explicit local exclude/delete command
+  or an auditable reconciliation design rather than silently hard-deleting.
 
 ---
 
@@ -579,3 +785,9 @@ history from masquerading as a complete baseline.
 | AI | Later reasoning layer |
 | Product | Persistent coach |
 | Deployment | Local-first |
+| Athlete timezone | Europe/Stockholm |
+| Included sports | Run and ride only |
+| Sync batch | Maximum seven days, repeatable by end date |
+| Recovery merge | Latest successful snapshot per endpoint |
+| Local privacy | Owner-only files; no application encryption |
+| Provider deletions | Local append/update archive; no inferred deletes |

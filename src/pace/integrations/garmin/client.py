@@ -17,6 +17,9 @@ from garminconnect import (
 )
 
 
+GARMIN_TOKEN_FILENAME = "garmin_tokens.json"
+
+
 class GarminIntegrationError(RuntimeError):
     """A provider failure Pace can present safely to the CLI."""
 
@@ -36,6 +39,46 @@ def prepare_token_directory(token_dir: Path) -> Path:
     expanded_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     expanded_dir.chmod(0o700)
     return expanded_dir
+
+
+def secure_token_file(token_dir: Path) -> None:
+    """Keep Garmin's known token file owner-readable and owner-writable only."""
+
+    token_file = token_dir / GARMIN_TOKEN_FILENAME
+    if token_file.is_file() and token_file.stat().st_mode & 0o777 != 0o600:
+        token_file.chmod(0o600)
+
+
+def require_secure_token_file(token_dir: Path) -> None:
+    """Verify that Garmin persisted a reusable token with private permissions."""
+
+    token_file = token_dir / GARMIN_TOKEN_FILENAME
+    if not token_file.is_file():
+        raise GarminIntegrationError(
+            "Garmin-sessionen kunde inte sparas lokalt. Kontrollera "
+            "filrättigheter och ledigt diskutrymme."
+        )
+
+    try:
+        secure_token_file(token_dir)
+    except OSError as error:
+        raise GarminIntegrationError(
+            "Garmin-sessionens lokala tokenfil kunde inte säkras."
+        ) from error
+
+
+def persist_secure_token_file(api: Garmin, token_dir: Path) -> None:
+    """Persist authenticated in-memory tokens without suppressing write errors."""
+
+    try:
+        api.client.dump(str(token_dir))
+    except Exception as error:
+        raise GarminIntegrationError(
+            "Garmin-sessionen kunde inte sparas lokalt. Kontrollera "
+            "filrättigheter och ledigt diskutrymme."
+        ) from error
+
+    require_secure_token_file(token_dir)
 
 
 class GarminConnectClient:
@@ -79,14 +122,22 @@ class GarminConnectClient:
                 "Kunde inte ansluta till Garmin. Kontrollera nätverket och försök igen."
             ) from error
 
+        persist_secure_token_file(api, client._token_dir)
         return client
 
     @classmethod
     def from_saved_tokens(cls, token_dir: Path) -> "GarminConnectClient":
         """Restore a saved Garmin session without asking for a password."""
 
+        private_token_dir = prepare_token_directory(token_dir)
+        if not (private_token_dir / GARMIN_TOKEN_FILENAME).is_file():
+            raise GarminAuthenticationRequiredError(
+                "Ingen giltig Garmin-session finns lokalt. Kör 'pace garmin login' först."
+            )
+
         api = Garmin()
-        client = cls(api, token_dir)
+        client = cls(api, private_token_dir)
+        require_secure_token_file(client._token_dir)
 
         try:
             api.login(str(client._token_dir))
@@ -94,11 +145,17 @@ class GarminConnectClient:
             raise GarminRateLimitError(
                 "Garmin begränsar förfrågningar just nu. Vänta och kör synken igen senare."
             ) from error
-        except (GarminConnectAuthenticationError, GarminConnectConnectionError) as error:
+        except GarminConnectAuthenticationError as error:
             raise GarminAuthenticationRequiredError(
                 "Ingen giltig Garmin-session finns lokalt. Kör 'pace garmin login' först."
             ) from error
+        except GarminConnectConnectionError as error:
+            raise GarminIntegrationError(
+                "Kunde inte återställa Garmin-sessionen på grund av ett "
+                "anslutningsfel. Försök igen senare."
+            ) from error
 
+        persist_secure_token_file(api, client._token_dir)
         return client
 
     def get_activities(

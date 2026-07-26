@@ -44,3 +44,23 @@ def test_recovery_summary_keeps_missing_signals_explicit():
     assert all(metric.baseline_value is None for metric in summary)
     assert all(metric.latest_value is None for metric in summary)
     assert all(metric.baseline_data_points == 0 for metric in summary)
+
+
+def test_recovery_windows_are_inclusive_and_latest_value_is_date_ordered():
+    summary = summarize_recovery(
+        [
+            metric(date(2026, 6, 14), hrv=60, resting_hr=48, sleep_seconds=28_800),
+            metric(date(2026, 5, 17), hrv=999, resting_hr=99, sleep_seconds=999),
+            metric(date(2026, 5, 18), hrv=40, resting_hr=44, sleep_seconds=25_200),
+            metric(date(2026, 6, 8), hrv=50, resting_hr=46, sleep_seconds=27_000),
+        ],
+        end_date=date(2026, 6, 14),
+    )
+
+    hrv = summary[0]
+    assert hrv.baseline_data_points == 3
+    assert hrv.baseline_value == 50
+    assert hrv.recent_data_points == 2
+    assert hrv.recent_value == 55
+    assert hrv.latest_date == date(2026, 6, 14)
+    assert hrv.latest_value == 60

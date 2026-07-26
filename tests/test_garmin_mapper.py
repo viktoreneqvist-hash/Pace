@@ -2,6 +2,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from pace.integrations.garmin.normalizers import normalize_garmin_activity
 
 
@@ -46,3 +48,60 @@ def test_normalize_activity_list_payload_with_top_level_summary_fields():
     assert activity.elevation_gain_meters == 250
     assert activity.average_heart_rate == 140
     assert activity.maximum_heart_rate == 165
+
+
+@pytest.mark.parametrize(
+    ("provider_type", "expected_type"),
+    [
+        ("trail_running", "run"),
+        ("treadmill_running", "run"),
+        ("virtual_running", "run"),
+        ("indoor_cycling", "ride"),
+        ("gravel_cycling", "ride"),
+        ("e_bike_mountain", "ride"),
+        ("strength_training", "other"),
+    ],
+)
+def test_normalize_activity_profiles_into_strict_sport_families(
+    provider_type: str,
+    expected_type: str,
+):
+    activity = normalize_garmin_activity(
+        {
+            "activityId": provider_type,
+            "startTimeGMT": "2026-06-14T05:30:00Z",
+            "activityType": {"typeKey": provider_type},
+            "duration": 3600,
+            "distance": 10_000,
+        }
+    )
+
+    assert activity.sport_type == expected_type
+
+
+def test_top_level_fields_fill_a_partial_summary_payload():
+    activity = normalize_garmin_activity(
+        {
+            "activityId": 123,
+            "startTimeGMT": "2026-06-14T05:30:00Z",
+            "activityType": {"typeKey": "running"},
+            "duration": 3600,
+            "distance": 10_000,
+            "summaryDTO": {"averageHR": 140},
+        }
+    )
+
+    assert activity.duration_seconds == 3600
+    assert activity.distance_meters == 10_000
+    assert activity.average_heart_rate == 140
+
+
+def test_missing_activity_duration_is_rejected_instead_of_invented_as_zero():
+    with pytest.raises(ValueError, match="missing duration"):
+        normalize_garmin_activity(
+            {
+                "activityId": 123,
+                "startTimeGMT": "2026-06-14T05:30:00Z",
+                "activityType": {"typeKey": "running"},
+            }
+        )

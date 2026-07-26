@@ -226,14 +226,19 @@ This layer converts Garmin data into Pace's internal models.
 ```text
 run
 ride
-nordic_ski
-alpine_ski
-strength
-rowing
 other
 ```
 
 Provider values should not be used directly throughout the application.
+
+V1 uses a deliberately strict classification. Only explicitly recognized
+Garmin running profiles normalize to `run`, and only explicitly recognized
+cycling profiles normalize to `ride`. Every unknown or unrelated profile
+normalizes to `other` and is excluded from every training metric.
+
+Activity timestamps are normalized to UTC instants. Repository date queries
+and metric windows derive calendar dates in the fixed athlete timezone
+`Europe/Stockholm`; v1 does not model travel or timezone changes.
 
 ### Reason for normalization
 
@@ -495,10 +500,10 @@ This layer calculates numerical values in Python.
 
 ### Initial metrics
 
-- activity count by sport
+- running/cycling activity count
 - weekly running distance
 - weekly cycling duration
-- total training duration
+- total running/cycling duration
 - longest run
 - longest ride
 - training frequency
@@ -506,8 +511,7 @@ This layer calculates numerical values in Python.
 - HRV deviation from baseline
 - resting heart-rate baseline
 - resting heart-rate deviation
-- recent sleep-duration trend
-- low-HRV day detection
+- sleep-duration baseline and recent average
 
 ### Output format
 
@@ -516,18 +520,27 @@ Metric functions should return structured objects or typed models.
 Example:
 
 ```python
-HrvSummary(
-    start_date=...,
-    end_date=...,
-    baseline_ms=...,
-    current_value_ms=...,
-    deviation_percent=...,
-    below_baseline=True,
-    confidence="medium",
+RecoveryMetricSummary(
+    metric="hrv",
+    unit="ms",
+    baseline_start_date=...,
+    baseline_end_date=...,
+    baseline_value=...,
+    baseline_data_points=...,
+    expected_baseline_days=28,
+    recent_start_date=...,
+    recent_end_date=...,
+    recent_value=...,
+    recent_data_points=...,
+    latest_value=...,
+    latest_date=...,
+    latest_deviation_percent=...,
 )
 ```
 
 Metric functions should not return coaching prose.
+Thresholds such as "low HRV" and confidence labels belong to later athlete
+state and rule layers, not to this factual metric output.
 
 ### Requirements
 
@@ -539,6 +552,11 @@ Metrics must be:
 - explicit about missing data
 - explicit about calculation windows
 - reproducible from stored records
+
+Missing source values remain missing. A distance total or longest-distance fact
+is `null` when a relevant source activity lacks distance; Pace does not silently
+turn an unknown value into zero. Recovery summaries always expose observed
+data-point counts beside the expected 28-day baseline length.
 
 ---
 
@@ -797,10 +815,11 @@ Initial target commands:
 ```bash
 pace --help
 pace db init
-pace sync --days 14
+pace sync --days 7
+pace sync --days 7 --end-date 2026-07-18
 pace activities
 pace activities --sport run
-pace metrics summary --days 30
+pace metrics summary --end-date 2026-07-25
 pace note add --date 2026-07-18 --type social_event "Var ute sent"
 pace note list
 pace explain hrv --days 14
@@ -822,18 +841,16 @@ The CLI should not:
 
 ---
 
-# Proposed Package Structure
+# Current Package Structure
 
 ```text
 src/pace/
+├── analysis/
+│   ├── models.py
+│   ├── recovery_metrics.py
+│   └── training_metrics.py
 ├── cli/
-│   ├── app.py
-│   ├── db_commands.py
-│   ├── sync_commands.py
-│   ├── activity_commands.py
-│   ├── metric_commands.py
-│   ├── note_commands.py
-│   └── explanation_commands.py
+│   └── app.py
 ├── config/
 │   └── settings.py
 ├── database/
@@ -841,15 +858,15 @@ src/pace/
 │   ├── session.py
 │   └── models/
 │       ├── activity.py
+│       ├── base.py
 │       ├── daily_metric.py
 │       ├── context_event.py
 │       └── sync_run.py
 ├── integrations/
 │   └── garmin/
 │       ├── client.py
-│       ├── auth.py
-│       ├── normalizers.py
-│       └── exceptions.py
+│       ├── daily_metrics.py
+│       └── normalizers.py
 ├── repositories/
 │   ├── activity_repository.py
 │   ├── daily_metric_repository.py
@@ -858,29 +875,12 @@ src/pace/
 ├── services/
 │   ├── garmin_sync_service.py
 │   ├── activity_service.py
-│   ├── metric_service.py
-│   ├── context_service.py
-│   └── explanation_service.py
-├── metrics/
-│   ├── volume.py
-│   ├── hrv.py
-│   ├── resting_heart_rate.py
-│   └── sleep.py
-├── state/
-│   ├── models.py
-│   └── builder.py
-├── rules/
-│   ├── models.py
-│   ├── hrv_rules.py
-│   └── pain_rules.py
-└── explanations/
-    ├── models.py
-    └── templates.py
+│   └── metric_service.py
+└── timezones.py
 ```
 
-This is a target structure, not a requirement to create every file immediately.
-
-Only add modules when a real milestone requires them.
+Context, state, rules, and explanation modules are added only when their
+roadmap batch has a concrete contract. Do not create empty future layers.
 
 ---
 
@@ -897,6 +897,8 @@ The sync service should:
 - record which endpoint failed
 - continue when safe
 - store successful data
+- preserve the last successful values and raw snapshot for an endpoint that failed
+- stop the remaining recovery range on authentication or rate-limit errors
 - mark the sync as partial
 - show a clear summary
 
@@ -907,11 +909,16 @@ Synchronization must be idempotent.
 Running:
 
 ```bash
-pace sync --days 14
-pace sync --days 14
+pace sync --days 7
+pace sync --days 7
 ```
 
 should not create duplicate activities or daily metrics.
+
+V1 treats the local database as an append/update archive. A record missing from
+a later Garmin response is not deleted automatically because absence alone is
+not a sufficiently safe deletion signal. Garmin deletion reconciliation is a
+separate future feature with its own audit requirements.
 
 ## Missing data
 
@@ -931,6 +938,7 @@ Logs must not include:
 
 - Garmin password
 - session-token contents
+- full raw Garmin payloads
 - full sensitive context notes by default
 
 ---
@@ -969,6 +977,9 @@ The following constraints apply until an explicit decision changes them:
 - SQLite is the version 1 database.
 - The CLI is the first interface.
 - Numerical metrics are calculated in Python.
+- Calendar-day analysis uses the fixed `Europe/Stockholm` athlete timezone.
+- Only normalized `run` and `ride` activities count in training metrics.
+- Garmin synchronization uses idempotent batches of at most seven days.
 - Context memory is structured and persistent.
 - Athlete state precedes advanced coaching logic.
 - Rule-based interpretation precedes AI interpretation.

@@ -14,13 +14,26 @@ athlete context. See `docs/PROJECT_VISION.md` and `docs/ARCHITECTURE.md` for the
 - Interface direction: `pace` CLI
 
 Garmin login stores a reusable session token locally in `.local/garmin_tokens/`. Pace never
-stores the Garmin password in the database or repository. The first activity sync is intentionally
-limited to seven calendar days. It imports activities plus available daily recovery
-signals: HRV, sleep, stress, Body Battery, resting heart rate, and training readiness.
+stores the Garmin password in the database or repository. Database and token files use
+owner-only permissions.
+
+Each sync is intentionally limited to seven calendar days. It imports activities plus
+available daily recovery signals: HRV, sleep, stress, Body Battery, resting heart rate,
+and training readiness. Re-running the same batch is safe. Use `--end-date` to import
+older history in bounded batches.
+
+Activity instants are stored as UTC and evaluated in the fixed athlete timezone
+`Europe/Stockholm`. Only Garmin profiles explicitly normalized as running or cycling
+count in metrics; every other activity is excluded.
 
 ```bash
 uv run pace --help
+uv run pace db init
 uv run pace garmin login
 uv run pace sync --days 7
+uv run pace sync --days 7 --end-date 2026-07-18
 uv run pace metrics summary
 ```
+
+See `AGENTS.md` for implementation invariants, privacy rules, and the local validation
+workflow.

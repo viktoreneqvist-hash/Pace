@@ -1,9 +1,98 @@
 """Normalize Garmin daily health payloads into Pace recovery metrics."""
 
+from collections.abc import Collection
 from datetime import date
 from typing import Any
 
 from pace.database.models import DailyMetric
+
+
+SUMMARY_SOURCE = "summary"
+SLEEP_SOURCE = "sleep"
+HRV_SOURCE = "hrv"
+TRAINING_READINESS_SOURCE = "training_readiness"
+
+DAILY_METRIC_FIELDS_BY_SOURCE = {
+    SUMMARY_SOURCE: frozenset(
+        {
+            "resting_heart_rate",
+            "average_stress",
+            "body_battery_high",
+            "body_battery_low",
+        }
+    ),
+    SLEEP_SOURCE: frozenset({"sleep_duration_seconds", "sleep_score"}),
+    HRV_SOURCE: frozenset({"hrv_value", "hrv_status"}),
+    TRAINING_READINESS_SOURCE: frozenset({"training_readiness", "recovery_time_hours"}),
+}
+
+
+def _require_optional_mapping(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    source: str,
+) -> dict[str, Any] | None:
+    """Validate an optional nested object without requiring optional data."""
+
+    value = payload.get(key)
+    if value is not None and not isinstance(value, dict):
+        raise ValueError(f"Garmin {source} payload has invalid {key}.")
+    return value
+
+
+def validate_garmin_daily_payload(source: str, payload: Any) -> None:
+    """Reject malformed endpoint shapes before they can replace known facts."""
+
+    if source not in DAILY_METRIC_FIELDS_BY_SOURCE:
+        raise ValueError(f"Unknown Garmin daily source: {source}.")
+    if source in {SUMMARY_SOURCE, SLEEP_SOURCE} and not isinstance(payload, dict):
+        raise ValueError(f"Garmin {source} payload must be an object.")
+    if source == HRV_SOURCE and payload is not None and not isinstance(payload, dict):
+        raise ValueError("Garmin hrv payload must be an object or null.")
+    if source == TRAINING_READINESS_SOURCE:
+        if payload is not None and not isinstance(payload, (dict, list)):
+            raise ValueError(
+                "Garmin training_readiness payload must be an object, list, or null."
+            )
+        if isinstance(payload, list) and any(
+            not isinstance(snapshot, dict) for snapshot in payload
+        ):
+            raise ValueError(
+                "Garmin training_readiness payload contains an invalid snapshot."
+            )
+
+    if source == SLEEP_SOURCE and isinstance(payload, dict):
+        daily_sleep = _require_optional_mapping(
+            payload,
+            "dailySleepDTO",
+            source=source,
+        )
+        if daily_sleep is not None:
+            sleep_scores = _require_optional_mapping(
+                daily_sleep,
+                "sleepScores",
+                source=source,
+            )
+            if sleep_scores is not None:
+                _require_optional_mapping(
+                    sleep_scores,
+                    "overall",
+                    source=source,
+                )
+
+    if source == HRV_SOURCE and isinstance(payload, dict):
+        _require_optional_mapping(payload, "hrvSummary", source=source)
+
+
+def fields_for_successful_sources(sources: Collection[str]) -> frozenset[str]:
+    """Return normalized fields owned by provider endpoints that succeeded."""
+
+    return frozenset(
+        field_name
+        for source in sources
+        for field_name in DAILY_METRIC_FIELDS_BY_SOURCE[source]
+    )
 
 
 def _nested_value(payload: dict[str, Any], *keys: str) -> Any:
@@ -76,10 +165,10 @@ def normalize_garmin_daily_metric(
     raw_payload = {
         name: payload
         for name, payload in {
-            "summary": summary,
-            "sleep": sleep,
-            "hrv": hrv,
-            "training_readiness": readiness,
+            SUMMARY_SOURCE: summary,
+            SLEEP_SOURCE: sleep,
+            HRV_SOURCE: hrv,
+            TRAINING_READINESS_SOURCE: readiness,
         }.items()
         if payload
     }
@@ -94,11 +183,15 @@ def normalize_garmin_daily_metric(
             "dailySleepDTO",
             "sleepTimeSeconds",
         ),
-        sleep_score=_nested_value(sleep, "dailySleepDTO", "sleepScores", "overall", "value"),
+        sleep_score=_nested_value(
+            sleep, "dailySleepDTO", "sleepScores", "overall", "value"
+        ),
         average_stress=summary.get("averageStressLevel"),
         body_battery_high=summary.get("bodyBatteryHighestValue"),
         body_battery_low=summary.get("bodyBatteryLowestValue"),
-        training_readiness=readiness_snapshot.get("score") if readiness_snapshot else None,
+        training_readiness=readiness_snapshot.get("score")
+        if readiness_snapshot
+        else None,
         recovery_time_hours=recovery_time_hours,
         raw_payload=raw_payload,
     )

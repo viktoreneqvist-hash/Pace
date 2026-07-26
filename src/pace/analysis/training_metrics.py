@@ -4,9 +4,11 @@ from datetime import date, timedelta
 
 from pace.analysis.models import TrainingSummary, TrainingWindowSummary
 from pace.database.models import Activity
+from pace.timezones import athlete_local_date
 
 
 WEEK_DAYS = 7
+RELEVANT_SPORT_TYPES = frozenset({"run", "ride"})
 
 
 def _activities_in_window(
@@ -18,18 +20,36 @@ def _activities_in_window(
     return [
         activity
         for activity in activities
-        if start_date <= activity.start_time.date() <= end_date
+        if activity.sport_type in RELEVANT_SPORT_TYPES
+        and start_date <= athlete_local_date(activity.start_time) <= end_date
     ]
 
 
-def _distance_km(activity: Activity) -> float:
-    return (activity.distance_meters or 0) / 1000
+def _complete_distance_km(activities: list[Activity]) -> float | None:
+    """Return a complete total, or ``None`` when any distance is missing."""
+
+    if any(activity.distance_meters is None for activity in activities):
+        return None
+    return sum(activity.distance_meters or 0 for activity in activities) / 1000
 
 
-def _percentage_change(current: float, previous: float) -> float | None:
+def _longest_distance_km(activities: list[Activity]) -> float | None:
+    """Return a complete longest-distance fact for one sport family."""
+
+    if not activities or any(
+        activity.distance_meters is None for activity in activities
+    ):
+        return None
+    return max(activity.distance_meters or 0 for activity in activities) / 1000
+
+
+def _percentage_change(
+    current: float | None,
+    previous: float | None,
+) -> float | None:
     """Return percentage change only when the comparison window is non-zero."""
 
-    if previous == 0:
+    if current is None or previous in (None, 0):
         return None
     return (current - previous) / previous * 100
 
@@ -48,19 +68,26 @@ def summarize_training_window(
         end_date=end_date,
     )
     runs = [activity for activity in window_activities if activity.sport_type == "run"]
-    rides = [activity for activity in window_activities if activity.sport_type == "ride"]
+    rides = [
+        activity for activity in window_activities if activity.sport_type == "ride"
+    ]
 
     return TrainingWindowSummary(
         start_date=start_date,
         end_date=end_date,
         activity_count=len(window_activities),
-        active_days=len({activity.start_time.date() for activity in window_activities}),
-        running_distance_km=sum(_distance_km(activity) for activity in runs),
-        cycling_duration_hours=sum(activity.duration_seconds for activity in rides) / 3600,
-        total_duration_hours=sum(activity.duration_seconds for activity in window_activities)
+        active_days=len(
+            {athlete_local_date(activity.start_time) for activity in window_activities}
+        ),
+        running_distance_km=_complete_distance_km(runs),
+        cycling_duration_hours=sum(activity.duration_seconds for activity in rides)
         / 3600,
-        longest_run_km=max(map(_distance_km, runs), default=None),
-        longest_ride_km=max(map(_distance_km, rides), default=None),
+        total_duration_hours=sum(
+            activity.duration_seconds for activity in window_activities
+        )
+        / 3600,
+        longest_run_km=_longest_distance_km(runs),
+        longest_ride_km=_longest_distance_km(rides),
     )
 
 

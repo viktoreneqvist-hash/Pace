@@ -8,11 +8,6 @@ __pycache__/
 
 .local/
 
-data/*.db
-data/*.sqlite
-
-data/raw/
-
-data/processed/
+data/
 
 .DS_Store

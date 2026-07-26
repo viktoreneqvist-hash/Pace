@@ -20,12 +20,13 @@ def _metric_values(
     value_getter: Callable[[DailyMetric], float | int | None],
     scale: float,
 ) -> list[tuple[date, float]]:
-    return [
+    values = [
         (daily_metric.date, float(value) / scale)
         for daily_metric in daily_metrics
         if start_date <= daily_metric.date <= end_date
         and (value := value_getter(daily_metric)) is not None
     ]
+    return sorted(values, key=lambda item: item[0])
 
 
 def summarize_recovery_metric(
@@ -61,7 +62,9 @@ def summarize_recovery_metric(
         scale=scale,
     )
 
-    baseline_value = fmean(value for _, value in baseline_values) if baseline_values else None
+    baseline_value = (
+        fmean(value for _, value in baseline_values) if baseline_values else None
+    )
     recent_value = fmean(value for _, value in recent_values) if recent_values else None
     latest_date, latest_value = baseline_values[-1] if baseline_values else (None, None)
     latest_deviation_percent = (

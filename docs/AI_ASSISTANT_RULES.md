@@ -19,6 +19,7 @@ The goal is to:
 
 An AI assistant must understand:
 
+- `AGENTS.md`
 - PROJECT_VISION.md
 - ARCHITECTURE.md
 - DECISIONS.md
@@ -62,6 +63,11 @@ The assistant may make routine technical implementation decisions that follow
 the documented architecture, such as module boundaries, database indexes, test
 fixtures, and error handling. It must still call out material technical
 trade-offs before changing an established architectural decision.
+
+The v1 athlete timezone (`Europe/Stockholm`) and strict inclusion of only
+normalized `run` and `ride` activities are already decided. Do not reopen those
+questions or let `other` activities leak into calculations without a new owner
+decision.
 
 ---
 
@@ -237,6 +243,14 @@ Reasons:
 - debugging
 - future reprocessing
 - auditing
+
+For daily recovery data, preserve only the latest successful snapshot per
+Garmin endpoint. A partial resync must not erase the previous successful
+snapshot for an endpoint that failed.
+
+Raw provider payloads are local ingestion evidence. Do not use them directly as
+future AI context; build compact AI input from normalized facts, selected
+context events, athlete state, and rule output.
 
 ---
 

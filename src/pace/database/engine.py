@@ -2,23 +2,59 @@
 
 from pathlib import Path
 
-from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine, make_url
 
-from pace.config.settings import settings
+from pace.config.settings import PROJECT_ROOT, settings
 
 
-def ensure_sqlite_directory(database_url: str) -> None:
-    """Create the parent directory for a file-based SQLite database."""
+def sqlite_database_path(database_url: str) -> Path | None:
+    """Return the filesystem path for a file-based SQLite database."""
 
-    if not database_url.startswith("sqlite:///"):
-        return
+    url = make_url(database_url)
 
-    if ":memory:" in database_url:
-        return
+    if url.get_backend_name() != "sqlite" or url.database in (None, "", ":memory:"):
+        return None
 
-    database_path = Path(database_url.removeprefix("sqlite:///"))
-    database_path.parent.mkdir(parents=True, exist_ok=True)
+    return Path(url.database).expanduser()
+
+
+def ensure_sqlite_directory(database_url: str) -> Path | None:
+    """Create a private parent directory for a file-based SQLite database.
+
+    Pace hardens its own default ``data`` directory. For a configured database
+    inside an existing shared directory, Pace leaves the directory mode alone
+    and secures only the database file.
+    """
+
+    database_path = sqlite_database_path(database_url)
+    if database_path is None:
+        return None
+
+    database_directory = database_path.parent
+    directory_existed = database_directory.exists()
+    database_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+    default_data_directory = PROJECT_ROOT / "data"
+    should_be_private = (
+        not directory_existed or database_directory == default_data_directory
+    )
+    if should_be_private and database_directory.stat().st_mode & 0o777 != 0o700:
+        database_directory.chmod(0o700)
+
+    return database_path
+
+
+def secure_sqlite_database_file(database_url: str) -> None:
+    """Apply owner-only permissions to an existing SQLite database file."""
+
+    database_path = sqlite_database_path(database_url)
+    if (
+        database_path is not None
+        and database_path.exists()
+        and database_path.stat().st_mode & 0o777 != 0o600
+    ):
+        database_path.chmod(0o600)
 
 
 def build_engine(database_url: str | None = None) -> Engine:
@@ -26,7 +62,7 @@ def build_engine(database_url: str | None = None) -> Engine:
 
     url = database_url or settings.database_url
 
-    ensure_sqlite_directory(url)
+    sqlite_path = ensure_sqlite_directory(url)
 
     engine_options: dict = {
         "pool_pre_ping": True,
@@ -37,7 +73,17 @@ def build_engine(database_url: str | None = None) -> Engine:
             "check_same_thread": False,
         }
 
-    return create_engine(url, **engine_options)
+    pace_engine = create_engine(url, **engine_options)
+
+    if sqlite_path is not None:
+
+        @event.listens_for(pace_engine, "connect")
+        def secure_sqlite_file(_dbapi_connection, _connection_record) -> None:
+            """Keep the local database owner-readable and owner-writable only."""
+
+            secure_sqlite_database_file(url)
+
+    return pace_engine
 
 
 engine = build_engine()

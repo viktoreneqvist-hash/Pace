@@ -3,7 +3,9 @@ from uuid import uuid4
 
 from pace.database.models import Activity
 from pace.database.session import session_scope
-from pace.repositories.activity_repository import get_all_activities as repository_get_all_activities
+from pace.repositories.activity_repository import (
+    get_all_activities as repository_get_all_activities,
+)
 from pace.repositories.activity_repository import upsert_activity
 
 
@@ -34,7 +36,7 @@ def create_activity(
     )
 
     with session_scope() as session:
-        saved_activity, _ = upsert_activity(session, activity)
+        saved_activity, _, _ = upsert_activity(session, activity)
         return saved_activity
 
 
