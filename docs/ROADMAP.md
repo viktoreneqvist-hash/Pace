@@ -262,6 +262,63 @@ Create a block view to an explicit A-race and a detailed one- or two-week
 draft. Capture structured pass outcomes and optional, explicitly shared
 feedback for a later revision draft; never overwrite an accepted plan.
 
+- [x] Store a local planning preference with availability and sport role, not
+  self-reported performance volume or PB; let the coach decide session mix
+  from selected facts rather than a fixed Python ratio
+- [x] Use a rolling four-week general-goal block when no A-race is selected
+- [x] Generate an explicit, stateless AI plan draft with a block outline and
+  seven or fourteen detailed days
+- [x] Send only selected normalized Pace facts, context metadata, and optional
+  explicitly shared feedback; never raw Garmin data or context-note text
+- [x] Validate plan dates, required session fields, health/history gates, and
+  sport-specific intensity eligibility in Python before writing a draft
+- [x] Accept a plan explicitly; preserve every prior version and mark only an
+  accepted parent plan superseded after accepting its revision
+- [x] Store `completed`, `completed_limited`, or `skipped` session feedback
+- [x] Generate only a short new revision draft from an accepted plan; never
+  overwrite the block outline or an accepted plan automatically
+- [x] Support cycling distance, duration, and athlete-confirmed Garmin zone
+  1–5 targets after two recent rides; let the coach decide zone distribution,
+  retain the power-test requirement for cycling power, and never generate
+  cycling pace
+- [x] Persist a separate coach assessment with observed facts, inferences,
+  rationale, uncertainties, and non-citation coaching principles for every new
+  plan draft
+- [x] Harden the current plan contract: structured numeric targets and Garmin
+  zones, fact-catalog-only assessment references, Python availability checks,
+  full block-outline coverage, immutable bounded revisions, and no acceptance
+  of legacy/incomplete drafts
+- [x] Add integrity gates around planning: stale Garmin-history blocking,
+  SQLite foreign-key enforcement and upgrade checks, and migration cleanup of
+  the superseded fixed weekly-run preference
+
+### Batch J3.3 — Local plan presentation
+
+- [x] Add readable terminal views for a full plan review and today's/next
+  planned session without changing planning or coaching logic
+- [x] Generate a self-contained, owner-only local HTML plan report without a
+  web server, AI call, raw Garmin payload, or private note text
+- [x] Keep reports Git-ignored and make the report a read-only view over a
+  persisted plan, leaving acceptance, feedback, and revisions explicit
+
+### Batch K1 — Curated coaching knowledge
+
+Build a local, source-attributed knowledge library before treating an AI
+coaching rationale as evidence-grounded. Start with human-reviewed Markdown
+briefs and deterministic topic selection; defer embeddings and vector search
+until the library is large enough to need them.
+
+- [x] Add a checked-in local source catalog and reviewed Markdown briefs for
+  progression, intensity, taper, HRV context, and run/cycle combination
+- [x] Select at most three topic-relevant briefs deterministically for each
+  AI question or plan draft; do not fetch the web at runtime
+- [x] Send only selected brief claims, limitations, applicability, and source
+  IDs to the model, never raw papers or the full library
+- [x] Require and validate plan/answer knowledge references against the
+  selected IDs, and expose each brief through `pace knowledge list/show`
+- [x] Keep the library human-reviewed and versioned with the repository;
+  defer automatic ingestion, embeddings, and vector search
+
 ## Explicitly deferred
 
 - Multi-user accounts

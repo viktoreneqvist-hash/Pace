@@ -16,6 +16,7 @@ from pace.services.race_service import resolved_taper
 
 
 REQUIRED_HISTORY_DAYS = 28
+MAX_HISTORY_STALENESS_DAYS = 1
 PLANNING_BLOCKER_EVENT_TYPES = frozenset({"illness", "pain"})
 
 
@@ -50,6 +51,12 @@ class PlanReadinessService:
         if not history.is_contiguous:
             blockers.append(PlanningBlocker(code="insufficient_garmin_history"))
             limitations.append("requires_28_contiguous_garmin_history_days")
+        elif (
+            history.covered_end_date is None
+            or (as_of_date - history.covered_end_date).days > MAX_HISTORY_STALENESS_DAYS
+        ):
+            blockers.append(PlanningBlocker(code="stale_garmin_history"))
+            limitations.append("garmin_history_is_stale")
         if not races:
             limitations.append("no_upcoming_race_uses_general_goal")
 

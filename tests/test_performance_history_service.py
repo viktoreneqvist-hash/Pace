@@ -6,6 +6,7 @@ from sqlalchemy import select
 from pace.database.models import (
     Activity,
     ActivityPerformanceDetail,
+    HeartRateZoneProfile,
     PerformanceEvidence,
     PerformanceSyncRun,
     Race,
@@ -331,9 +332,23 @@ def test_readiness_requires_evidence_and_two_recent_same_sport_activities():
             ]
         )
         evidence_activity = _activity("run-evidence", date(2026, 7, 12))
+        generic_ride_evidence = _activity(
+            "ride-generic-evidence", date(2026, 7, 12), "ride"
+        )
         first_recent = _activity("run-recent-one", date(2026, 7, 20))
         second_recent = _activity("run-recent-two", date(2026, 7, 25))
-        session.add_all((evidence_activity, first_recent, second_recent))
+        first_recent_ride = _activity("ride-recent-one", date(2026, 7, 20), "ride")
+        second_recent_ride = _activity("ride-recent-two", date(2026, 7, 25), "ride")
+        session.add_all(
+            (
+                evidence_activity,
+                generic_ride_evidence,
+                first_recent,
+                second_recent,
+                first_recent_ride,
+                second_recent_ride,
+            )
+        )
         session.flush()
         session.add_all(
             [
@@ -341,10 +356,30 @@ def test_readiness_requires_evidence_and_two_recent_same_sport_activities():
                     activity_id=evidence_activity.id,
                     splits=[],
                 ),
+                ActivityPerformanceDetail(
+                    activity_id=generic_ride_evidence.id,
+                    splits=[
+                        {"duration_seconds": 1_200, "average_power": 300},
+                    ],
+                ),
                 PerformanceEvidence(
                     activity_id=evidence_activity.id,
                     evidence_type="benchmark",
                     benchmark_protocol="run_5k_time_trial",
+                ),
+                PerformanceEvidence(
+                    activity_id=generic_ride_evidence.id,
+                    evidence_type="race",
+                ),
+                HeartRateZoneProfile(
+                    sport_type="ride",
+                    zones=[
+                        {"zone": 1, "lower_bpm": 100, "upper_bpm": 120},
+                        {"zone": 2, "lower_bpm": 121, "upper_bpm": 140},
+                        {"zone": 3, "lower_bpm": 141, "upper_bpm": 155},
+                        {"zone": 4, "lower_bpm": 156, "upper_bpm": 170},
+                        {"zone": 5, "lower_bpm": 171, "upper_bpm": 190},
+                    ],
                 ),
             ]
         )
@@ -355,5 +390,9 @@ def test_readiness_requires_evidence_and_two_recent_same_sport_activities():
     assert run.status == "ready_for_intensity_target"
     assert run.can_propose_intensity_target is True
     assert run.recent_activity_count == 2
-    assert ride.status == "general_plan_only"
-    assert "no_verified_evidence_in_last_12_weeks" in ride.limitations
+    assert ride.status == "ready_for_hr_zone_target"
+    assert ride.allowed_intensity_types == ("hr_zone", "none", "rpe")
+    assert ride.can_propose_intensity_target is True
+    assert "power_target_requires_ride_20min_power_test" in ride.limitations
+    assert len(ride.intensity_evidence) == 1
+    assert ride.intensity_evidence[0].qualifying_power_watts is None

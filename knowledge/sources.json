@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "oliviera_2024_intensity",
+      "title": "Comparison of Polarized Versus Other Types of Endurance Training Intensity Distribution on Athletes' Endurance Performance",
+      "authors": "Oliveira, Boppre, Fonseca",
+      "publication_year": 2024,
+      "evidence_type": "systematic review and meta-analysis",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/38717713/"
+    },
+    {
+      "id": "wang_2023_taper",
+      "title": "Effects of tapering on performance in endurance athletes",
+      "authors": "Wang, Wang, Gao",
+      "publication_year": 2023,
+      "evidence_type": "systematic review and meta-analysis",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/37163550/"
+    },
+    {
+      "id": "vesterinen_2016_hrv",
+      "title": "Individual Endurance Training Prescription with Heart Rate Variability",
+      "authors": "Vesterinen et al.",
+      "publication_year": 2016,
+      "evidence_type": "randomized controlled trial",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/26909534/"
+    },
+    {
+      "id": "menges_2026_cross_training",
+      "title": "Cross-training between running and cycling: effects on VO2max and running performance",
+      "authors": "Menges, Dindorf, Dully, Fröhlich",
+      "publication_year": 2026,
+      "evidence_type": "systematic review and meta-analysis",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/42267259/"
+    },
+    {
+      "id": "haugen_2023_long_term",
+      "title": "Long-Term Development of Training Characteristics and Performance-Determining Factors in Elite/International and World-Class Endurance Athletes",
+      "authors": "Haugen et al.",
+      "publication_year": 2023,
+      "evidence_type": "scoping review",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/37178349/"
+    }
+  ]
+}

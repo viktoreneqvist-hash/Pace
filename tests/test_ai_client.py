@@ -27,7 +27,8 @@ def test_responses_client_uses_one_stateless_structured_request_without_tools():
         SimpleNamespace(
             output_text=(
                 '{"answer":"Svar.","observations":["Fakta."],'
-                '"uncertainties":["Begränsning."],"context_event_draft":null}'
+                '"uncertainties":["Begränsning."],"context_event_draft":null,'
+                '"knowledge_references":[]}'
             )
         )
     )
@@ -60,7 +61,7 @@ def test_responses_client_rejects_an_invalid_unsaved_context_draft():
                 '{"answer":"Svar.","observations":[],"uncertainties":[],'
                 '"context_event_draft":{"event_type":"alcohol",'
                 '"start_date":"2026-07-25","end_date":"2026-07-24",'
-                '"ongoing":false,"note":"Sent."}}'
+                '"ongoing":false,"note":"Sent."},"knowledge_references":[]}'
             )
         )
     )
@@ -71,3 +72,26 @@ def test_responses_client_rejects_an_invalid_unsaved_context_draft():
 
     with pytest.raises(PaceAIResponseError, match="slutdatum"):
         client.answer(PaceAIRequest(question="Test", context={}))
+
+
+def test_responses_client_rejects_a_knowledge_reference_outside_selected_briefs():
+    responses = FakeResponses(
+        SimpleNamespace(
+            output_text=(
+                '{"answer":"Svar.","observations":[],"uncertainties":[],'
+                '"context_event_draft":null,"knowledge_references":["unknown"]}'
+            )
+        )
+    )
+    client = OpenAIResponsesClient(
+        api_key="test-key",
+        client=SimpleNamespace(responses=responses),
+    )
+
+    with pytest.raises(PaceAIResponseError, match="inte valts av Pace"):
+        client.answer(
+            PaceAIRequest(
+                question="Test",
+                context={"knowledge_briefs": {"briefs": [{"id": "known"}]}},
+            )
+        )

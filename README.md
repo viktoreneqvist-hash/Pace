@@ -40,5 +40,57 @@ uv run pace rules evaluate
 uv run pace explain
 ```
 
+### Reviewable plan drafts
+
+After at least 28 contiguous, current Garmin days and a saved preference, Pace
+can ask the coach model for a local plan *draft*. It never accepts or alters a
+plan automatically. The model receives a small, provenance-labelled fact
+catalog rather than raw Garmin payloads or private note text; Python checks
+availability, history freshness, structured targets, and plan versioning.
+
+```bash
+uv run pace preferences set --sport-role ride_primary --day mon:any --day tue:any
+uv run pace zones show --sport ride
+uv run pace plan readiness
+uv run pace plan draft --days 14
+uv run pace plan review --id 3
+uv run pace plan report --id 3
+uv run pace plan accept --id 2
+uv run pace plan today
+uv run pace plan feedback --session-id 5 --outcome completed
+uv run pace plan revise --id 2 --days 7
+```
+
+Every cycling session has distance, duration, and a saved Garmin heart-rate
+zone. The model can additionally use RPE, verified cycling power, or no
+primary target; cycling pace is never generated. Running pace and cycling
+power require an eligible, verified same-sport fact. Existing draft plans from
+before the current contract remain readable but must be regenerated before
+they can be accepted or revised.
+
+`pace plan review` is a readable terminal view. `pace plan report` writes a
+self-contained private report to `reports/plan-<id>.html`; open that file in a
+browser when you want to read the plan away from the terminal. The directory
+and report use owner-only permissions, are ignored by Git, contain no raw
+Garmin payloads or private feedback/context-note text, and never change a
+plan.
+
+### Curated coaching knowledge
+
+Pace has a small local library of reviewed coaching briefs. It is not a live
+web search and it is not a database of raw papers. Python selects at most
+three relevant briefs for an AI question or plan draft, and the model may cite
+only those brief IDs. The CLI can show exactly what a brief supports and what
+it does not support:
+
+```bash
+uv run pace knowledge list
+uv run pace knowledge show --id hrv_training_context
+```
+
+The library is versioned in `knowledge/`. Updating it is a deliberate reviewed
+code change; Pace does not download research or learn from external sources at
+runtime.
+
 See `AGENTS.md` for implementation invariants, privacy rules, and the local validation
 workflow.

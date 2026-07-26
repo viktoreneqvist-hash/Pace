@@ -49,6 +49,7 @@ def test_ai_context_contains_selected_facts_but_never_context_note_text_or_raw_p
         athlete_state=athlete_state,
         rule_summary=rule_summary,
         explanation=explanation,
+        knowledge_briefs={"library_schema_version": 1, "briefs": []},
     )
     serialized_context = json.dumps(context)
 
@@ -65,3 +66,4 @@ def test_ai_context_contains_selected_facts_but_never_context_note_text_or_raw_p
     assert "Private context note" not in serialized_context
     assert "private_provider_value" not in serialized_context
     assert "private_daily_value" not in serialized_context
+    assert context["knowledge_briefs"] == {"library_schema_version": 1, "briefs": []}

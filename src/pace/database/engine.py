@@ -1,6 +1,7 @@
 """SQLAlchemy engine configuration."""
 
 from pathlib import Path
+import sqlite3
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine, make_url
@@ -57,6 +58,20 @@ def secure_sqlite_database_file(database_url: str) -> None:
         database_path.chmod(0o600)
 
 
+def assert_sqlite_foreign_key_integrity(database_url: str) -> None:
+    """Refuse an upgrade that would hide existing SQLite referential damage."""
+
+    database_path = sqlite_database_path(database_url)
+    if database_path is None or not database_path.exists():
+        return
+    with sqlite3.connect(database_path) as connection:
+        violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise RuntimeError(
+            "SQLite foreign-key integrity check failed; repair the local database before upgrade."
+        )
+
+
 def build_engine(database_url: str | None = None) -> Engine:
     """Create a SQLAlchemy engine for Pace."""
 
@@ -74,6 +89,16 @@ def build_engine(database_url: str | None = None) -> Engine:
         }
 
     pace_engine = create_engine(url, **engine_options)
+
+    if url.startswith("sqlite"):
+
+        @event.listens_for(pace_engine, "connect")
+        def configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
+            """Enable SQLite referential integrity on every Pace connection."""
+
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
 
     if sqlite_path is not None:
 

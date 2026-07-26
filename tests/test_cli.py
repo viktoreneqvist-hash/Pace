@@ -533,6 +533,27 @@ def test_ask_parser_accepts_a_reproducible_end_date():
     assert args.end_date == date(2026, 7, 25)
 
 
+def test_knowledge_commands_read_the_local_curated_library_without_an_ai_call(capsys):
+    list_exit_code = app.run_knowledge_list(Namespace())
+    list_output = capsys.readouterr().out
+    show_exit_code = app.run_knowledge_show(Namespace(brief_id="hrv_training_context"))
+    show_output = capsys.readouterr().out
+
+    assert list_exit_code == 0
+    assert "hrv_training_context" in list_output
+    assert show_exit_code == 0
+    assert "Begränsningar:" in show_output
+    assert "pubmed.ncbi.nlm.nih.gov" in show_output
+
+
+def test_knowledge_parser_accepts_a_brief_id():
+    parser = app.build_parser()
+
+    args = parser.parse_args(["knowledge", "show", "--id", "progression_continuity"])
+
+    assert args.brief_id == "progression_continuity"
+
+
 def test_race_add_passes_only_explicit_race_choices_to_the_service(monkeypatch, capsys):
     captured: dict[str, object] = {}
 

@@ -34,6 +34,15 @@ Do not diagnose health conditions or give training, medical, or safety advice.
 Clearly acknowledge insufficient data. You cannot access Garmin, the local
 database, previous conversations, or context-note text.
 
+The input may contain selected curated knowledge briefs. Use them only within
+their supported_claims and limitations. List only selected brief IDs in
+knowledge_references when they support your answer; use an empty list when
+they do not. Do not call model background knowledge a Pace source.
+
+Tone: direct, factual, and unsentimental. Do not praise, soothe, use therapy
+language, or add generic wellness or care-provider boilerplate. State what the
+selected facts support, what they do not support, and what data is missing.
+
 You may propose context_event_draft only when the athlete explicitly volunteers
 new relevant context or explicitly asks to prepare a note. A draft is never
 saved automatically and must be presented as requiring confirmation. Otherwise
@@ -48,6 +57,7 @@ ANSWER_SCHEMA: dict[str, object] = {
         "observations",
         "uncertainties",
         "context_event_draft",
+        "knowledge_references",
     ],
     "properties": {
         "answer": {"type": "string"},
@@ -78,6 +88,10 @@ ANSWER_SCHEMA: dict[str, object] = {
                     },
                 },
             ]
+        },
+        "knowledge_references": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
         },
     },
 }
@@ -138,7 +152,10 @@ class OpenAIResponsesClient:
                 "AI-tjänsten gav ett ogiltigt svar. Dina Pace-data har inte ändrats."
             ) from error
 
-        return _parse_answer(payload)
+        return _parse_answer(
+            payload,
+            selected_knowledge_ids=_selected_knowledge_ids(request.context),
+        )
 
 
 def _render_input(request: PaceAIRequest) -> str:
@@ -162,7 +179,11 @@ def _find_refusal(response: Any) -> str | None:
     return None
 
 
-def _parse_answer(payload: object) -> PaceAIAnswer:
+def _parse_answer(
+    payload: object,
+    *,
+    selected_knowledge_ids: frozenset[str] = frozenset(),
+) -> PaceAIAnswer:
     """Validate the provider JSON again before it reaches the Pace CLI."""
 
     if not isinstance(payload, dict):
@@ -173,6 +194,7 @@ def _parse_answer(payload: object) -> PaceAIAnswer:
         "observations",
         "uncertainties",
         "context_event_draft",
+        "knowledge_references",
     }
     if set(payload) != expected_keys:
         raise PaceAIResponseError("AI-svaret hade fel fält.")
@@ -187,12 +209,43 @@ def _parse_answer(payload: object) -> PaceAIAnswer:
     ):
         raise PaceAIResponseError("AI-svaret hade ogiltigt innehåll.")
 
+    knowledge_references = _parse_knowledge_references(
+        payload["knowledge_references"], selected_knowledge_ids=selected_knowledge_ids
+    )
     return PaceAIAnswer(
         answer=answer,
         observations=tuple(observations),
         uncertainties=tuple(uncertainties),
         context_event_draft=_parse_context_event_draft(payload["context_event_draft"]),
+        knowledge_references=knowledge_references,
     )
+
+
+def _selected_knowledge_ids(context: dict[str, object]) -> frozenset[str]:
+    knowledge = context.get("knowledge_briefs")
+    if not isinstance(knowledge, dict):
+        return frozenset()
+    briefs = knowledge.get("briefs")
+    if not isinstance(briefs, list):
+        return frozenset()
+    return frozenset(
+        item["id"]
+        for item in briefs
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    )
+
+
+def _parse_knowledge_references(
+    value: object, *, selected_knowledge_ids: frozenset[str]
+) -> tuple[str, ...]:
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or not item.strip() for item in value
+    ):
+        raise PaceAIResponseError("AI-svaret hade ogiltiga kunskapsreferenser.")
+    references = tuple(value)
+    if set(references).difference(selected_knowledge_ids):
+        raise PaceAIResponseError("AI-svaret citerade kunskap som inte valts av Pace.")
+    return references
 
 
 def _is_string_list(value: object) -> bool:

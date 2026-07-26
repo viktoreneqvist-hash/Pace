@@ -70,10 +70,57 @@ Garmin provider
   It fetches only locally stored `run` and `ride` activities and persists a
   normalized scalar and split contract. Never store or send detailed Garmin
   routes, coordinates, chart samples, or raw detail payloads.
-- A later AI plan may propose intensity only when Python reports both verified
+- Running pace and cycling power targets require Python to report verified
   same-sport evidence from the last 12 weeks and at least two same-sport
-  activities in the last 14 days. This is an eligibility gate, never a target
-  calculation or fitness score.
+  activities in the last 14 days. Cycling power specifically requires the
+  explicit `ride_20min_power_test` benchmark. The sole exception is cycling
+  riding with confirmed Garmin heart-rate zones: it needs two recent rides and
+  a manually confirmed local Garmin zone profile. Zones 1–5 are permitted.
+  The coach model, not Python, decides their distribution from selected facts
+  and explains its reasoning. Never derive zones from observed heart rate or
+  prescribe cycling pace. These are eligibility gates, never target
+  calculations or fitness scores.
+- Plan generation is an explicit, stateless AI call that can create only a
+  local `draft` plan version. It must not change an accepted plan. Acceptance,
+  session feedback, and a subsequent revision draft are separate athlete
+  actions; feedback text is included in an AI revision only when the athlete
+  marked that individual note as shareable.
+- Every new plan uses the current structured plan contract. Its coaching
+  assessment must cite one or more IDs from the selected, provenance-labelled
+  fact catalog and must contain explicit inference, rationale, uncertainty,
+  and general-principle fields. Do not send raw payloads, note text, database
+  dumps, or an unbounded prior plan to the AI. Legacy drafts remain readable
+  but cannot be accepted or revised; generate a fresh draft instead.
+- Sport role and availability are athlete preferences. The coach model decides
+  session mix, frequency, and progression from selected Pace facts, then makes
+  its conclusions and uncertainties reviewable. Python enforces selected
+  weekdays and explicit daily time caps. Every planned cycling session requires
+  distance, duration, and an allowed Garmin zone target. Its additional
+  primary target is a structured RPE, verified run pace, verified cycling
+  power, or none — never free text. Cycling pace is forbidden.
+- Revisions preserve the accepted parent's block dates and block outline. A
+  revision remains a draft until accepted; once one sibling revision is
+  accepted, other siblings are stale and cannot be accepted.
+- SQLite foreign keys are enabled on every application connection. `pace db
+  init` checks existing SQLite foreign-key integrity before an upgrade. Plan
+  readiness also blocks drafting when otherwise-contiguous Garmin history is
+  more than one day stale.
+- The plan terminal review and HTML report are local presentation layers over
+  an already persisted plan. They must not call an AI model, sync Garmin, or
+  mutate the plan. HTML reports are written only under Git-ignored `reports/`
+  with owner-only permissions and omit raw payloads and all private note text.
+- K1 coaching knowledge is a checked-in, curated local library, never a
+  runtime web search. Python selects at most three topic-relevant briefs for
+  an AI request; each model knowledge reference must be one of those selected
+  IDs. Briefs state supported claims and limitations, and cannot override
+  local Pace facts, athlete preferences, eligibility gates, or safety rules.
+  Do not add automatic source ingestion, raw-paper storage, embeddings, or a
+  vector database without a new product decision.
+- Pace's coach voice is direct, factual, and unsentimental. Do not add praise,
+  therapy language, generic wellness language, or routine care-provider
+  referrals for ordinary fatigue, poor sleep, or discomfort. This is not a
+  license to prescribe through pain or give medical advice: say plainly when
+  the factual situation supports reducing or skipping a session.
 
 ## Safety and privacy
 

@@ -11,7 +11,10 @@ from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 
 from pace.config.settings import PROJECT_ROOT, resolve_openai_api_key, settings
-from pace.database.engine import secure_sqlite_database_file
+from pace.database.engine import (
+    assert_sqlite_foreign_key_integrity,
+    secure_sqlite_database_file,
+)
 from pace.integrations.garmin import (
     GarminAuthenticationRequiredError,
     GarminConnectClient,
@@ -31,6 +34,12 @@ from pace.services.explanation_service import ExplanationService
 from pace.explanations.hrv import render_explanation_summary
 from pace.ai.client import OpenAIResponsesClient, PaceAIError
 from pace.ai.models import ContextEventDraft, PaceAIAnswer
+from pace.knowledge.library import (
+    KnowledgeLibraryError,
+    brief_by_id,
+    load_knowledge_library,
+    source_by_id,
+)
 from pace.services.ai_ask_service import PaceAskService
 from pace.services.plan_readiness_service import PlanReadinessService
 from pace.services.race_service import (
@@ -44,6 +53,23 @@ from pace.services.race_service import (
 from pace.services.capacity_service import CapacityService
 from pace.services.performance_history_service import PerformanceHistoryService
 from pace.performance.protocols import SUPPORTED_BENCHMARK_PROTOCOLS
+from pace.ai.plan_client import OpenAIPlanClient
+from pace.services.training_plan_service import (
+    SUPPORTED_FEEDBACK_OUTCOMES,
+    TrainingPlanService,
+)
+from pace.services.training_preference_service import (
+    SUPPORTED_SPORT_ROLES,
+    TrainingPreferenceInput,
+    TrainingPreferenceService,
+)
+from pace.services.heart_rate_zone_service import HeartRateZoneInput, HeartRateZoneService
+from pace.presentation.plan_views import (
+    render_plan_review,
+    render_plan_today,
+    select_plan_for_today,
+    write_plan_html_report,
+)
 
 
 def positive_days(value: str) -> int:
@@ -62,6 +88,16 @@ def positive_days(value: str) -> int:
             "Använd --end-date för äldre sjudagarsbatcher."
         )
 
+    return days
+
+
+def plan_days(value: str) -> int:
+    try:
+        days = int(value)
+    except ValueError as error:
+        raise ArgumentTypeError("--days måste vara 7 eller 14.") from error
+    if days not in {7, 14}:
+        raise ArgumentTypeError("--days måste vara 7 eller 14.")
     return days
 
 
@@ -294,6 +330,21 @@ def build_parser() -> ArgumentParser:
     )
     ask_parser.set_defaults(handler=run_ask)
 
+    knowledge_parser = subparsers.add_parser(
+        "knowledge",
+        help="visa Paces lokala, kuraterade kunskapsunderlag utan nätverksanrop",
+    )
+    knowledge_subparsers = knowledge_parser.add_subparsers(dest="knowledge_command")
+    knowledge_list_parser = knowledge_subparsers.add_parser(
+        "list", help="lista tillgängliga kunskapsbriefs"
+    )
+    knowledge_list_parser.set_defaults(handler=run_knowledge_list)
+    knowledge_show_parser = knowledge_subparsers.add_parser(
+        "show", help="visa en brief, dess begränsningar och källor"
+    )
+    knowledge_show_parser.add_argument("--id", dest="brief_id", required=True)
+    knowledge_show_parser.set_defaults(handler=run_knowledge_show)
+
     race_parser = subparsers.add_parser(
         "race",
         help="hantera kommande lopp för framtida planering",
@@ -366,7 +417,7 @@ def build_parser() -> ArgumentParser:
 
     plan_parser = subparsers.add_parser(
         "plan",
-        help="visa objektiva förutsättningar inför framtida planering",
+        help="skapa, granska och följa lokala Pace-planer",
     )
     plan_subparsers = plan_parser.add_subparsers(dest="plan_command")
     plan_readiness_parser = plan_subparsers.add_parser(
@@ -379,6 +430,148 @@ def build_parser() -> ArgumentParser:
         help="planeringsdatum YYYY-MM-DD (standard: idag)",
     )
     plan_readiness_parser.set_defaults(handler=run_plan_readiness)
+
+    plan_draft_parser = plan_subparsers.add_parser(
+        "draft",
+        help="skapa ett AI-genererat, granskningsbart planutkast",
+    )
+    plan_draft_parser.add_argument(
+        "--race-id",
+        type=int,
+        help="valfritt A-lopp som definierar blocket; utan lopp används allmänt mål",
+    )
+    plan_draft_parser.add_argument(
+        "--days",
+        type=plan_days,
+        default=14,
+        help="antal detaljerade dagar, 7 eller 14 (standard: 14)",
+    )
+    plan_draft_parser.add_argument(
+        "--end-date",
+        type=iso_date,
+        help="planeringsdatum YYYY-MM-DD (standard: idag)",
+    )
+    plan_draft_parser.set_defaults(handler=run_plan_draft)
+
+    plan_list_parser = plan_subparsers.add_parser(
+        "list",
+        help="visa lokala utkast, accepterade planer och tidigare versioner",
+    )
+    plan_list_parser.set_defaults(handler=run_plan_list)
+
+    plan_show_parser = plan_subparsers.add_parser(
+        "show",
+        help="visa ett planutkast eller en accepterad plan",
+    )
+    plan_show_parser.add_argument("--id", type=int, required=True)
+    plan_show_parser.set_defaults(handler=run_plan_show)
+
+    plan_today_parser = plan_subparsers.add_parser(
+        "today",
+        help="visa dagens eller nästa pass i läsbart format",
+    )
+    plan_today_parser.add_argument(
+        "--id",
+        type=int,
+        help="valfritt plan-id; krävs för att förhandsvisa ett utkast",
+    )
+    plan_today_parser.add_argument(
+        "--date",
+        type=iso_date,
+        help="datum YYYY-MM-DD (standard: idag)",
+    )
+    plan_today_parser.set_defaults(handler=run_plan_today)
+
+    plan_review_parser = plan_subparsers.add_parser(
+        "review",
+        help="visa en plan, coachbedömning och utfall i läsbart format",
+    )
+    plan_review_parser.add_argument("--id", type=int, required=True)
+    plan_review_parser.set_defaults(handler=run_plan_review)
+
+    plan_report_parser = plan_subparsers.add_parser(
+        "report",
+        help="skapa en privat HTML-rapport för en lokal plan",
+    )
+    plan_report_parser.add_argument("--id", type=int, required=True)
+    plan_report_parser.set_defaults(handler=run_plan_report)
+
+    plan_accept_parser = plan_subparsers.add_parser(
+        "accept",
+        help="acceptera ett utkast utan att radera tidigare planversioner",
+    )
+    plan_accept_parser.add_argument("--id", type=int, required=True)
+    plan_accept_parser.set_defaults(handler=run_plan_accept)
+
+    plan_feedback_parser = plan_subparsers.add_parser(
+        "feedback",
+        help="spara ett strukturerat utfall för ett accepterat pass",
+    )
+    plan_feedback_parser.add_argument("--session-id", type=int, required=True)
+    plan_feedback_parser.add_argument(
+        "--outcome", choices=sorted(SUPPORTED_FEEDBACK_OUTCOMES), required=True
+    )
+    plan_feedback_parser.add_argument("--note", help="valfri lokal notering")
+    plan_feedback_parser.add_argument(
+        "--share-note-with-ai",
+        action="store_true",
+        help="tillåt att just denna notering skickas i ett framtida revisionsutkast",
+    )
+    plan_feedback_parser.set_defaults(handler=run_plan_feedback)
+
+    plan_revise_parser = plan_subparsers.add_parser(
+        "revise",
+        help="skapa ett nytt kort revisionsutkast; den accepterade planen lämnas orörd",
+    )
+    plan_revise_parser.add_argument("--id", type=int, required=True)
+    plan_revise_parser.add_argument("--days", type=plan_days, default=14)
+    plan_revise_parser.add_argument("--end-date", type=iso_date)
+    plan_revise_parser.set_defaults(handler=run_plan_revise)
+
+    preferences_parser = subparsers.add_parser(
+        "preferences",
+        help="hantera tillgänglighet och sportroll för framtida planutkast",
+    )
+    preferences_subparsers = preferences_parser.add_subparsers(dest="preferences_command")
+    preferences_set_parser = preferences_subparsers.add_parser(
+        "set", help="spara tillgängliga dagar och önskad sportroll"
+    )
+    preferences_set_parser.add_argument(
+        "--sport-role", choices=sorted(SUPPORTED_SPORT_ROLES), required=True
+    )
+    preferences_set_parser.add_argument(
+        "--day",
+        action="append",
+        required=True,
+        help="tillgänglighet som mon:60 eller mon:any; upprepa för flera dagar",
+    )
+    preferences_set_parser.set_defaults(handler=run_preferences_set)
+    preferences_show_parser = preferences_subparsers.add_parser(
+        "show", help="visa sparad tillgänglighet och sportroll"
+    )
+    preferences_show_parser.set_defaults(handler=run_preferences_show)
+
+    zones_parser = subparsers.add_parser(
+        "zones",
+        help="spara och visa manuellt bekräftade Garmin-pulszoner för cykling",
+    )
+    zones_subparsers = zones_parser.add_subparsers(dest="zones_command")
+    zones_set_parser = zones_subparsers.add_parser(
+        "set", help="spara fem Garmin-pulszoner för cykling"
+    )
+    zones_set_parser.add_argument("--sport", choices=["ride"], required=True)
+    zones_set_parser.add_argument(
+        "--zone",
+        action="append",
+        required=True,
+        help="Garmin-zon som 1:100-120; ange exakt fem gånger för Z1–Z5",
+    )
+    zones_set_parser.set_defaults(handler=run_zones_set)
+    zones_show_parser = zones_subparsers.add_parser(
+        "show", help="visa sparade Garmin-pulszoner"
+    )
+    zones_show_parser.add_argument("--sport", choices=["ride"], default="ride")
+    zones_show_parser.set_defaults(handler=run_zones_show)
 
     capacity_parser = subparsers.add_parser(
         "capacity",
@@ -486,6 +679,7 @@ def run_db_init(_args: Namespace) -> int:
     alembic_config.set_main_option("sqlalchemy.url", settings.database_url)
 
     try:
+        assert_sqlite_foreign_key_integrity(settings.database_url)
         alembic_command.upgrade(alembic_config, "head")
         secure_sqlite_database_file(settings.database_url)
     except Exception:
@@ -701,6 +895,49 @@ def run_ask(args: Namespace, *, today: date | None = None) -> int:
     return 0
 
 
+def run_knowledge_list(_args: Namespace) -> int:
+    """List the checked-in knowledge briefs without fetching any source."""
+
+    try:
+        library = load_knowledge_library()
+    except KnowledgeLibraryError as error:
+        print(f"Kunskapsbiblioteket kunde inte läsas: {error}")
+        return 2
+    print("Paces lokala kunskapsbriefs")
+    for brief in library.briefs:
+        print(f"- {brief.id}: {brief.title} ({', '.join(brief.topic_tags)})")
+    print("Visar lokala, granskade sammanfattningar. Inget har hämtats från nätet.")
+    return 0
+
+
+def run_knowledge_show(args: Namespace) -> int:
+    """Render one local brief with its claims, limits, and source links."""
+
+    try:
+        library = load_knowledge_library()
+    except KnowledgeLibraryError as error:
+        print(f"Kunskapsbiblioteket kunde inte läsas: {error}")
+        return 2
+    brief = brief_by_id(library, brief_id=args.brief_id)
+    if brief is None:
+        print(f"Ingen kunskapsbrief har id '{args.brief_id}'. Kör 'pace knowledge list'.")
+        return 2
+    lines = [brief.title, f"ID: {brief.id}", "", "Stödjer:"]
+    lines.extend(f"- {claim}" for claim in brief.supported_claims)
+    lines.extend(["", "Begränsningar:"])
+    lines.extend(f"- {limitation}" for limitation in brief.limitations)
+    lines.extend(["", "När Pace får använda den:", f"- {brief.applicability}", "", "Källor:"])
+    for source_id in brief.source_ids:
+        source = source_by_id(library, source_id=source_id)
+        if source is not None:
+            lines.append(
+                f"- {source.authors} ({source.publication_year}). {source.title}. "
+                f"{source.evidence_type}. {source.url}"
+            )
+    print("\n".join(lines))
+    return 0
+
+
 def run_race_add(args: Namespace) -> int:
     """Persist one athlete-confirmed race without generating a plan."""
 
@@ -779,6 +1016,183 @@ def run_plan_readiness(args: Namespace, *, today: date | None = None) -> int:
     end_date = args.end_date or today or date.today()
     readiness = PlanReadinessService().get_readiness(as_of_date=end_date)
     print(json.dumps(asdict(readiness), default=_json_default, indent=2))
+    return 0
+
+
+def run_preferences_set(args: Namespace) -> int:
+    try:
+        preference = TrainingPreferenceService().set_preference(
+            TrainingPreferenceInput(
+                sport_role=args.sport_role,
+                available_days=tuple(args.day),
+            )
+        )
+    except ValueError as error:
+        print(f"Planpreferenserna kunde inte sparas: {error}")
+        return 2
+    print(
+        f"Planpreferenser sparade: {preference.sport_role}, "
+        f"{len(preference.available_days)} tillgängliga dagar."
+    )
+    return 0
+
+
+def run_preferences_show(_args: Namespace) -> int:
+    preference = TrainingPreferenceService().get_preference()
+    if preference is None:
+        print("Inga planpreferenser är sparade ännu.")
+        return 2
+    print(
+        json.dumps(
+            {
+                "sport_role": preference.sport_role,
+                "available_days": preference.available_days,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def run_zones_set(args: Namespace) -> int:
+    try:
+        profile = HeartRateZoneService().set_profile(
+            HeartRateZoneInput(sport_type=args.sport, zones=tuple(args.zone))
+        )
+    except ValueError as error:
+        print(f"Garmin-pulszonerna kunde inte sparas: {error}")
+        return 2
+    print("Garmin-pulszoner för cykling är sparade lokalt.")
+    print(json.dumps({"sport_type": profile.sport_type, "zones": profile.zones}, indent=2))
+    return 0
+
+
+def run_zones_show(args: Namespace) -> int:
+    profile = HeartRateZoneService().get_profile(sport_type=args.sport)
+    if profile is None:
+        print("Inga Garmin-pulszoner för cykling är sparade ännu.")
+        return 2
+    print(json.dumps({"sport_type": profile.sport_type, "zones": profile.zones}, indent=2))
+    return 0
+
+
+def _plan_service_with_ai() -> TrainingPlanService:
+    api_key = resolve_openai_api_key(settings)
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY saknas; inget planutkast har skapats.")
+    return TrainingPlanService(
+        generator=OpenAIPlanClient(api_key=api_key, model=settings.openai_model)
+    )
+
+
+def run_plan_draft(args: Namespace, *, today: date | None = None) -> int:
+    as_of_date = args.end_date or today or date.today()
+    try:
+        plan = _plan_service_with_ai().generate_draft(
+            as_of_date=as_of_date,
+            detailed_days=args.days,
+            race_id=args.race_id,
+        )
+    except (ValueError, PaceAIError) as error:
+        print(f"Planutkastet kunde inte skapas: {error}")
+        return 2
+    print(json.dumps(asdict(plan), default=_json_default, indent=2))
+    print(f"Granska läsbart: 'pace plan review --id {plan.id}'.")
+    print(f"Planutkast {plan.id} är inte accepterat. Acceptera med 'pace plan accept --id {plan.id}'.")
+    return 0
+
+
+def run_plan_list(_args: Namespace) -> int:
+    plans = TrainingPlanService().list_plans()
+    print(json.dumps([asdict(plan) for plan in plans], default=_json_default, indent=2))
+    return 0
+
+
+def run_plan_show(args: Namespace) -> int:
+    try:
+        plan = TrainingPlanService().get_plan(plan_id=args.id)
+    except ValueError as error:
+        print(f"Planen kunde inte visas: {error}")
+        return 2
+    print(json.dumps(asdict(plan), default=_json_default, indent=2))
+    return 0
+
+
+def run_plan_today(args: Namespace, *, today: date | None = None) -> int:
+    on_date = args.date or today or date.today()
+    try:
+        plan = select_plan_for_today(
+            TrainingPlanService().list_plans(),
+            on_date=on_date,
+            plan_id=args.id,
+        )
+    except ValueError as error:
+        print(f"Dagens plan kunde inte visas: {error}")
+        return 2
+    print(render_plan_today(plan, on_date=on_date))
+    return 0
+
+
+def run_plan_review(args: Namespace) -> int:
+    try:
+        plan = TrainingPlanService().get_plan(plan_id=args.id)
+    except ValueError as error:
+        print(f"Planen kunde inte granskas: {error}")
+        return 2
+    print(render_plan_review(plan))
+    return 0
+
+
+def run_plan_report(args: Namespace) -> int:
+    try:
+        plan = TrainingPlanService().get_plan(plan_id=args.id)
+        output_path = write_plan_html_report(plan)
+    except (OSError, ValueError) as error:
+        print(f"HTML-rapporten kunde inte skapas: {error}")
+        return 2
+    print(f"Privat HTML-rapport sparad: {output_path}")
+    print("Öppna filen i din webbläsare. Rapporten ändrar inte planen.")
+    return 0
+
+
+def run_plan_accept(args: Namespace) -> int:
+    try:
+        plan = TrainingPlanService().accept_plan(plan_id=args.id)
+    except ValueError as error:
+        print(f"Planutkastet kunde inte accepteras: {error}")
+        return 2
+    print(f"Plan {plan.id} är accepterad. Tidigare versioner finns kvar lokalt.")
+    return 0
+
+
+def run_plan_feedback(args: Namespace) -> int:
+    try:
+        TrainingPlanService().add_feedback(
+            session_id=args.session_id,
+            outcome=args.outcome,
+            note=args.note,
+            share_note_with_ai=args.share_note_with_ai,
+        )
+    except ValueError as error:
+        print(f"Passutfallet kunde inte sparas: {error}")
+        return 2
+    print("Passutfallet är sparat. Ingen plan har ändrats.")
+    return 0
+
+
+def run_plan_revise(args: Namespace, *, today: date | None = None) -> int:
+    as_of_date = args.end_date or today or date.today()
+    try:
+        plan = _plan_service_with_ai().generate_revision(
+            plan_id=args.id,
+            as_of_date=as_of_date,
+            detailed_days=args.days,
+        )
+    except (ValueError, PaceAIError) as error:
+        print(f"Revisionsutkastet kunde inte skapas: {error}")
+        return 2
+    print(json.dumps(asdict(plan), default=_json_default, indent=2))
+    print(f"Revisionsutkast {plan.id} är inte accepterat. Den tidigare planen är orörd.")
     return 0
 
 
@@ -891,6 +1305,17 @@ def _render_ai_answer(answer: PaceAIAnswer, *, as_of_date: date) -> str:
     if answer.uncertainties:
         lines.extend(
             ["", "Osäkerheter:", *[f"- {item}" for item in answer.uncertainties]]
+        )
+    if answer.knowledge_references:
+        lines.extend(
+            [
+                "",
+                "Kunskapsstöd:",
+                *[
+                    f"- {item} (visa: pace knowledge show --id {item})"
+                    for item in answer.knowledge_references
+                ],
+            ]
         )
     if answer.context_event_draft is not None:
         draft = answer.context_event_draft

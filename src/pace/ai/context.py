@@ -9,7 +9,7 @@ from pace.rules.models import RuleEvaluationSummary
 from pace.state.models import AthleteState
 
 
-AI_CONTEXT_SCHEMA_VERSION = 1
+AI_CONTEXT_SCHEMA_VERSION = 2
 
 
 def build_ai_context(
@@ -17,6 +17,7 @@ def build_ai_context(
     athlete_state: AthleteState,
     rule_summary: RuleEvaluationSummary,
     explanation: ExplanationSummary,
+    knowledge_briefs: dict[str, object],
 ) -> dict[str, object]:
     """Return selected Pace facts without provider payloads or context-note text."""
 
@@ -57,6 +58,7 @@ def build_ai_context(
                 }
             ),
         },
+        "knowledge_briefs": knowledge_briefs,
     }
 
 

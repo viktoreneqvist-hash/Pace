@@ -391,14 +391,73 @@ heart-rate, and power facts remain Garmin-derived.
 
 The J2C readiness service consumes these evidence rows together with the
 existing capacity/history gate. It returns a sport-specific eligibility result
-for future intensity proposals; it does not calculate a pace, power, zone,
-fitness score, workout, or plan.
+for future intensity proposals; it does not calculate a pace, power, fitness
+score, workout, or plan. The narrow cycling exception is an athlete-confirmed
+Garmin heart-rate-zone profile: with two current rides, zone 1–5 targets are
+eligible. The coach model decides their distribution from selected facts and
+must present its reasoning and uncertainty. Power still requires an explicit
+20-minute power test; cycling pace is never an output.
 
 #### `performance_sync_runs`
 
 Audits every bounded detailed-activity import independently from normal
 activity/recovery syncs. It records the requested window, eligible run/ride
 count, successful stored details, status, and a short error summary.
+
+#### `training_preferences`
+
+Stores a single athlete-confirmed feasibility profile: available weekday/time
+slots and the desired sport role (`run_primary`, `ride_primary`, or
+`balanced`). It does not store self-reported volume, personal bests, or an
+unreviewed training target. Sport role informs the coach; it does not impose a
+fixed session ratio in Python.
+
+#### `heart_rate_zone_profiles`
+
+Stores five athlete-confirmed Garmin heart-rate boundaries for cycling. Pace
+does not infer them from max heart rate, workout data, or an LLM. The plan
+validator stores the numeric zone separately from its display text; the coach
+model decides zone distribution and records its rationale separately.
+
+#### `training_plans`, `planned_sessions`, and `session_feedback`
+
+Store reviewable plan versions. An explicit AI call can create a `draft`, but
+only the athlete can accept it. A revision is another draft with a parent plan
+reference; accepting it marks only that parent version `superseded` and never
+deletes it. Each planned session may have one structured outcome. Its free-text
+note remains local unless the athlete explicitly marks that note shareable for
+the specific AI revision request.
+
+Each plan version has a contract version. Current drafts store a structured
+`heart_rate_zone` separately from a structured primary `target` (`rpe`,
+verified running `pace`, verified cycling `power`, or `none`). Pace renders
+the display text locally, so a model cannot hide a pace or watt value in a
+free-text target. A cycling session can combine its required Garmin zone with
+a verified power target; cycling pace remains impossible.
+
+Each current plan also stores a `coach_assessment`: fact-catalog reference
+IDs, locally rendered observed facts with provenance, coach inferences,
+rationale, uncertainties, and named general coaching principles. The model
+may reference only the selected, minimal fact catalog; these are AI reasoning,
+not new Pace facts. K1 adds a separate `knowledge_references` list: Python
+deterministically selects at most three local curated briefs and validates that
+the model cites only those IDs. A brief contains supported claims,
+limitations, applicability, and source metadata; it does not override local
+facts or Python safety gates. Private context-note text, raw Garmin payloads,
+and unbounded plan history are absent. The library is checked-in Markdown and
+JSON, with no runtime web retrieval, embeddings, or vector database.
+
+Revision drafts use their accepted parent as bounded context and preserve its
+block dates and outline. A sibling revision becomes stale when another
+revision supersedes the parent. The database enforces foreign keys on every
+connection, and plan readiness blocks drafting if the otherwise-contiguous
+Garmin history is more than one day old.
+
+`pace plan review`, `pace plan today`, and `pace plan report` are presentation
+views over these persisted plan facts. The HTML report is a self-contained
+local file under `reports/`, not a web service: it has no external assets,
+does not invoke an LLM, and cannot modify the plan. It deliberately omits raw
+Garmin data and private feedback/context-note text.
 
 #### `context_events`
 
@@ -877,6 +936,15 @@ pace metrics summary --end-date 2026-07-25
 pace note add --date 2026-07-18 --type social_event "Var ute sent"
 pace note list
 pace explain hrv --days 14
+pace preferences set --sport-role ride_primary --day mon:any
+pace plan readiness
+pace plan draft --days 14
+pace plan review --id 3
+pace plan report --id 3
+pace plan accept --id 2
+pace plan today
+pace plan feedback --session-id 5 --outcome completed
+pace plan revise --id 2 --days 7
 ```
 
 The CLI should:

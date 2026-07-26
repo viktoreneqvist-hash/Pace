@@ -8,6 +8,8 @@ from pace.ai.models import PaceAIAnswer, PaceAIRequest
 from pace.services.athlete_state_service import AthleteStateService
 from pace.services.explanation_service import ExplanationService
 from pace.services.rule_service import RuleService
+from pace.knowledge.library import load_knowledge_library
+from pace.knowledge.selection import select_for_question, serialize_selected_briefs
 
 
 class PaceAskService:
@@ -35,6 +37,8 @@ class PaceAskService:
             athlete_state=athlete_state,
             rule_summary=rule_summary,
         )
+        knowledge_library = load_knowledge_library()
+        selected_briefs = select_for_question(knowledge_library, question=question)
         return self._client.answer(
             PaceAIRequest(
                 question=question,
@@ -42,6 +46,9 @@ class PaceAskService:
                     athlete_state=athlete_state,
                     rule_summary=rule_summary,
                     explanation=explanation,
+                    knowledge_briefs=serialize_selected_briefs(
+                        knowledge_library, briefs=selected_briefs
+                    ),
                 ),
             )
         )

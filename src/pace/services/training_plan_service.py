@@ -1,0 +1,996 @@
+"""Generate, validate, version, and revise reviewable Pace plan drafts."""
+
+from dataclasses import asdict
+from datetime import date, timedelta
+import json
+from typing import Protocol
+
+from pace.database.models import PlannedSession, TrainingPlan
+from pace.database.session import session_scope
+from pace.performance.models import PerformanceReadiness
+from pace.planning.draft_models import (
+    GeneratedPlanDraft,
+    PlanGenerationRequest,
+    SessionTargetDraft,
+)
+from pace.planning.plan_models import (
+    CoachAssessmentFact,
+    PlanSessionFact,
+    SessionTargetFact,
+    TrainingPlanFact,
+)
+from pace.repositories.context_event_repository import get_context_events_in_date_range
+from pace.repositories.race_repository import get_race_by_id
+from pace.repositories.training_plan_repository import (
+    create_planned_session,
+    create_training_plan,
+    get_feedback_for_sessions,
+    get_planned_session,
+    get_sessions_for_plan,
+    get_training_plan,
+    list_training_plans,
+    upsert_session_feedback,
+)
+from pace.services.capacity_service import CapacityService
+from pace.services.plan_readiness_service import PlanReadinessService
+from pace.services.performance_history_service import PerformanceHistoryService
+from pace.services.race_service import resolved_taper
+from pace.services.training_preference_service import TrainingPreferenceService
+from pace.knowledge.library import load_knowledge_library
+from pace.knowledge.selection import select_for_plan_context, serialize_selected_briefs
+
+
+SUPPORTED_PLAN_DAYS = frozenset({7, 14})
+SUPPORTED_FEEDBACK_OUTCOMES = frozenset({"completed", "completed_limited", "skipped"})
+WEEKDAY_CODES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+CURRENT_PLAN_CONTRACT_VERSION = 2
+
+
+class PlanDraftGenerator(Protocol):
+    def generate(self, request: PlanGenerationRequest) -> GeneratedPlanDraft: ...
+
+
+class TrainingPlanService:
+    """Keep AI draft generation behind deterministic local planning boundaries."""
+
+    def __init__(
+        self,
+        *,
+        generator: PlanDraftGenerator | None = None,
+        plan_readiness_service: PlanReadinessService | None = None,
+        capacity_service: CapacityService | None = None,
+        performance_service: PerformanceHistoryService | None = None,
+        preference_service: TrainingPreferenceService | None = None,
+    ) -> None:
+        self._generator = generator
+        self._plan_readiness_service = plan_readiness_service or PlanReadinessService()
+        self._capacity_service = capacity_service or CapacityService()
+        self._performance_service = performance_service or PerformanceHistoryService()
+        self._preference_service = preference_service or TrainingPreferenceService()
+
+    def generate_draft(
+        self,
+        *,
+        as_of_date: date,
+        detailed_days: int,
+        race_id: int | None,
+    ) -> TrainingPlanFact:
+        """Generate and persist a draft only after gates and output validation pass."""
+
+        goal = self._resolve_goal(as_of_date=as_of_date, race_id=race_id)
+        detailed_start_date = as_of_date
+        detailed_end_date = min(
+            detailed_start_date + timedelta(days=_validate_plan_days(detailed_days) - 1),
+            goal["block_end_date"],
+        )
+        context = self._build_context(
+            as_of_date=as_of_date,
+            goal=goal,
+            detailed_start_date=detailed_start_date,
+            detailed_end_date=detailed_end_date,
+            feedback=(),
+            parent_plan=None,
+        )
+        generated = self._require_generator().generate(
+            PlanGenerationRequest(mode="initial_draft", context=context)
+        )
+        performance_readiness = self._performance_service.get_readiness(end_date=as_of_date)
+        self._validate_generated_plan(
+            generated=generated,
+            detailed_start_date=detailed_start_date,
+            detailed_end_date=detailed_end_date,
+            block_start_date=goal["block_start_date"],
+            block_end_date=goal["block_end_date"],
+            performance_readiness=performance_readiness,
+            context=context,
+        )
+        return self._persist_plan(
+            parent_plan_id=None,
+            goal=goal,
+            as_of_date=as_of_date,
+            detailed_start_date=detailed_start_date,
+            detailed_end_date=detailed_end_date,
+            generated=generated,
+            context=context,
+            performance_readiness=performance_readiness,
+        )
+
+    def generate_revision(
+        self,
+        *,
+        plan_id: int,
+        as_of_date: date,
+        detailed_days: int,
+    ) -> TrainingPlanFact:
+        """Create a separate short-horizon revision draft; never edit an accepted plan."""
+
+        with session_scope() as session:
+            parent = get_training_plan(session, plan_id=plan_id)
+            if parent is None:
+                raise ValueError(f"No plan exists with id {plan_id}.")
+            if parent.status != "accepted":
+                raise ValueError("Only an accepted plan can receive a revision draft.")
+            if parent.contract_version != CURRENT_PLAN_CONTRACT_VERSION:
+                raise ValueError("Legacy plans must be regenerated before they can be revised.")
+            if not _has_complete_assessment(parent.coach_assessment):
+                raise ValueError("Plans without a complete coach assessment cannot be revised.")
+            sessions = get_sessions_for_plan(session, plan_id=parent.id)
+            feedback_by_session = get_feedback_for_sessions(
+                session, session_ids=[item.id for item in sessions]
+            )
+        if as_of_date > parent.block_end_date:
+            raise ValueError("The accepted plan's block has ended; create a new plan draft.")
+        goal = _goal_from_parent(parent)
+        detailed_start_date = as_of_date
+        detailed_end_date = min(
+            detailed_start_date + timedelta(days=_validate_plan_days(detailed_days) - 1),
+            parent.block_end_date,
+        )
+        feedback = tuple(
+            {
+                "session_id": item.id,
+                "scheduled_date": item.scheduled_date.isoformat(),
+                "outcome": feedback_by_session[item.id].outcome,
+                "note": (
+                    feedback_by_session[item.id].note
+                    if feedback_by_session[item.id].share_note_with_ai
+                    else None
+                ),
+            }
+            for item in sessions
+            if item.id in feedback_by_session
+        )
+        context = self._build_context(
+            as_of_date=as_of_date,
+            goal=goal,
+            detailed_start_date=detailed_start_date,
+            detailed_end_date=detailed_end_date,
+            feedback=feedback,
+            parent_plan=_parent_plan_context(
+                parent=parent,
+                sessions=sessions,
+                feedback_by_session=feedback_by_session,
+            ),
+        )
+        generated = self._require_generator().generate(
+            PlanGenerationRequest(mode="revision_draft", context=context)
+        )
+        # The accepted parent owns its block outline. A revision may only
+        # replace the short detailed window, never silently redefine the block.
+        generated = GeneratedPlanDraft(
+            block_outline=tuple(
+                _deserialize_outline_item(item) for item in parent.block_outline
+            ),
+            sessions=generated.sessions,
+            coach_assessment=generated.coach_assessment,
+        )
+        performance_readiness = self._performance_service.get_readiness(end_date=as_of_date)
+        self._validate_generated_plan(
+            generated=generated,
+            detailed_start_date=detailed_start_date,
+            detailed_end_date=detailed_end_date,
+            block_start_date=goal["block_start_date"],
+            block_end_date=goal["block_end_date"],
+            performance_readiness=performance_readiness,
+            context=context,
+        )
+        return self._persist_plan(
+            parent_plan_id=parent.id,
+            goal=goal,
+            as_of_date=as_of_date,
+            detailed_start_date=detailed_start_date,
+            detailed_end_date=detailed_end_date,
+            generated=generated,
+            context=context,
+            performance_readiness=performance_readiness,
+        )
+
+    def accept_plan(self, *, plan_id: int) -> TrainingPlanFact:
+        with session_scope() as session:
+            plan = get_training_plan(session, plan_id=plan_id)
+            if plan is None:
+                raise ValueError(f"No plan exists with id {plan_id}.")
+            if plan.status == "accepted":
+                return _plan_fact(session, plan)
+            if plan.status != "draft":
+                raise ValueError("Only a draft plan can be accepted.")
+            if plan.contract_version != CURRENT_PLAN_CONTRACT_VERSION:
+                raise ValueError("Legacy draft plans must be regenerated before acceptance.")
+            if not _has_complete_assessment(plan.coach_assessment):
+                raise ValueError("A complete coach assessment is required before acceptance.")
+            if plan.parent_plan_id is not None:
+                parent = get_training_plan(session, plan_id=plan.parent_plan_id)
+                if parent is None or parent.status != "accepted":
+                    raise ValueError("This revision draft is stale because its parent is no longer accepted.")
+                parent.status = "superseded"
+            plan.status = "accepted"
+            session.flush()
+            return _plan_fact(session, plan)
+
+    def add_feedback(
+        self,
+        *,
+        session_id: int,
+        outcome: str,
+        note: str | None,
+        share_note_with_ai: bool,
+    ) -> None:
+        normalized_outcome = outcome.strip().lower()
+        if normalized_outcome not in SUPPORTED_FEEDBACK_OUTCOMES:
+            raise ValueError(f"Unsupported session outcome: {normalized_outcome}.")
+        clean_note = None if note is None else note.strip() or None
+        if share_note_with_ai and clean_note is None:
+            raise ValueError("A shared feedback note cannot be empty.")
+        with session_scope() as session:
+            planned_session = get_planned_session(session, session_id=session_id)
+            if planned_session is None:
+                raise ValueError(f"No planned session exists with id {session_id}.")
+            plan = get_training_plan(session, plan_id=planned_session.plan_id)
+            if plan is None or plan.status != "accepted":
+                raise ValueError("Feedback can only be saved for an accepted plan session.")
+            upsert_session_feedback(
+                session,
+                planned_session_id=planned_session.id,
+                outcome=normalized_outcome,
+                note=clean_note,
+                share_note_with_ai=share_note_with_ai,
+            )
+
+    def get_plan(self, *, plan_id: int) -> TrainingPlanFact:
+        with session_scope() as session:
+            plan = get_training_plan(session, plan_id=plan_id)
+            if plan is None:
+                raise ValueError(f"No plan exists with id {plan_id}.")
+            return _plan_fact(session, plan)
+
+    def list_plans(self) -> tuple[TrainingPlanFact, ...]:
+        with session_scope() as session:
+            return tuple(_plan_fact(session, plan) for plan in list_training_plans(session))
+
+    def _resolve_goal(self, *, as_of_date: date, race_id: int | None) -> dict[str, object]:
+        if race_id is None:
+            return {
+                "goal_mode": "general",
+                "race_id": None,
+                "race": None,
+                "block_start_date": as_of_date,
+                "block_end_date": as_of_date + timedelta(days=27),
+            }
+        with session_scope() as session:
+            race = get_race_by_id(session, race_id)
+        if race is None:
+            raise ValueError(f"No race exists with id {race_id}.")
+        if race.race_date < as_of_date:
+            raise ValueError("A plan target race must be today or in the future.")
+        if race.priority != "A":
+            raise ValueError("A block-defining target race must have priority A.")
+        return {
+            "goal_mode": "race",
+            "race_id": race.id,
+            "race": {
+                "id": race.id,
+                "name": race.name,
+                "sport_type": race.sport_type,
+                "race_date": race.race_date.isoformat(),
+                "distance_meters": race.distance_meters,
+                "priority": race.priority,
+                "desired_time_seconds": race.desired_time_seconds,
+                "taper": resolved_taper(race),
+            },
+            "block_start_date": as_of_date,
+            "block_end_date": race.race_date,
+        }
+
+    def _build_context(
+        self,
+        *,
+        as_of_date: date,
+        goal: dict[str, object],
+        detailed_start_date: date,
+        detailed_end_date: date,
+        feedback: tuple[dict[str, object], ...],
+        parent_plan: dict[str, object] | None,
+    ) -> dict[str, object]:
+        plan_readiness = self._plan_readiness_service.get_readiness(as_of_date=as_of_date)
+        if plan_readiness.status != "ready":
+            codes = ", ".join(blocker.code for blocker in plan_readiness.blockers)
+            raise ValueError(f"Plan draft is blocked: {codes or 'insufficient history'}.")
+        preference = self._preference_service.get_preference()
+        if preference is None:
+            raise ValueError("Set training preferences before creating a plan draft.")
+        capacity = self._capacity_service.get_profile(end_date=as_of_date)
+        performance_readiness = self._performance_service.get_readiness(end_date=as_of_date)
+        with session_scope() as session:
+            context_events = get_context_events_in_date_range(
+                session,
+                start_date=detailed_start_date,
+                end_date=detailed_end_date,
+            )
+        fact_catalog = _fact_catalog(
+            as_of_date=as_of_date,
+            goal=goal,
+            detailed_start_date=detailed_start_date,
+            detailed_end_date=detailed_end_date,
+            plan_readiness=plan_readiness,
+            capacity=capacity,
+            performance_readiness=performance_readiness,
+            preference=preference,
+            context_events=context_events,
+            feedback=feedback,
+            parent_plan=parent_plan,
+        )
+        context = _json_safe({"schema_version": 4, "fact_catalog": fact_catalog})
+        knowledge_library = load_knowledge_library()
+        selected_briefs = select_for_plan_context(knowledge_library, context=context)
+        context["knowledge_briefs"] = serialize_selected_briefs(
+            knowledge_library, briefs=selected_briefs
+        )
+        return context
+
+    def _validate_generated_plan(
+        self,
+        *,
+        generated: GeneratedPlanDraft,
+        detailed_start_date: date,
+        detailed_end_date: date,
+        block_start_date: date,
+        block_end_date: date,
+        performance_readiness: PerformanceReadiness,
+        context: dict[str, object],
+    ) -> None:
+        if not generated.block_outline:
+            raise ValueError("AI plan draft must contain a block outline.")
+        if not generated.sessions:
+            raise ValueError("AI plan draft must contain at least one detailed session.")
+        if not _is_complete_assessment(generated.coach_assessment):
+            raise ValueError("AI plan draft must include a complete coach assessment.")
+        _validate_fact_references(generated=generated, context=context)
+        _validate_knowledge_references(generated=generated, context=context)
+        _validate_availability(generated=generated, context=context)
+        allowed_intensity = {
+            fact.sport_type: set(fact.allowed_intensity_types)
+            for fact in performance_readiness.sports
+        }
+        _validate_block_outline(
+            outline=generated.block_outline,
+            block_start_date=block_start_date,
+            block_end_date=block_end_date,
+        )
+        for item in generated.sessions:
+            if item.sport_type not in {"run", "ride"}:
+                raise ValueError("AI plan draft contains an unsupported sport.")
+            if not detailed_start_date <= item.scheduled_date <= detailed_end_date:
+                raise ValueError("AI plan draft contains a session outside the detailed window.")
+            if item.distance_meters is None and item.duration_seconds is None:
+                raise ValueError("Each AI plan session needs distance or duration.")
+            if item.sport_type == "ride" and item.distance_meters is None:
+                raise ValueError("Each cycling plan session needs a distance target.")
+            if item.sport_type == "ride" and item.duration_seconds is None:
+                raise ValueError("Each cycling plan session needs a duration target.")
+            if item.sport_type == "ride" and item.heart_rate_zone not in {1, 2, 3, 4, 5}:
+                raise ValueError("Each cycling plan session needs a configured Garmin heart-rate zone.")
+            if item.sport_type == "run" and item.heart_rate_zone is not None:
+                raise ValueError("Running plan sessions cannot include a cycling heart-rate zone.")
+            _validate_session_target(
+                session=item,
+                allowed_intensity_types=allowed_intensity.get(item.sport_type, set()),
+                performance_readiness=performance_readiness,
+            )
+            _validate_heart_rate_zone(
+                session=item,
+                performance_readiness=performance_readiness,
+            )
+
+    def _persist_plan(
+        self,
+        *,
+        parent_plan_id: int | None,
+        goal: dict[str, object],
+        as_of_date: date,
+        detailed_start_date: date,
+        detailed_end_date: date,
+        generated: GeneratedPlanDraft,
+        context: dict[str, object],
+        performance_readiness: PerformanceReadiness,
+    ) -> TrainingPlanFact:
+        with session_scope() as session:
+            plan = create_training_plan(
+                session,
+                TrainingPlan(
+                    parent_plan_id=parent_plan_id,
+                    status="draft",
+                    contract_version=CURRENT_PLAN_CONTRACT_VERSION,
+                    goal_mode=goal["goal_mode"],
+                    race_id=goal["race_id"],
+                    as_of_date=as_of_date,
+                    block_start_date=goal["block_start_date"],
+                    block_end_date=goal["block_end_date"],
+                    detailed_start_date=detailed_start_date,
+                    detailed_end_date=detailed_end_date,
+                    block_outline=[
+                        {
+                            "week_start": item.week_start.isoformat(),
+                            "week_end": item.week_end.isoformat(),
+                            "focus": item.focus,
+                        }
+                        for item in generated.block_outline
+                    ],
+                    context_snapshot=context,
+                    coach_assessment=_serialize_coach_assessment(
+                        generated.coach_assessment
+                    ),
+                ),
+            )
+            for item in generated.sessions:
+                create_planned_session(
+                    session,
+                    PlannedSession(
+                        plan_id=plan.id,
+                        scheduled_date=item.scheduled_date,
+                        sport_type=item.sport_type,
+                        purpose=item.purpose,
+                        distance_meters=item.distance_meters,
+                        duration_seconds=item.duration_seconds,
+                        intensity_type=_legacy_intensity_type(item),
+                        intensity_zone=item.heart_rate_zone,
+                        intensity_target=_render_target_display(
+                            item=item, performance_readiness=performance_readiness
+                        ),
+                        heart_rate_zone=item.heart_rate_zone,
+                        target=_serialize_session_target(item.target),
+                    ),
+                )
+            return _plan_fact(session, plan)
+
+    def _require_generator(self) -> PlanDraftGenerator:
+        if self._generator is None:
+            raise RuntimeError("A plan draft generator is required.")
+        return self._generator
+
+
+def _validate_plan_days(days: int) -> int:
+    if days not in SUPPORTED_PLAN_DAYS:
+        raise ValueError("Detailed plan days must be 7 or 14.")
+    return days
+
+
+def _deserialize_outline_item(item: dict[str, object]):
+    from pace.planning.draft_models import BlockOutlineItem
+
+    return BlockOutlineItem(
+        week_start=date.fromisoformat(str(item["week_start"])),
+        week_end=date.fromisoformat(str(item["week_end"])),
+        focus=str(item["focus"]),
+    )
+
+
+def _plan_fact(session, plan: TrainingPlan) -> TrainingPlanFact:
+    sessions = get_sessions_for_plan(session, plan_id=plan.id)
+    feedback = get_feedback_for_sessions(session, session_ids=[item.id for item in sessions])
+    return TrainingPlanFact(
+        id=plan.id,
+        parent_plan_id=plan.parent_plan_id,
+        status=plan.status,
+        contract_version=plan.contract_version,
+        goal_mode=plan.goal_mode,
+        race_id=plan.race_id,
+        as_of_date=plan.as_of_date,
+        block_start_date=plan.block_start_date,
+        block_end_date=plan.block_end_date,
+        detailed_start_date=plan.detailed_start_date,
+        detailed_end_date=plan.detailed_end_date,
+        block_outline=tuple(plan.block_outline),
+        sessions=tuple(
+            PlanSessionFact(
+                id=item.id,
+                scheduled_date=item.scheduled_date,
+                sport_type=item.sport_type,
+                purpose=item.purpose,
+                distance_meters=item.distance_meters,
+                duration_seconds=item.duration_seconds,
+                heart_rate_zone=item.heart_rate_zone,
+                target=_session_target_fact(item),
+                target_display=_session_target_display(item),
+                feedback_outcome=(
+                    None if item.id not in feedback else feedback[item.id].outcome
+                ),
+            )
+            for item in sessions
+        ),
+        coach_assessment=_coach_assessment_fact(
+            plan.coach_assessment,
+            context_snapshot=plan.context_snapshot,
+        ),
+    )
+
+
+def _json_safe(value):
+    """Serialize selected local facts before an AI call or JSON database snapshot."""
+
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+def _serialize_coach_assessment(assessment) -> dict[str, object]:
+    return {
+        "fact_references": list(assessment.fact_references),
+        "inferences": list(assessment.inferences),
+        "rationale": assessment.rationale,
+        "uncertainties": list(assessment.uncertainties),
+        "coaching_principles": list(assessment.coaching_principles),
+        "knowledge_references": list(assessment.knowledge_references),
+    }
+
+
+def _coach_assessment_fact(
+    value: dict[str, object] | None,
+    *,
+    context_snapshot: dict[str, object],
+) -> CoachAssessmentFact:
+    """Render stored AI reasoning explicitly as reasoning, never as Pace facts."""
+
+    value = value or {}
+    fact_references = _stored_text_tuple(value.get("fact_references"))
+    fact_catalog = context_snapshot.get("fact_catalog")
+    if not isinstance(fact_catalog, dict):
+        fact_catalog = {}
+    return CoachAssessmentFact(
+        fact_references=fact_references,
+        observed_facts=tuple(
+            _render_catalog_fact(fact_catalog[reference])
+            for reference in fact_references
+            if isinstance(fact_catalog.get(reference), dict)
+        ),
+        inferences=_stored_text_tuple(value.get("inferences")),
+        rationale=str(value.get("rationale") or ""),
+        uncertainties=_stored_text_tuple(value.get("uncertainties")),
+        coaching_principles=_stored_text_tuple(value.get("coaching_principles")),
+        knowledge_references=_stored_text_tuple(value.get("knowledge_references")),
+    )
+
+
+def _stored_text_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    return tuple(item for item in value if isinstance(item, str))
+
+
+def _fact_catalog(
+    *,
+    as_of_date,
+    goal,
+    detailed_start_date,
+    detailed_end_date,
+    plan_readiness,
+    capacity,
+    performance_readiness,
+    preference,
+    context_events,
+    feedback,
+    parent_plan,
+) -> dict[str, dict[str, object]]:
+    """Expose selected deterministic facts by stable IDs for AI citation."""
+
+    return {
+        "as_of_date": _catalog_entry("python_derived", {"date": as_of_date}),
+        "goal": _catalog_entry("explicit_user_or_python_derived", goal),
+        "detailed_window": _catalog_entry(
+            "python_derived",
+            {"start_date": detailed_start_date, "end_date": detailed_end_date},
+        ),
+        "planning_readiness": _catalog_entry("python_derived", asdict(plan_readiness)),
+        "capacity_profile": _catalog_entry("garmin_verified", asdict(capacity)),
+        "performance_readiness": _catalog_entry(
+            "garmin_verified", asdict(performance_readiness)
+        ),
+        "training_preference": _catalog_entry(
+            "explicit_athlete_preference",
+            {
+                "sport_role": preference.sport_role,
+                "available_days": preference.available_days,
+            },
+        ),
+        "relevant_context": _catalog_entry(
+            "athlete_reported_metadata",
+            [
+                {
+                    "event_type": event.event_type,
+                    "start_date": event.start_date,
+                    "end_date": event.end_date,
+                    "status": event.status,
+                }
+                for event in context_events
+            ],
+        ),
+        "feedback": _catalog_entry("athlete_reported", list(feedback)),
+        "parent_plan": _catalog_entry("local_accepted_plan", parent_plan),
+    }
+
+
+def _catalog_entry(provenance: str, value: object) -> dict[str, object]:
+    return {"provenance": provenance, "value": _json_safe(value)}
+
+
+def _render_catalog_fact(entry: dict[str, object]) -> str:
+    provenance = entry.get("provenance")
+    value = entry.get("value")
+    return json.dumps(
+        {"provenance": provenance, "value": value},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def _validate_fact_references(
+    *, generated: GeneratedPlanDraft, context: dict[str, object]
+) -> None:
+    fact_catalog = context.get("fact_catalog")
+    if not isinstance(fact_catalog, dict):
+        raise ValueError("Plan draft context is missing the fact catalog.")
+    references = generated.coach_assessment.fact_references
+    if not references:
+        raise ValueError("AI plan draft must reference at least one selected Pace fact.")
+    unknown = set(references).difference(fact_catalog)
+    if unknown:
+        raise ValueError("AI plan draft referenced facts outside the selected Pace fact catalog.")
+
+
+def _validate_knowledge_references(
+    *, generated: GeneratedPlanDraft, context: dict[str, object]
+) -> None:
+    selected = context.get("knowledge_briefs")
+    if not isinstance(selected, dict):
+        raise ValueError("Plan draft context is missing selected knowledge briefs.")
+    briefs = selected.get("briefs")
+    if not isinstance(briefs, list):
+        raise ValueError("Plan draft context has invalid knowledge briefs.")
+    allowed_ids = {
+        item.get("id")
+        for item in briefs
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    references = generated.coach_assessment.knowledge_references
+    if not references:
+        raise ValueError("AI plan draft must cite at least one selected knowledge brief.")
+    if set(references).difference(allowed_ids):
+        raise ValueError("AI plan draft cited knowledge outside the selected knowledge briefs.")
+
+
+def _validate_availability(*, generated: GeneratedPlanDraft, context: dict[str, object]) -> None:
+    """Enforce athlete-supplied weekdays and explicit time ceilings in Python."""
+
+    fact_catalog = context.get("fact_catalog")
+    if not isinstance(fact_catalog, dict):
+        raise ValueError("Plan draft context is missing the fact catalog.")
+    preference_entry = fact_catalog.get("training_preference")
+    if not isinstance(preference_entry, dict):
+        raise ValueError("Plan draft context is missing training preferences.")
+    preference = preference_entry.get("value")
+    if not isinstance(preference, dict):
+        raise ValueError("Plan draft context is missing training preferences.")
+    available_days = preference.get("available_days")
+    if not isinstance(available_days, list):
+        raise ValueError("Plan draft context has invalid training preferences.")
+    limits_by_day: dict[str, int | None] = {}
+    for item in available_days:
+        if not isinstance(item, dict):
+            raise ValueError("Plan draft context has invalid availability entries.")
+        day = item.get("day")
+        minutes = item.get("minutes")
+        if day not in WEEKDAY_CODES or (minutes is not None and not isinstance(minutes, int)):
+            raise ValueError("Plan draft context has invalid availability entries.")
+        limits_by_day[day] = minutes
+
+    duration_by_date: dict[date, int] = {}
+    for session in generated.sessions:
+        day = WEEKDAY_CODES[session.scheduled_date.weekday()]
+        if day not in limits_by_day:
+            raise ValueError("AI plan draft scheduled a session outside athlete availability.")
+        duration_by_date[session.scheduled_date] = (
+            duration_by_date.get(session.scheduled_date, 0)
+            + (session.duration_seconds or 0)
+        )
+        if limits_by_day[day] is not None and session.duration_seconds is None:
+            raise ValueError("A time-limited available day requires a session duration.")
+
+    for scheduled_date, total_seconds in duration_by_date.items():
+        day = WEEKDAY_CODES[scheduled_date.weekday()]
+        minutes_limit = limits_by_day[day]
+        if minutes_limit is not None and total_seconds > minutes_limit * 60:
+            raise ValueError("AI plan draft exceeds athlete availability on one day.")
+
+
+def _validate_block_outline(*, outline, block_start_date: date, block_end_date: date) -> None:
+    """Require sorted, contiguous phases that describe the whole plan block."""
+
+    expected_start = block_start_date
+    for item in outline:
+        if item.week_start != expected_start or item.week_end < item.week_start:
+            raise ValueError("AI plan draft block outline must be sorted and contiguous.")
+        if item.week_end > block_end_date:
+            raise ValueError("AI plan draft contains an outline outside the block.")
+        expected_start = item.week_end + timedelta(days=1)
+    if expected_start != block_end_date + timedelta(days=1):
+        raise ValueError("AI plan draft block outline must cover the full plan block.")
+
+
+def _is_complete_assessment(assessment) -> bool:
+    return bool(
+        _has_nonempty_texts(assessment.fact_references)
+        and _has_nonempty_texts(assessment.inferences)
+        and isinstance(assessment.rationale, str)
+        and assessment.rationale.strip()
+        and _has_nonempty_texts(assessment.uncertainties)
+        and _has_nonempty_texts(assessment.coaching_principles)
+    )
+
+
+def _has_nonempty_texts(values: object) -> bool:
+    return isinstance(values, tuple) and bool(values) and all(
+        isinstance(value, str) and value.strip() for value in values
+    )
+
+
+def _has_complete_assessment(value: dict[str, object] | None) -> bool:
+    if not isinstance(value, dict):
+        return False
+    text_list_fields = (
+        "fact_references",
+        "inferences",
+        "uncertainties",
+        "coaching_principles",
+    )
+    if any(not _stored_text_tuple(value.get(field)) for field in text_list_fields):
+        return False
+    return isinstance(value.get("rationale"), str) and bool(value["rationale"].strip())
+
+
+def _goal_from_parent(parent: TrainingPlan) -> dict[str, object]:
+    fact_catalog = parent.context_snapshot.get("fact_catalog")
+    snapshot_goal = (
+        fact_catalog.get("goal", {}).get("value")
+        if isinstance(fact_catalog, dict)
+        else None
+    )
+    if not isinstance(snapshot_goal, dict):
+        snapshot_goal = {}
+    return {
+        "goal_mode": parent.goal_mode,
+        "race_id": parent.race_id,
+        "race": snapshot_goal.get("race"),
+        "block_start_date": parent.block_start_date,
+        "block_end_date": parent.block_end_date,
+    }
+
+
+def _parent_plan_context(*, parent, sessions, feedback_by_session) -> dict[str, object]:
+    """Send a bounded parent-plan contract to a revision, not free-form history."""
+
+    return {
+        "id": parent.id,
+        "goal_mode": parent.goal_mode,
+        "race_id": parent.race_id,
+        "block_start_date": parent.block_start_date.isoformat(),
+        "block_end_date": parent.block_end_date.isoformat(),
+        "block_outline": parent.block_outline,
+        "sessions": [
+            {
+                "id": session.id,
+                "scheduled_date": session.scheduled_date.isoformat(),
+                "sport_type": session.sport_type,
+                "purpose": session.purpose,
+                "distance_meters": session.distance_meters,
+                "duration_seconds": session.duration_seconds,
+                "heart_rate_zone": session.heart_rate_zone,
+                "target": _serialize_session_target(_session_target_draft(session)),
+                "target_display": _session_target_display(session),
+                "feedback_outcome": (
+                    None
+                    if session.id not in feedback_by_session
+                    else feedback_by_session[session.id].outcome
+                ),
+            }
+            for session in sessions
+        ],
+    }
+
+
+def _validate_heart_rate_zone(*, session, performance_readiness: PerformanceReadiness) -> None:
+    """Require a cycling zone that exists in the athlete's saved profile."""
+
+    if session.heart_rate_zone is None:
+        return
+    configured_zones = {
+        zone["zone"]
+        for sport in performance_readiness.sports
+        if sport.sport_type == session.sport_type
+        for zone in sport.heart_rate_zones
+    }
+    if session.heart_rate_zone not in configured_zones:
+        raise ValueError("AI plan draft used a heart-rate zone not configured for this sport.")
+
+
+def _validate_session_target(
+    *,
+    session,
+    allowed_intensity_types: set[str],
+    performance_readiness: PerformanceReadiness,
+) -> None:
+    target = session.target
+    numeric_fields = (
+        target.rpe_min,
+        target.rpe_max,
+        target.pace_seconds_per_km,
+        target.power_watts,
+    )
+    evidence_by_reference = {
+        evidence.reference_id: evidence
+        for sport in performance_readiness.sports
+        for evidence in sport.intensity_evidence
+    }
+    if target.kind == "none":
+        if any(value is not None for value in numeric_fields) or target.evidence_reference_id:
+            raise ValueError("A none target cannot include numeric values or an evidence reference.")
+        return
+    if target.kind == "rpe":
+        if (
+            target.rpe_min is None
+            or target.rpe_max is None
+            or not 1 <= target.rpe_min <= target.rpe_max <= 10
+            or target.pace_seconds_per_km is not None
+            or target.power_watts is not None
+            or target.evidence_reference_id is not None
+        ):
+            raise ValueError("An RPE target must contain only an RPE range from 1 to 10.")
+        return
+    if target.kind not in allowed_intensity_types:
+        raise ValueError(
+            f"AI plan draft proposed {target.kind} without {session.sport_type} eligibility."
+        )
+    evidence = evidence_by_reference.get(target.evidence_reference_id)
+    if evidence is None or evidence.sport_type != session.sport_type:
+        raise ValueError("AI plan draft target lacks eligible same-sport evidence.")
+    if target.kind == "pace":
+        if (
+            session.sport_type != "run"
+            or target.pace_seconds_per_km is None
+            or not 120 <= target.pace_seconds_per_km <= 1_200
+            or target.rpe_min is not None
+            or target.rpe_max is not None
+            or target.power_watts is not None
+            or evidence.average_speed_mps is None
+        ):
+            raise ValueError("A pace target must cite numeric verified running evidence.")
+        return
+    if target.kind == "power":
+        if (
+            session.sport_type != "ride"
+            or target.power_watts is None
+            or not 30 <= target.power_watts <= 2_000
+            or target.rpe_min is not None
+            or target.rpe_max is not None
+            or target.pace_seconds_per_km is not None
+            or evidence.protocol != "ride_20min_power_test"
+            or evidence.qualifying_power_watts is None
+        ):
+            raise ValueError("A power target must cite a verified 20-minute cycling power test.")
+        return
+    raise ValueError("AI plan draft had an unsupported target kind.")
+
+
+def _render_target_display(*, item, performance_readiness: PerformanceReadiness) -> str:
+    """Render targets from structured fields; never persist free AI target text."""
+
+    parts: list[str] = []
+    if item.heart_rate_zone is not None:
+        for sport in performance_readiness.sports:
+            if sport.sport_type != item.sport_type:
+                continue
+            for zone in sport.heart_rate_zones:
+                if zone["zone"] == item.heart_rate_zone:
+                    parts.append(
+                        f"Z{item.heart_rate_zone} "
+                        f"({zone['lower_bpm']}–{zone['upper_bpm']} bpm)"
+                    )
+                    break
+    target = item.target
+    if target.kind == "rpe":
+        parts.append(f"RPE {target.rpe_min}–{target.rpe_max}")
+    elif target.kind == "pace":
+        minutes, seconds = divmod(target.pace_seconds_per_km or 0, 60)
+        parts.append(f"{minutes}:{seconds:02d} min/km")
+    elif target.kind == "power":
+        parts.append(f"{target.power_watts} W")
+    return " | ".join(parts) or "Ingen primär intensitet"
+
+
+def _legacy_intensity_type(item) -> str:
+    return "hr_zone" if item.heart_rate_zone is not None else item.target.kind
+
+
+def _serialize_session_target(target: SessionTargetDraft) -> dict[str, object]:
+    return {
+        "kind": target.kind,
+        "rpe_min": target.rpe_min,
+        "rpe_max": target.rpe_max,
+        "pace_seconds_per_km": target.pace_seconds_per_km,
+        "power_watts": target.power_watts,
+        "evidence_reference_id": target.evidence_reference_id,
+    }
+
+
+def _session_target_draft(session) -> SessionTargetDraft:
+    """Read current stored structured targets, with a safe legacy representation."""
+
+    target = _session_target_fact(session)
+    return SessionTargetDraft(
+        kind=target.kind,
+        rpe_min=target.rpe_min,
+        rpe_max=target.rpe_max,
+        pace_seconds_per_km=target.pace_seconds_per_km,
+        power_watts=target.power_watts,
+        evidence_reference_id=target.evidence_reference_id,
+    )
+
+
+def _session_target_fact(session) -> SessionTargetFact:
+    target = session.target
+    if not isinstance(target, dict):
+        return SessionTargetFact(
+            kind="legacy",
+            rpe_min=None,
+            rpe_max=None,
+            pace_seconds_per_km=None,
+            power_watts=None,
+            evidence_reference_id=None,
+        )
+    return SessionTargetFact(
+        kind=str(target.get("kind") or "none"),
+        rpe_min=_stored_int(target.get("rpe_min")),
+        rpe_max=_stored_int(target.get("rpe_max")),
+        pace_seconds_per_km=_stored_int(target.get("pace_seconds_per_km")),
+        power_watts=_stored_int(target.get("power_watts")),
+        evidence_reference_id=(
+            target.get("evidence_reference_id")
+            if isinstance(target.get("evidence_reference_id"), str)
+            else None
+        ),
+    )
+
+
+def _session_target_display(session) -> str:
+    # Current plans persist display text produced by _render_target_display,
+    # never text supplied by the model. Keeping it also preserves the saved
+    # Garmin zone bounds when a plan is read later.
+    if session.target is not None:
+        return session.intensity_target
+    return session.intensity_target
+
+
+def _stored_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None

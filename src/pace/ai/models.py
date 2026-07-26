@@ -23,6 +23,7 @@ class PaceAIAnswer:
     observations: tuple[str, ...]
     uncertainties: tuple[str, ...]
     context_event_draft: ContextEventDraft | None
+    knowledge_references: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

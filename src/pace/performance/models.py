@@ -80,6 +80,21 @@ class PerformanceHistory:
 
 
 @dataclass(frozen=True, slots=True)
+class IntensityEvidenceFact:
+    """Minimal verified evidence a coach may cite for a structured target."""
+
+    reference_id: str
+    sport_type: str
+    evidence_type: str
+    protocol: str | None
+    activity_date: date
+    duration_seconds: int | None
+    distance_meters: float | None
+    average_speed_mps: float | None
+    qualifying_power_watts: float | None
+
+
+@dataclass(frozen=True, slots=True)
 class SportPerformanceReadiness:
     """Python-owned eligibility facts for a later AI intensity proposal."""
 
@@ -91,6 +106,9 @@ class SportPerformanceReadiness:
     required_recent_activity_count: int
     can_propose_intensity_target: bool
     limitations: tuple[str, ...]
+    allowed_intensity_types: tuple[str, ...] = ("rpe", "none")
+    heart_rate_zones: tuple[dict[str, int], ...] = ()
+    intensity_evidence: tuple[IntensityEvidenceFact, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

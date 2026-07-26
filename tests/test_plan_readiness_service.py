@@ -54,6 +54,16 @@ def test_plan_readiness_blocks_short_history_and_exposes_no_private_note_text():
     assert readiness.history.covered_calendar_days == 7
 
 
+def test_plan_readiness_blocks_history_that_is_more_than_one_day_stale():
+    _add_four_contiguous_weeks()
+
+    readiness = PlanReadinessService().get_readiness(as_of_date=date(2026, 7, 27))
+
+    assert readiness.status == "blocked"
+    assert [blocker.code for blocker in readiness.blockers] == ["stale_garmin_history"]
+    assert "garmin_history_is_stale" in readiness.limitations
+
+
 def test_plan_readiness_blocks_an_active_pain_or_illness_event():
     _add_four_contiguous_weeks()
     with session_scope() as session:

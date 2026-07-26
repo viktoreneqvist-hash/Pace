@@ -34,16 +34,26 @@ def clear_database() -> None:
         ActivityPerformanceDetail,
         ContextEvent,
         DailyMetric,
+        HeartRateZoneProfile,
         PerformanceEvidence,
         PerformanceSyncRun,
+        PlannedSession,
         Race,
+        SessionFeedback,
         SyncRun,
+        TrainingPlan,
+        TrainingPreference,
     )
     from pace.database.session import SessionFactory
 
     with SessionFactory.begin() as session:
         for model in (
             PerformanceEvidence,
+            SessionFeedback,
+            PlannedSession,
+            TrainingPlan,
+            TrainingPreference,
+            HeartRateZoneProfile,
             ActivityPerformanceDetail,
             PerformanceSyncRun,
             Activity,

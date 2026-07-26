@@ -1259,12 +1259,13 @@ benchmark from a name or ordinary activity. A valid race link remains separate
 verified evidence.
 
 `pace performance readiness` evaluates running and cycling independently. A
-future AI plan may propose an intensity target for a sport only when it has at
+future AI plan may propose running pace or cycling power only when it has at
 least one verified race or benchmark in the preceding 12 weeks and at least
 two activities in that same sport during the preceding 14 calendar days.
-Python reports this eligibility, evidence date/count, current activity count,
-and limitations. It calculates no pace, power, zone, fitness score, workout,
-or plan.
+Decision #32 adds the cycling heart-rate-zone exception. Python
+reports eligibility, evidence date/count, current activity count, configured
+zone facts, and limitations. It calculates no pace, power, fitness score,
+workout, or plan.
 
 ## Reason
 
@@ -1285,6 +1286,439 @@ signals are not interchangeable.
   within the eligibility boundary; the athlete must still review any plan.
 - The benchmark distance and time windows are validation tolerances, not
   performance targets or coaching prescriptions.
+
+---
+
+# Decision #31
+
+## Problem
+
+Pace needs to turn verified history, evidence, recovery gates, race intent, and
+real availability into useful plans without treating self-reported performance
+as fact, silently changing an accepted plan, or allowing an AI model to bypass
+the safety boundaries established in J1–J2C.
+
+## Options
+
+- Generate a long autonomous plan from a chat prompt and overwrite it after
+  every outcome
+- Block planning until every sport has an intensity target
+- Create a reviewable block and short-horizon AI draft within Python-owned
+  gates, then store plan versions and feedback explicitly
+
+## Chosen
+
+J3 stores one local planning preference with available weekday/time slots and a
+desired sport role: `run_primary`, `ride_primary`, or `balanced`. It does not
+collect manual volume or PB claims. The LLM receives this feasibility input
+together with compact selected Pace facts and proposes the actual allocation
+from observed history.
+
+`pace plan draft` is an explicit, stateless AI call. It creates a persisted
+`draft` only after Python confirms J1 readiness, no active health blocker, a
+saved planning preference, valid dates, and Python-owned intensity eligibility.
+Decision #32 is the narrow cycling-zone exception. An
+explicit A-race defines the block when selected; no race uses a rolling
+four-week general-goal block. Only the first seven or fourteen days are
+detailed. The LLM output is strict JSON and Python rejects a pace, power, or
+heart-rate-zone target for a sport that Python has not approved. Such a sport may still receive a
+conservative general session using RPE or no intensity target.
+
+The athlete accepts a draft explicitly. Sessions then accept one outcome:
+`completed`, `completed_limited`, or `skipped`. Optional feedback text stays
+local by default. A revision request sends a note only when that individual
+feedback record was explicitly marked shareable, creates a new short draft, and
+retains the original block outline. Accepting a revision marks its accepted
+parent `superseded`; no plan version is deleted or changed in place.
+
+## Reason
+
+This lets Pace offer the useful part of coaching — a concrete, adaptive next
+one or two weeks — without pretending that a language model owns physiology,
+planning facts, or user intent. The durable block gives the athlete context,
+while the detailed horizon remains responsive to real completion and recovery.
+
+## Consequences
+
+- J3 plan generation needs the existing local OpenAI API-key configuration but
+  never runs during sync, metrics, or deterministic commands.
+- `gpt-5.6-terra` uses medium reasoning effort only for an explicit plan or
+  revision draft, with `store=False`, no tools, and no chat history.
+- The first J3 interface remains CLI/JSON; HTML and web/mobile presentation are
+  separate UX work, not a prerequisite for safe planning.
+- Pace has no fixed numerical progression cap yet. J2A/J2C facts and explicit
+  gates constrain the model now; any universal volume/progression policy must
+  be a future shared coaching decision.
+
+---
+
+# Decision #32
+
+**Status: superseded in part by Decision #34.** The verified Garmin-zone
+contract and no-cycling-pace boundary remain; the fixed zone distribution does
+not.
+
+## Problem
+
+The athlete uses cycling as primary endurance training but has no cycling race
+evidence and does not plan to race cycling. Pace still needs a useful, safe
+cycling target that does not invent a speed or power capacity.
+
+## Options
+
+- Require a cycling race before any cycling target
+- Let the LLM infer cycling pace, zones, or power from ordinary rides
+- Use athlete-confirmed Garmin heart-rate zones for bounded endurance targets
+  while keeping harder intensity behind an explicit benchmark
+
+## Chosen
+
+Pace stores a manually confirmed local copy of the five Garmin cycling
+heart-rate zones. It never estimates these zones from observed maximum heart
+rate or ordinary activity data. When the 28-day planning gate is ready, two
+ride activities exist in the last 14 days, and the profile is saved, Python
+permits a plan draft to use cycling distance, duration, and Garmin zone 1–5.
+
+The zone number is a structured field, not prose. Python requires 70–90% of
+planned cycling time in Z2/Z3 and permits no more than 10% in Z4/Z5. It writes
+the corresponding local BPM range itself. Cycling pace is never permitted.
+Cycling power remains blocked until the athlete explicitly completes and marks
+the existing `ride_20min_power_test`.
+
+## Reason
+
+This gives cycling a practical endurance target that matches the athlete's
+actual use of the sport, without pretending that a race result or a guessed
+power number exists. Keeping the zone number structured makes the boundary
+enforceable even when an LLM drafts the surrounding session language.
+
+## Consequences
+
+- Garmin zones must be entered once with `pace zones set`; missing zones leave
+  cycling plans at RPE/no-target only.
+- Two recent rides are a continuity requirement, not permission for unlimited
+  cycling volume.
+- A future owner decision is required before changing the 70–90% Z2/Z3 or 10%
+  Z4/Z5 distribution rule, or changing the power-test rule.
+
+---
+
+# Decision #33
+
+**Status: superseded in part by Decision #34.** The availability and sport-role
+profile remains; Python no longer imposes a fixed weekly running frequency.
+
+## Problem
+
+`ride_primary` describes the preferred sport but does not decide how much
+running belongs in a general plan. The first draft therefore made an unreviewed
+assumption about running frequency, and it also omitted the agreed cycling
+distance target.
+
+## Options
+
+- Let the LLM infer the number of weekly runs from sparse history
+- Hard-code a run/cycle ratio for every athlete
+- Store an athlete-selected weekly run-session count and validate the plan
+  against it in Python
+
+## Chosen
+
+The athlete selects `weekly_run_sessions` from 0 to 7 as part of local planning
+preferences. Pace validates the exact count in every seven-day detailed plan
+window. The current athlete selection is two runs per week. The LLM may decide
+the conservative content of those sessions only within existing evidence gates.
+
+Every cycling session must now contain a distance and a permitted Garmin
+heart-rate-zone target. A duration may supplement that target but cannot
+replace distance.
+
+## Reason
+
+Frequency and sport mix are athlete intent, not facts a model should invent
+from incomplete recent history. Storing the choice makes future drafts and
+revisions explainable and repeatable. Requiring a structured distance protects
+the previously agreed cycling session contract.
+
+## Consequences
+
+- Existing saved preferences require one explicit update before a new draft.
+- A draft that misses the selected run frequency or a cycling distance is
+  rejected before it reaches the local database.
+- Changing running frequency later is an explicit preference update, not an AI
+  adjustment after feedback.
+
+---
+
+# Decision #34
+
+## Problem
+
+Pace had started to turn provisional coaching heuristics into Python rules:
+an exact weekly run count and a fixed cycling-zone distribution. Those are not
+athlete facts or technical safety boundaries. They are coaching choices that
+need to respond to actual training history, recovery, goals, and uncertainty.
+
+## Options
+
+- Keep numerical coaching heuristics as Python validation rules
+- Let an unstructured chatbot make plans without factual boundaries
+- Keep Python responsible for verified facts and explicit athlete constraints,
+  while a reviewable coach model makes training decisions over those facts
+
+## Chosen
+
+The athlete provides intent — such as `ride_primary`, availability, race
+priority, and taper preference. The coach model decides session mix, running
+frequency, cycling-zone distribution, progression, and individual session
+content from the selected Pace facts. Its conclusion is stored separately as a
+`coach_assessment` containing observed facts, inferences, rationale,
+uncertainties, and named general coaching principles.
+
+Python continues to enforce data integrity and explicit boundaries: factual
+Garmin inputs, active planning blockers, date ranges, reviewable draft status,
+run pace and cycling power eligibility, known Garmin zone boundaries, no
+cycling pace, and no automatic acceptance or overwrite. A cycling plan session
+must still specify purpose, distance, duration, and a valid configured zone;
+these are output-completeness checks rather than a prescribed training policy.
+
+Pace does not yet have a source-attributed coaching knowledge library. The
+coach model's general principles must therefore be labelled as such, never as
+citations or verified research. Batch K1 will add reviewed sources and an
+evidence-selection contract before source-based claims are shown.
+
+## Reason
+
+This makes Pace a data-grounded coach rather than a set of rigid training
+templates, while preserving the limits that prevent data fabrication, unsafe
+automatic changes, and invented performance targets. Separating facts from
+inferences makes the model's reasoning inspectable and correctable by the
+athlete.
+
+## Consequences
+
+- The temporary Python rules for exactly two weekly runs and a 70–90% Z2/Z3
+  distribution are removed.
+- `ride_primary` informs a coaching decision; it is not a fixed run/ride ratio.
+- New plan drafts display their coach assessment in the existing CLI JSON.
+- K1 must establish curated, source-attributed knowledge before Pace claims
+  that any training recommendation is research-cited.
+
+---
+
+# Decision #35
+
+## Problem
+
+An independent J3 review found that the first draft contract still allowed
+important ambiguity: pace and power could be represented as free target text,
+coach assessments could be incomplete, revision drafts did not formally reuse
+their parent's block, availability was not enforced locally, and legacy plan
+rows could look equivalent to a current plan. It also identified technical
+integrity gaps around stale Garmin history, SQLite foreign keys, and the
+superseded weekly-run preference column.
+
+## Options
+
+- Keep the original J3 JSON shape and compensate with stronger prompt wording
+- Replace all historical plans with a new schema
+- Introduce a versioned, structured plan contract and reject legacy or
+  incomplete plans at the actions that would make them authoritative
+
+## Chosen
+
+Pace uses plan-contract version 2 for every new draft. A session has a
+structured cycling `heart_rate_zone` and a separate structured primary target:
+RPE, verified running pace, verified cycling power, or none. Python renders
+display text itself. Pace and power must cite an eligible same-sport evidence
+reference supplied by the local performance-readiness fact; power additionally
+requires the existing 20-minute cycling power-test protocol. A cycling session
+may combine its required zone with power. Cycling pace remains forbidden.
+
+Every current coach assessment must contain at least one ID from the selected
+fact catalog as well as non-empty inference, rationale, uncertainty, and
+general-principle fields. The catalog records each selected value with
+provenance and is the sole source of facts available to the model. It excludes
+raw Garmin data, private context-note text, and unbounded local history.
+
+Python validates each selected weekday and explicit per-day time cap, and the
+initial block outline must cover the full block contiguously. A revision keeps
+the accepted parent's block start, end, and outline; it changes only a new
+seven- or fourteen-day detailed draft. When one revision is accepted, its
+parent is superseded and all sibling revisions are stale. Plans created before
+contract version 2 stay readable but cannot be accepted or revised.
+
+Plan readiness blocks otherwise-contiguous Garmin history that is more than
+one day old. SQLite foreign keys are enabled for every Pace connection and
+`pace db init` runs `foreign_key_check` before an upgrade. The migration also
+removes the obsolete `weekly_run_sessions` preference column rather than
+leaving schema drift after Decision #34.
+
+## Reason
+
+The AI should make coaching judgments from factual constraints, but its output
+must be impossible to reinterpret as unsupported performance evidence or as an
+automatic plan change. A versioned contract permits that hardening without
+silently rewriting the athlete's earlier plan history. Local validation keeps
+explicit athlete constraints and database integrity outside the model's
+control.
+
+## Consequences
+
+- Draft ID 1 and any other earlier J3 drafts require a fresh `pace plan draft`
+  before acceptance or revision after the migration.
+- The JSON shown by `pace plan show` now exposes a structured target and a
+  provenance-backed coach assessment instead of trusting a free target string.
+- Plan generation may be blocked until a current Garmin sync is available;
+  this is intentional data-quality protection, not a coaching judgment.
+- K1 remains necessary before Pace can call a coaching rationale research
+  cited or evidence sourced.
+
+---
+
+# Decision #36
+
+## Problem
+
+The J3 plan contract became safe and reviewable, but its default CLI output is
+large JSON. That is useful for inspection and testing, but unsuitable as the
+main way an athlete reads a daily plan or considers the coach's reasoning.
+Building a web application at this point would introduce a second UI runtime,
+authentication and deployment decisions, and a larger privacy surface before
+the underlying coaching workflow has been used.
+
+## Options
+
+- Keep JSON as the only plan presentation
+- Build a server-backed dashboard or full web application now
+- Add small local terminal and HTML views over the existing persisted plan
+  contract
+
+## Chosen
+
+Batch J3.3 adds `pace plan today`, `pace plan review --id`, and `pace plan
+report --id`. The first two are readable terminal views. The report command
+creates a self-contained HTML file at `reports/plan-<id>.html`, which the
+athlete opens directly in a browser.
+
+The presentation layer is read-only: it reads a stored plan and never calls an
+LLM, syncs Garmin, writes feedback, accepts a plan, or creates a revision. It
+renders plan metadata, detailed sessions, feedback outcomes, block outline,
+coach assessment, and labels for the selected fact categories. It deliberately
+does not render raw Garmin payloads, the raw fact-catalog JSON, or any private
+feedback/context-note text. `reports/` is ignored by Git, created owner-only,
+and each HTML file is owner-only.
+
+## Reason
+
+This makes the existing coaching flow usable now while preserving the
+local-first privacy model and avoiding premature web-product architecture. The
+HTML document is a disposable derived view, not another source of truth or a
+second data model. A later interactive dashboard can reuse the same plan facts
+and presentation rules.
+
+## Consequences
+
+- JSON remains available through `pace plan show` for debugging and machine
+  inspection; the human default is `pace plan review` or the HTML report.
+- No database migration, browser automation, web server, or external asset is
+  needed for J3.3.
+- A future Batch L may add an interactive local dashboard, but it must consume
+  the persisted plan contract rather than reimplement planning or coaching
+  decisions in the UI.
+
+---
+
+# Decision #37
+
+## Problem
+
+The default LLM voice can turn an otherwise factual plan into generic,
+overly-soft wellness language. Statements such as routine referrals to a care
+provider for normal fatigue or an ordinary hard day do not make the plan safer
+or more useful; they weaken the coach's concrete accountability.
+
+## Options
+
+- Keep the provider's default helpful-assistant tone
+- Make Pace aggressively motivational and dismiss risk or uncertainty
+- Use a direct, factual endurance-coach tone while retaining the existing
+  factual and medical boundaries
+
+## Chosen
+
+Pace prompts require a direct, unsentimental Swedish coach voice. The model
+states what the local facts support, what they do not support, and the next
+action. It avoids praise, soothing, therapy language, generic wellness text,
+and routine care-provider referrals for ordinary fatigue, poor sleep, or
+discomfort.
+
+Directness is not permission for recklessness. Pace remains non-diagnostic and
+does not give medical advice. Where the selected facts justify reducing or
+skipping a session, it says so plainly and does not compensate by adding
+intensity later.
+
+## Reason
+
+The athlete wants a coach that holds the plan to the evidence, not a chatbot
+that pads every conclusion with reassurance. Clear language makes uncertainty,
+training constraints, and decisions easier to act on.
+
+## Consequences
+
+- Existing stored plans preserve their historical wording; newly generated
+  drafts and Pace AI answers use the new tone instruction.
+- A future coaching-knowledge library may improve the substance of advice, but
+  it must preserve this tone and the boundary between facts, inferences, and
+  medical assessment.
+
+---
+
+# Decision #38
+
+## Problem
+
+Pace could express coaching rationale, but that rationale had no constrained,
+inspectable research support. Letting the model search the web or rely on
+unbounded background knowledge would make sources, freshness, privacy, and
+review impossible to control.
+
+## Options
+
+- Let each AI call search the web or retrieve raw papers
+- Add embeddings and a vector database before there is a substantial library
+- Keep a small, checked-in library of human-reviewed evidence briefs and select
+  them deterministically
+
+## Chosen
+
+K1 adds `knowledge/sources.json` and reviewed Markdown briefs. Each brief has
+an ID, source IDs, supported claims, limitations, and applicability. At runtime
+Pace reads only those local files. Python selects at most three relevant briefs
+from question text or the selected plan facts, then sends only that compact
+contract to the model.
+
+The model must return `knowledge_references`; Python rejects a reference not
+included in that specific request. New plan drafts must cite at least one
+selected brief. `pace knowledge list` and `pace knowledge show --id <brief>`
+make the exact local claims, limits, and source links readable. Plan review and
+the private HTML report show the cited brief titles.
+
+## Reason
+
+This gives Pace evidence traceability without pretending that a handful of
+papers is a complete coaching database. It keeps data minimization intact,
+makes curation reviewable in Git, and preserves the separation between local
+athlete facts, model inferences, and research support.
+
+## Consequences
+
+- There is no runtime internet access, raw-paper copying, automatic knowledge
+  ingestion, embeddings, or vector database in K1.
+- Briefs do not override athlete facts, preferences, Python eligibility gates,
+  or safety boundaries; they constrain how the model may justify an inference.
+- Adding or changing a brief is a reviewed repository change, including its
+  source metadata and explicit limitations.
 
 ---
 

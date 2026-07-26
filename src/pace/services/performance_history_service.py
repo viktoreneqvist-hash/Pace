@@ -27,6 +27,7 @@ from pace.performance.models import (
     DetailedActivityFact,
     PerformanceDetailCoverage,
     PerformanceHistory,
+    IntensityEvidenceFact,
     PerformanceReadiness,
     RaceEvidenceFact,
     SportPerformanceReadiness,
@@ -54,6 +55,7 @@ from pace.repositories.performance_sync_run_repository import (
     complete_performance_sync_run,
     create_performance_sync_run,
 )
+from pace.repositories.heart_rate_zone_repository import get_heart_rate_zone_profile
 from pace.repositories.race_repository import get_race_by_id
 from pace.services.garmin_sync_service import validate_sync_window
 from pace.services.plan_readiness_service import PlanReadinessService
@@ -361,6 +363,11 @@ class PerformanceHistoryService:
                 session,
                 activity_ids=[activity.id for activity in activities],
             )
+            details_by_activity = get_details_for_activities(
+                session,
+                activity_ids=[activity.id for activity in activities],
+            )
+            ride_zone_profile = get_heart_rate_zone_profile(session, sport_type="ride")
 
         return PerformanceReadiness(
             as_of_date=end_date,
@@ -375,6 +382,12 @@ class PerformanceHistoryService:
                     recent_start_date=recent_start_date,
                     planning_status=planning_readiness.status,
                     planning_blockers=planning_readiness.blockers,
+                    heart_rate_zones=(
+                        ()
+                        if sport_type != "ride" or ride_zone_profile is None
+                        else tuple(ride_zone_profile.zones)
+                    ),
+                    details_by_activity=details_by_activity,
                 )
                 for sport_type in INCLUDED_SPORT_TYPES
             ),
@@ -516,6 +529,8 @@ class PerformanceHistoryService:
         recent_start_date: date,
         planning_status: str,
         planning_blockers,
+        heart_rate_zones: tuple[dict[str, int], ...],
+        details_by_activity: dict[int, ActivityPerformanceDetail],
     ) -> SportPerformanceReadiness:
         sport_activities = [
             activity for activity in activities if activity.sport_type == sport_type
@@ -530,13 +545,43 @@ class PerformanceHistoryService:
             athlete_local_date(activity.start_time) >= recent_start_date
             for activity in sport_activities
         )
+        intensity_evidence = tuple(
+            fact
+            for activity in evidence_activities
+            if (detail := details_by_activity.get(activity.id)) is not None
+            if (
+                fact := PerformanceHistoryService._intensity_evidence_fact(
+                    activity=activity,
+                    detail=detail,
+                    evidence=evidence_by_activity[activity.id],
+                )
+            ) is not None
+        )
+        run_pace_evidence = any(
+            fact.average_speed_mps is not None for fact in intensity_evidence
+        )
+        power_test_evidence = tuple(
+            fact
+            for fact in intensity_evidence
+            if fact.protocol == "ride_20min_power_test"
+            and fact.qualifying_power_watts is not None
+        )
         limitations: list[str] = []
+        allowed_intensity_types = {"rpe", "none"}
         if planning_blockers:
             limitations.extend(blocker.code for blocker in planning_blockers)
             status = "blocked"
         elif planning_status != "ready":
             limitations.append("planning_history_not_ready")
             status = "insufficient_history"
+        elif sport_type == "ride" and recent_activity_count >= REQUIRED_RECENT_SPORT_ACTIVITIES and heart_rate_zones:
+            allowed_intensity_types.add("hr_zone")
+            if power_test_evidence:
+                allowed_intensity_types.add("power")
+                status = "ready_for_power_and_hr_zone_targets"
+            else:
+                limitations.append("power_target_requires_ride_20min_power_test")
+                status = "ready_for_hr_zone_target"
         elif not evidence_activities:
             limitations.append("no_verified_evidence_in_last_12_weeks")
             status = "general_plan_only"
@@ -544,6 +589,12 @@ class PerformanceHistoryService:
             limitations.append("insufficient_recent_sport_continuity")
             status = "general_plan_only"
         else:
+            if sport_type == "run" and run_pace_evidence:
+                allowed_intensity_types.add("pace")
+            elif sport_type == "run":
+                limitations.append("verified_run_evidence_lacks_numeric_pace")
+            else:
+                limitations.append("power_target_requires_ride_20min_power_test")
             status = "ready_for_intensity_target"
         return SportPerformanceReadiness(
             sport_type=sport_type,
@@ -556,8 +607,52 @@ class PerformanceHistoryService:
             ),
             recent_activity_count=recent_activity_count,
             required_recent_activity_count=REQUIRED_RECENT_SPORT_ACTIVITIES,
-            can_propose_intensity_target=status == "ready_for_intensity_target",
+            can_propose_intensity_target=len(allowed_intensity_types) > 2,
             limitations=tuple(limitations),
+            allowed_intensity_types=tuple(sorted(allowed_intensity_types)),
+            heart_rate_zones=heart_rate_zones,
+            intensity_evidence=intensity_evidence,
+        )
+
+    @staticmethod
+    def _intensity_evidence_fact(
+        *,
+        activity: Activity,
+        detail: ActivityPerformanceDetail,
+        evidence: PerformanceEvidence,
+    ) -> IntensityEvidenceFact | None:
+        scalar_values, _ = _resolved_scalars(activity, detail)
+        average_speed_mps = scalar_values["average_speed_mps"]
+        if average_speed_mps is None:
+            duration = scalar_values["duration_seconds"]
+            distance = scalar_values["distance_meters"]
+            if duration and distance:
+                average_speed_mps = float(distance) / duration
+        qualifying_power_watts = None
+        if evidence.benchmark_protocol == "ride_20min_power_test":
+            qualifying_power_watts = next(
+                (
+                    float(split["average_power"])
+                    for split in detail.splits
+                    if split.get("duration_seconds") is not None
+                    and 1_140 <= split["duration_seconds"] <= 1_260
+                    and split.get("average_power") is not None
+                ),
+                None,
+            )
+        return IntensityEvidenceFact(
+            reference_id=(
+                f"performance.{activity.sport_type}.{evidence.evidence_type}."
+                f"{activity.provider_activity_id}"
+            ),
+            sport_type=activity.sport_type,
+            evidence_type=evidence.evidence_type,
+            protocol=evidence.benchmark_protocol,
+            activity_date=athlete_local_date(activity.start_time),
+            duration_seconds=scalar_values["duration_seconds"],
+            distance_meters=scalar_values["distance_meters"],
+            average_speed_mps=average_speed_mps,
+            qualifying_power_watts=qualifying_power_watts,
         )
 
 
