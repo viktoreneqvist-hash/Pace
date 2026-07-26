@@ -19,7 +19,11 @@ from pace.explanations.models import ExplanationItem, ExplanationSummary
 from pace.ai.models import ContextEventDraft, PaceAIAnswer
 from pace.planning.models import HistoryCoverage, PlanReadiness
 from pace.capacity.models import CapacityProfile
-from pace.performance.models import PerformanceDetailCoverage, PerformanceHistory
+from pace.performance.models import (
+    PerformanceDetailCoverage,
+    PerformanceHistory,
+    PerformanceReadiness,
+)
 from pace.services.performance_history_service import PerformanceSyncResult
 
 
@@ -640,7 +644,7 @@ def test_capacity_show_prints_read_only_capacity_facts(monkeypatch, capsys):
         recovery_coverage=(),
         upcoming_races=(),
         planning_blockers=(),
-        limitations=("performance_targets_pending_j2c",),
+        limitations=("performance_readiness_required_for_j3",),
     )
 
     class FakeCapacityService:
@@ -712,7 +716,8 @@ def test_performance_show_prints_local_facts_without_target_generation(monkeypat
         ),
         detailed_activities=(),
         race_evidence=(),
-        limitations=("performance_targets_pending_j2c",),
+        benchmark_evidence=(),
+        limitations=("performance_target_proposals_belong_to_j3",),
     )
 
     class FakePerformanceHistoryService:
@@ -751,3 +756,48 @@ def test_performance_parsers_accept_bounded_sync_and_explicit_race_link():
     assert sync_args.end_date == date(2026, 7, 25)
     assert link_args.garmin_activity_id == "12345"
     assert link_args.race_id == 8
+
+
+def test_performance_parser_accepts_an_approved_benchmark_and_readiness_date():
+    parser = app.build_parser()
+
+    benchmark_args = parser.parse_args(
+        [
+            "performance",
+            "mark-benchmark",
+            "--garmin-activity-id",
+            "12345",
+            "--protocol",
+            "run_5k_time_trial",
+        ]
+    )
+    readiness_args = parser.parse_args(
+        ["performance", "readiness", "--end-date", "2026-07-25"]
+    )
+
+    assert benchmark_args.protocol == "run_5k_time_trial"
+    assert readiness_args.end_date == date(2026, 7, 25)
+
+
+def test_performance_readiness_prints_python_owned_eligibility(monkeypatch, capsys):
+    readiness = PerformanceReadiness(
+        as_of_date=date(2026, 7, 25),
+        evidence_start_date=date(2026, 5, 3),
+        history=HistoryCoverage(28, 28, date(2026, 6, 28), date(2026, 6, 28), date(2026, 7, 25), True),
+        planning_blockers=(),
+        sports=(),
+    )
+
+    class FakePerformanceHistoryService:
+        def get_readiness(self, *, end_date):
+            assert end_date == date(2026, 7, 25)
+            return readiness
+
+    monkeypatch.setattr(app, "PerformanceHistoryService", FakePerformanceHistoryService)
+
+    exit_code = app.run_performance_readiness(
+        Namespace(end_date=None), today=date(2026, 7, 25)
+    )
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out)["evidence_start_date"] == "2026-05-03"

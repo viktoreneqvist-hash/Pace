@@ -43,6 +43,7 @@ from pace.services.race_service import (
 )
 from pace.services.capacity_service import CapacityService
 from pace.services.performance_history_service import PerformanceHistoryService
+from pace.performance.protocols import SUPPORTED_BENCHMARK_PROTOCOLS
 
 
 def positive_days(value: str) -> int:
@@ -447,6 +448,34 @@ def build_parser() -> ArgumentParser:
     )
     performance_link_race_parser.set_defaults(handler=run_performance_link_race)
 
+    performance_benchmark_parser = performance_subparsers.add_parser(
+        "mark-benchmark",
+        help="markera ett genomfört Pace-definierat benchmark-pass",
+    )
+    performance_benchmark_parser.add_argument(
+        "--garmin-activity-id",
+        required=True,
+        help="Garmin-id från 'pace performance show'",
+    )
+    performance_benchmark_parser.add_argument(
+        "--protocol",
+        choices=sorted(SUPPORTED_BENCHMARK_PROTOCOLS),
+        required=True,
+        help="Pace-protokollet som aktiviteten måste uppfylla",
+    )
+    performance_benchmark_parser.set_defaults(handler=run_performance_mark_benchmark)
+
+    performance_readiness_parser = performance_subparsers.add_parser(
+        "readiness",
+        help="kontrollera om evidence och aktuell sporthistorik räcker för intensitetsmål",
+    )
+    performance_readiness_parser.add_argument(
+        "--end-date",
+        type=iso_date,
+        help="analysdatum YYYY-MM-DD (standard: idag)",
+    )
+    performance_readiness_parser.set_defaults(handler=run_performance_readiness)
+
     return parser
 
 
@@ -824,6 +853,30 @@ def run_performance_link_race(args: Namespace) -> int:
         print(f"Loppresultatet kunde inte länkas: {error}")
         return 2
     print("Garmin-aktiviteten är länkad som ett bekräftat loppresultat.")
+    return 0
+
+
+def run_performance_mark_benchmark(args: Namespace) -> int:
+    """Store an athlete-confirmed benchmark after deterministic protocol checks."""
+
+    try:
+        PerformanceHistoryService().mark_benchmark_evidence(
+            garmin_activity_id=args.garmin_activity_id,
+            protocol_key=args.protocol,
+        )
+    except ValueError as error:
+        print(f"Benchmark-passet kunde inte markeras: {error}")
+        return 2
+    print(f"Garmin-aktiviteten är sparad som benchmark: {args.protocol}.")
+    return 0
+
+
+def run_performance_readiness(args: Namespace, *, today: date | None = None) -> int:
+    """Display deterministic gates without calculating a target or a training plan."""
+
+    end_date = args.end_date or today or date.today()
+    readiness = PerformanceHistoryService().get_readiness(end_date=end_date)
+    print(json.dumps(asdict(readiness), default=_json_default, indent=2))
     return 0
 
 

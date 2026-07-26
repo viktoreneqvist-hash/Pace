@@ -243,6 +243,19 @@ pace, power, or zone targets into a plan.
 - [x] Defer exact Pace-defined benchmark protocols and all pace, power, zone,
   capacity, and planning policy to J2C/J3 owner decisions
 
+#### J2C — Performance readiness gate
+
+- [x] Define owner-approved benchmark protocols: 5 km and 10 km run time
+  trials, plus a 20-minute cycling power test with a 19–21 minute powered split
+- [x] Mark a benchmark only after Python validates its sport and observable
+  Garmin evidence; ordinary activities never become evidence automatically
+- [x] Add `pace performance readiness` with separate run/ride results
+- [x] Require verified same-sport race or benchmark evidence within 12 weeks
+  and at least two same-sport activities in the last 14 days before a future
+  AI plan may propose an intensity target
+- [x] Keep Python responsible for eligibility and limitations; defer all target
+  proposals, workout generation, and plan writing to J3
+
 ### Batch J3 — Reviewable short-horizon plan drafts
 
 Create a block view to an explicit A-race and a detailed one- or two-week

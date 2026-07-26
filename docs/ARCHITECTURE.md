@@ -384,9 +384,15 @@ coordinates, a route, chart samples, or an untouched Garmin detail response.
 #### `performance_evidence`
 
 Stores an athlete-confirmed relationship between a locally imported Garmin
-activity and an evidence type. J2B supports only a race link: the athlete
-selects the race and matching Garmin activity, while all observed time,
-distance, pace, heart-rate, and power facts remain Garmin-derived.
+activity and an evidence type. A race link requires a matching stored race,
+sport, and Stockholm-local date. A benchmark link requires an approved,
+deterministically validated Pace protocol. All observed time, distance, pace,
+heart-rate, and power facts remain Garmin-derived.
+
+The J2C readiness service consumes these evidence rows together with the
+existing capacity/history gate. It returns a sport-specific eligibility result
+for future intensity proposals; it does not calculate a pace, power, zone,
+fitness score, workout, or plan.
 
 #### `performance_sync_runs`
 

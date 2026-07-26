@@ -9,6 +9,7 @@ from pace.database.models import (
     PerformanceEvidence,
     PerformanceSyncRun,
     Race,
+    SyncRun,
 )
 from pace.database.session import SessionFactory, session_scope
 from pace.integrations.garmin.client import GarminIntegrationError, GarminRateLimitError
@@ -214,7 +215,7 @@ def test_race_evidence_requires_detail_and_an_explicit_same_day_same_sport_link(
     assert history.race_evidence[0].race_name == "Synthetic 5k"
     assert history.race_evidence[0].distance_meters == 5_010
     assert history.race_evidence[0].scalar_source == "activity_detail"
-    assert "benchmark_protocols_require_owner_decision" in history.limitations
+    assert "performance_target_proposals_belong_to_j3" in history.limitations
     with SessionFactory() as session:
         assert session.scalar(select(PerformanceEvidence)) is not None
 
@@ -261,3 +262,98 @@ def test_performance_history_falls_back_to_normalized_activity_scalars():
     assert fact.duration_seconds == 1_800
     assert fact.distance_meters == 5_000
     assert fact.scalar_source == "activity_summary"
+
+
+def test_approved_run_benchmark_requires_matching_garmin_distance_and_is_visible():
+    with session_scope() as session:
+        session.add(_activity("benchmark-run", date(2026, 7, 20)))
+    PerformanceHistoryService(StubPerformanceSource()).sync_details(
+        start_date=date(2026, 7, 20), end_date=date(2026, 7, 20)
+    )
+
+    evidence = PerformanceHistoryService().mark_benchmark_evidence(
+        garmin_activity_id="benchmark-run",
+        protocol_key="run_5k_time_trial",
+    )
+    history = PerformanceHistoryService().get_history(end_date=date(2026, 7, 26))
+
+    assert evidence.evidence_type == "benchmark"
+    assert len(history.benchmark_evidence) == 1
+    assert history.benchmark_evidence[0].protocol == "run_5k_time_trial"
+
+
+def test_benchmark_rejects_an_activity_that_does_not_match_its_protocol():
+    with session_scope() as session:
+        session.add(_activity("wrong-distance", date(2026, 7, 20)))
+    PerformanceHistoryService(StubPerformanceSource()).sync_details(
+        start_date=date(2026, 7, 20), end_date=date(2026, 7, 20)
+    )
+
+    with pytest.raises(ValueError, match="10 km"):
+        PerformanceHistoryService().mark_benchmark_evidence(
+            garmin_activity_id="wrong-distance",
+            protocol_key="run_10k_time_trial",
+        )
+
+
+def test_readiness_requires_evidence_and_two_recent_same_sport_activities():
+    with session_scope() as session:
+        session.add_all(
+            [
+                SyncRun(
+                    provider="garmin",
+                    completed_at=datetime(2026, 7, 26, tzinfo=UTC),
+                    status="success",
+                    requested_start_date=date(2026, 6, 28),
+                    requested_end_date=date(2026, 7, 4),
+                ),
+                SyncRun(
+                    provider="garmin",
+                    completed_at=datetime(2026, 7, 26, tzinfo=UTC),
+                    status="success",
+                    requested_start_date=date(2026, 7, 5),
+                    requested_end_date=date(2026, 7, 11),
+                ),
+                SyncRun(
+                    provider="garmin",
+                    completed_at=datetime(2026, 7, 26, tzinfo=UTC),
+                    status="success",
+                    requested_start_date=date(2026, 7, 12),
+                    requested_end_date=date(2026, 7, 18),
+                ),
+                SyncRun(
+                    provider="garmin",
+                    completed_at=datetime(2026, 7, 26, tzinfo=UTC),
+                    status="success",
+                    requested_start_date=date(2026, 7, 19),
+                    requested_end_date=date(2026, 7, 25),
+                ),
+            ]
+        )
+        evidence_activity = _activity("run-evidence", date(2026, 7, 12))
+        first_recent = _activity("run-recent-one", date(2026, 7, 20))
+        second_recent = _activity("run-recent-two", date(2026, 7, 25))
+        session.add_all((evidence_activity, first_recent, second_recent))
+        session.flush()
+        session.add_all(
+            [
+                ActivityPerformanceDetail(
+                    activity_id=evidence_activity.id,
+                    splits=[],
+                ),
+                PerformanceEvidence(
+                    activity_id=evidence_activity.id,
+                    evidence_type="benchmark",
+                    benchmark_protocol="run_5k_time_trial",
+                ),
+            ]
+        )
+
+    readiness = PerformanceHistoryService().get_readiness(end_date=date(2026, 7, 26))
+    run, ride = readiness.sports
+
+    assert run.status == "ready_for_intensity_target"
+    assert run.can_propose_intensity_target is True
+    assert run.recent_activity_count == 2
+    assert ride.status == "general_plan_only"
+    assert "no_verified_evidence_in_last_12_weeks" in ride.limitations

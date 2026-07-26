@@ -70,6 +70,10 @@ Garmin provider
   It fetches only locally stored `run` and `ride` activities and persists a
   normalized scalar and split contract. Never store or send detailed Garmin
   routes, coordinates, chart samples, or raw detail payloads.
+- A later AI plan may propose intensity only when Python reports both verified
+  same-sport evidence from the last 12 weeks and at least two same-sport
+  activities in the last 14 days. This is an eligibility gate, never a target
+  calculation or fitness score.
 
 ## Safety and privacy
 

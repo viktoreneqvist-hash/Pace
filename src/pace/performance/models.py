@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from datetime import date
 
+from pace.planning.models import HistoryCoverage, PlanningBlocker
+
 
 @dataclass(frozen=True, slots=True)
 class PerformanceDetailCoverage:
@@ -49,6 +51,23 @@ class RaceEvidenceFact:
 
 
 @dataclass(frozen=True, slots=True)
+class BenchmarkEvidenceFact:
+    """Observed Garmin facts from an athlete-confirmed standard test."""
+
+    garmin_activity_id: str
+    activity_date: date
+    sport_type: str
+    protocol: str
+    duration_seconds: int | None
+    distance_meters: float | None
+    average_speed_mps: float | None
+    average_heart_rate: int | None
+    average_power: float | None
+    split_count: int
+    scalar_source: str
+
+
+@dataclass(frozen=True, slots=True)
 class PerformanceHistory:
     """Inspectable evidence facts, not target, fitness, or plan output."""
 
@@ -56,4 +75,30 @@ class PerformanceHistory:
     detail_coverage: PerformanceDetailCoverage
     detailed_activities: tuple[DetailedActivityFact, ...]
     race_evidence: tuple[RaceEvidenceFact, ...]
+    benchmark_evidence: tuple[BenchmarkEvidenceFact, ...]
     limitations: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SportPerformanceReadiness:
+    """Python-owned eligibility facts for a later AI intensity proposal."""
+
+    sport_type: str
+    status: str
+    verified_evidence_count: int
+    latest_evidence_date: date | None
+    recent_activity_count: int
+    required_recent_activity_count: int
+    can_propose_intensity_target: bool
+    limitations: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PerformanceReadiness:
+    """Read-only evidence and continuity gate without a target or plan."""
+
+    as_of_date: date
+    evidence_start_date: date
+    history: HistoryCoverage
+    planning_blockers: tuple[PlanningBlocker, ...]
+    sports: tuple[SportPerformanceReadiness, ...]

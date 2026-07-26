@@ -1228,6 +1228,66 @@ auditable.
 
 ---
 
+# Decision #30
+
+## Problem
+
+J3 needs to use actual performance evidence without converting an old race,
+an arbitrary hard activity, or an LLM guess into a current intensity target.
+Pace must distinguish evidence that is useful for general planning from
+evidence that is current enough to justify a future pace, power, or zone
+proposal.
+
+## Options
+
+- Let the planner infer performance from any Garmin activity or self-reported PB
+- Use a single opaque fitness score to choose intensity targets
+- Define explicit benchmark protocols and a sport-specific Python eligibility
+  gate before an AI may propose intensity
+
+## Chosen
+
+J2C adds three Pace-defined benchmark protocols:
+
+- `run_5k_time_trial`: an explicitly marked run between 4.75 and 5.25 km
+- `run_10k_time_trial`: an explicitly marked run between 9.5 and 10.5 km
+- `ride_20min_power_test`: an explicitly marked ride with a 19–21 minute
+  Garmin split containing average power
+
+The athlete still explicitly marks a completed protocol. Pace never infers a
+benchmark from a name or ordinary activity. A valid race link remains separate
+verified evidence.
+
+`pace performance readiness` evaluates running and cycling independently. A
+future AI plan may propose an intensity target for a sport only when it has at
+least one verified race or benchmark in the preceding 12 weeks and at least
+two activities in that same sport during the preceding 14 calendar days.
+Python reports this eligibility, evidence date/count, current activity count,
+and limitations. It calculates no pace, power, zone, fitness score, workout,
+or plan.
+
+## Reason
+
+The old race can remain meaningful evidence, but it must not overrule an
+extended break from the same sport. The two independent gates make this
+visible: current sport continuity protects against overreaching, while the
+explicit evidence requirement prevents a language model from inventing
+capacity. The run and ride gates remain separate because their performance
+signals are not interchangeable.
+
+## Consequences
+
+- A sport can be eligible for a conservative general plan while not eligible
+  for an intensity target.
+- An athlete can use a standard test to regain evidence after a break, but a
+  manually named or self-reported result is never sufficient.
+- J3 receives compact Python facts and may propose a conservative target only
+  within the eligibility boundary; the athlete must still review any plan.
+- The benchmark distance and time windows are validation tolerances, not
+  performance targets or coaching prescriptions.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

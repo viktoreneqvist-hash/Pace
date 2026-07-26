@@ -23,10 +23,17 @@ from pace.integrations.garmin.client import (
 )
 from pace.integrations.garmin.performance import normalize_garmin_performance_detail
 from pace.performance.models import (
+    BenchmarkEvidenceFact,
     DetailedActivityFact,
     PerformanceDetailCoverage,
     PerformanceHistory,
+    PerformanceReadiness,
     RaceEvidenceFact,
+    SportPerformanceReadiness,
+)
+from pace.performance.protocols import (
+    BENCHMARK_PROTOCOLS,
+    validate_benchmark_activity,
 )
 from pace.repositories.activity_performance_detail_repository import (
     get_detail_for_activity,
@@ -49,10 +56,13 @@ from pace.repositories.performance_sync_run_repository import (
 )
 from pace.repositories.race_repository import get_race_by_id
 from pace.services.garmin_sync_service import validate_sync_window
+from pace.services.plan_readiness_service import PlanReadinessService
 from pace.timezones import athlete_local_date
 
 
 PERFORMANCE_HISTORY_DAYS = 84
+RECENT_SPORT_ACTIVITY_DAYS = 14
+REQUIRED_RECENT_SPORT_ACTIVITIES = 2
 
 
 class GarminPerformanceDataSource(Protocol):
@@ -214,6 +224,49 @@ class PerformanceHistoryService:
                 ),
             )
 
+    def mark_benchmark_evidence(
+        self,
+        *,
+        garmin_activity_id: str,
+        protocol_key: str,
+    ) -> PerformanceEvidence:
+        """Store an athlete-confirmed benchmark only when Garmin facts validate it."""
+
+        protocol = BENCHMARK_PROTOCOLS.get(protocol_key)
+        if protocol is None:
+            raise ValueError(f"Unsupported Pace benchmark protocol: {protocol_key}.")
+        with session_scope() as session:
+            activity = get_activity_by_provider_id(session, "garmin", garmin_activity_id)
+            if activity is None:
+                raise ValueError("No imported Garmin activity has that activity id.")
+            detail = get_detail_for_activity(session, activity_id=activity.id)
+            if detail is None:
+                raise ValueError(
+                    "Import activity details before marking this Garmin activity as a benchmark."
+                )
+            existing = get_evidence_for_activity(session, activity_id=activity.id)
+            if existing is not None:
+                if (
+                    existing.evidence_type == "benchmark"
+                    and existing.benchmark_protocol == protocol_key
+                ):
+                    return existing
+                raise ValueError("This Garmin activity is already linked to other evidence.")
+            validate_benchmark_activity(
+                protocol=protocol,
+                sport_type=activity.sport_type,
+                distance_meters=activity.distance_meters,
+                detail=detail,
+            )
+            return create_performance_evidence(
+                session,
+                PerformanceEvidence(
+                    activity_id=activity.id,
+                    evidence_type="benchmark",
+                    benchmark_protocol=protocol_key,
+                ),
+            )
+
     def get_history(self, *, end_date: date) -> PerformanceHistory:
         """Return twelve-week local detail coverage and explicitly linked race facts."""
 
@@ -257,6 +310,17 @@ class PerformanceHistoryService:
             and evidence[activity.id].race_id in races
             and races[evidence[activity.id].race_id] is not None
         )
+        benchmark_evidence = tuple(
+            self._benchmark_evidence_fact(
+                activity=activity,
+                detail=details[activity.id],
+                evidence=evidence[activity.id],
+            )
+            for activity in activities
+            if activity.id in details
+            and activity.id in evidence
+            and evidence[activity.id].evidence_type == "benchmark"
+        )
         coverage = PerformanceDetailCoverage(
             start_date=start_date,
             end_date=end_date,
@@ -269,7 +333,51 @@ class PerformanceHistoryService:
             detail_coverage=coverage,
             detailed_activities=detailed_activities,
             race_evidence=race_evidence,
-            limitations=_history_limitations(coverage, race_evidence),
+            benchmark_evidence=benchmark_evidence,
+            limitations=_history_limitations(
+                coverage,
+                race_evidence,
+                benchmark_evidence,
+            ),
+        )
+
+    def get_readiness(self, *, end_date: date) -> PerformanceReadiness:
+        """Apply the jointly chosen evidence and current-sport continuity gates."""
+
+        planning_readiness = PlanReadinessService().get_readiness(as_of_date=end_date)
+        evidence_start_date = end_date - timedelta(days=PERFORMANCE_HISTORY_DAYS - 1)
+        recent_start_date = end_date - timedelta(days=RECENT_SPORT_ACTIVITY_DAYS - 1)
+        with session_scope() as session:
+            activities = [
+                activity
+                for activity in get_activities_in_date_range(
+                    session,
+                    start_date=evidence_start_date,
+                    end_date=end_date,
+                )
+                if activity.sport_type in INCLUDED_SPORT_TYPES
+            ]
+            evidence_by_activity = get_evidence_for_activities(
+                session,
+                activity_ids=[activity.id for activity in activities],
+            )
+
+        return PerformanceReadiness(
+            as_of_date=end_date,
+            evidence_start_date=evidence_start_date,
+            history=planning_readiness.history,
+            planning_blockers=planning_readiness.blockers,
+            sports=tuple(
+                self._sport_readiness(
+                    sport_type=sport_type,
+                    activities=activities,
+                    evidence_by_activity=evidence_by_activity,
+                    recent_start_date=recent_start_date,
+                    planning_status=planning_readiness.status,
+                    planning_blockers=planning_readiness.blockers,
+                )
+                for sport_type in INCLUDED_SPORT_TYPES
+            ),
         )
 
     def _candidates(self, *, start_date: date, end_date: date) -> list[Activity]:
@@ -377,24 +485,95 @@ class PerformanceHistoryService:
             scalar_source=scalar_source,
         )
 
+    @staticmethod
+    def _benchmark_evidence_fact(
+        *,
+        activity: Activity,
+        detail: ActivityPerformanceDetail,
+        evidence: PerformanceEvidence,
+    ) -> BenchmarkEvidenceFact:
+        scalar_values, scalar_source = _resolved_scalars(activity, detail)
+        return BenchmarkEvidenceFact(
+            garmin_activity_id=activity.provider_activity_id,
+            activity_date=athlete_local_date(activity.start_time),
+            sport_type=activity.sport_type,
+            protocol=evidence.benchmark_protocol or "unknown",
+            duration_seconds=scalar_values["duration_seconds"],
+            distance_meters=scalar_values["distance_meters"],
+            average_speed_mps=scalar_values["average_speed_mps"],
+            average_heart_rate=scalar_values["average_heart_rate"],
+            average_power=scalar_values["average_power"],
+            split_count=len(detail.splits),
+            scalar_source=scalar_source,
+        )
+
+    @staticmethod
+    def _sport_readiness(
+        *,
+        sport_type: str,
+        activities: list[Activity],
+        evidence_by_activity: dict[int, PerformanceEvidence],
+        recent_start_date: date,
+        planning_status: str,
+        planning_blockers,
+    ) -> SportPerformanceReadiness:
+        sport_activities = [
+            activity for activity in activities if activity.sport_type == sport_type
+        ]
+        evidence_activities = [
+            activity
+            for activity in sport_activities
+            if activity.id in evidence_by_activity
+            and evidence_by_activity[activity.id].evidence_type in {"race", "benchmark"}
+        ]
+        recent_activity_count = sum(
+            athlete_local_date(activity.start_time) >= recent_start_date
+            for activity in sport_activities
+        )
+        limitations: list[str] = []
+        if planning_blockers:
+            limitations.extend(blocker.code for blocker in planning_blockers)
+            status = "blocked"
+        elif planning_status != "ready":
+            limitations.append("planning_history_not_ready")
+            status = "insufficient_history"
+        elif not evidence_activities:
+            limitations.append("no_verified_evidence_in_last_12_weeks")
+            status = "general_plan_only"
+        elif recent_activity_count < REQUIRED_RECENT_SPORT_ACTIVITIES:
+            limitations.append("insufficient_recent_sport_continuity")
+            status = "general_plan_only"
+        else:
+            status = "ready_for_intensity_target"
+        return SportPerformanceReadiness(
+            sport_type=sport_type,
+            status=status,
+            verified_evidence_count=len(evidence_activities),
+            latest_evidence_date=(
+                None
+                if not evidence_activities
+                else max(athlete_local_date(activity.start_time) for activity in evidence_activities)
+            ),
+            recent_activity_count=recent_activity_count,
+            required_recent_activity_count=REQUIRED_RECENT_SPORT_ACTIVITIES,
+            can_propose_intensity_target=status == "ready_for_intensity_target",
+            limitations=tuple(limitations),
+        )
+
 
 def _history_limitations(
     coverage: PerformanceDetailCoverage,
     race_evidence: tuple[RaceEvidenceFact, ...],
+    benchmark_evidence: tuple[BenchmarkEvidenceFact, ...],
 ) -> tuple[str, ...]:
     limitations: list[str] = []
     if coverage.eligible_activities == 0:
         limitations.append("no_eligible_run_or_ride_activities_in_last_12_weeks")
     elif coverage.missing_details:
         limitations.append("activity_detail_import_incomplete")
-    if not race_evidence:
-        limitations.append("no_explicit_race_evidence")
-    limitations.extend(
-        (
-            "benchmark_protocols_require_owner_decision",
-            "performance_targets_pending_j2c",
-        )
-    )
+    if not race_evidence and not benchmark_evidence:
+        limitations.append("no_verified_performance_evidence")
+    limitations.append("performance_target_proposals_belong_to_j3")
     return tuple(limitations)
 
 
