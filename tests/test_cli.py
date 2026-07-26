@@ -16,6 +16,7 @@ from pace.analysis.models import (
 )
 from pace.services.garmin_sync_service import GarminSyncResult
 from pace.explanations.models import ExplanationItem, ExplanationSummary
+from pace.ai.models import ContextEventDraft, PaceAIAnswer
 
 
 def test_login_prompts_for_credentials_and_uses_local_token_directory(
@@ -436,4 +437,84 @@ def test_explain_parser_accepts_a_reproducible_end_date():
 
     args = parser.parse_args(["explain", "--end-date", "2026-07-25"])
 
+    assert args.end_date == date(2026, 7, 25)
+
+
+def test_ask_requires_a_local_api_key_before_building_or_sending_context(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        app,
+        "settings",
+        SimpleNamespace(
+            openai_api_key=None,
+            openai_model="test-model",
+            openai_secrets_file=Path("/missing/running-agent.env"),
+        ),
+    )
+
+    exit_code = app.run_ask(
+        Namespace(question="Hur ser läget ut?", end_date=None),
+        today=date(2026, 7, 25),
+    )
+
+    assert exit_code == 2
+    assert "OPENAI_API_KEY" in capsys.readouterr().out
+
+
+def test_ask_uses_the_read_only_service_and_marks_context_drafts_as_unsaved(
+    monkeypatch, capsys
+):
+    captured: dict[str, object] = {}
+
+    class FakeAskService:
+        def __init__(self, *, client):
+            captured["client"] = client
+
+        def ask(self, *, question, end_date):
+            captured["question"] = question
+            captured["end_date"] = end_date
+            return PaceAIAnswer(
+                answer="Pace använder den valda faktabilden.",
+                observations=("HRV-underlaget är begränsat.",),
+                uncertainties=("Ingen slutsats kan dras ännu.",),
+                context_event_draft=ContextEventDraft(
+                    event_type="alcohol",
+                    start_date=date(2026, 7, 24),
+                    end_date=date(2026, 7, 24),
+                    ongoing=False,
+                    note="Sen kväll.",
+                ),
+            )
+
+    monkeypatch.setattr(
+        app,
+        "settings",
+        SimpleNamespace(
+            openai_api_key="test-key",
+            openai_model="test-model",
+            openai_secrets_file=Path("/missing/running-agent.env"),
+        ),
+    )
+    monkeypatch.setattr(app, "PaceAskService", FakeAskService)
+
+    exit_code = app.run_ask(
+        Namespace(question="Varför är HRV lägre?", end_date=None),
+        today=date(2026, 7, 25),
+    )
+
+    assert exit_code == 0
+    assert captured["question"] == "Varför är HRV lägre?"
+    assert captured["end_date"] == date(2026, 7, 25)
+    output = capsys.readouterr().out
+    assert "Context-utkast — inte sparat" in output
+    assert "AI:n kan inte spara dem" in output
+
+
+def test_ask_parser_accepts_a_reproducible_end_date():
+    parser = app.build_parser()
+
+    args = parser.parse_args(["ask", "Hur ser läget ut?", "--end-date", "2026-07-25"])
+
+    assert args.question == "Hur ser läget ut?"
     assert args.end_date == date(2026, 7, 25)

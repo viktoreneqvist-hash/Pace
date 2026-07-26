@@ -8,8 +8,10 @@ from pace.explanations.recovery import (
     explain_recovery_rules,
 )
 from pace.explanations.models import ExplanationSummary
+from pace.rules.models import RuleEvaluationSummary
 from pace.services.athlete_state_service import AthleteStateService
 from pace.services.rule_service import RuleService
+from pace.state.models import AthleteState
 
 
 class ExplanationService:
@@ -20,6 +22,19 @@ class ExplanationService:
 
         athlete_state = AthleteStateService().get_state(end_date=end_date)
         rule_summary = RuleService().evaluate_state(athlete_state)
+        return self.explain_state(
+            athlete_state=athlete_state,
+            rule_summary=rule_summary,
+        )
+
+    def explain_state(
+        self,
+        *,
+        athlete_state: AthleteState,
+        rule_summary: RuleEvaluationSummary,
+    ) -> ExplanationSummary:
+        """Render existing rule evidence for an already-built state snapshot."""
+
         hrv_explanation = explain_hrv_rules(rule_summary)
         return ExplanationSummary(
             as_of_date=athlete_state.as_of_date,

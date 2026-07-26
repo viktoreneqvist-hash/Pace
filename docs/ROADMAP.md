@@ -177,6 +177,19 @@ Use AI only for language, discussion, and bounded reasoning over compact
 structured input. Never send credentials, tokens, raw Garmin payloads, database
 dumps, or unrelated context history.
 
+- [x] Add an explicit, read-only `pace ask "question"` command
+- [x] Build and test a minimized AI context that excludes context-note text and
+  all Garmin raw payloads, credentials, tokens, and database dumps
+- [x] Use one stateless Responses API call with `store=False`, no tools, and no
+  locally persisted AI chat history
+- [x] Read only `OPENAI_API_KEY` from the existing owner-only local secrets file
+  when it is not already supplied by the terminal environment
+- [x] Use `gpt-5.6-terra` with low reasoning effort for bounded Swedish
+  conversation over verified Pace facts
+- [x] Validate structured AI answers in Python before displaying them
+- [x] Allow an AI-produced context-event draft only as an explicit, unsaved
+  proposal; Pace never writes an AI answer or draft automatically
+
 ### Batch J — Advanced coaching
 
 Consider planning, workout generation, research retrieval, and adaptive

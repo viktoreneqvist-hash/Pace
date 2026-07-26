@@ -9,7 +9,7 @@ import json
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 
-from pace.config.settings import PROJECT_ROOT, settings
+from pace.config.settings import PROJECT_ROOT, resolve_openai_api_key, settings
 from pace.database.engine import secure_sqlite_database_file
 from pace.integrations.garmin import (
     GarminAuthenticationRequiredError,
@@ -28,6 +28,9 @@ from pace.services.rule_service import RuleService
 from pace.services.athlete_state_service import AthleteStateService
 from pace.services.explanation_service import ExplanationService
 from pace.explanations.hrv import render_explanation_summary
+from pace.ai.client import OpenAIResponsesClient, PaceAIError
+from pace.ai.models import PaceAIAnswer
+from pace.services.ai_ask_service import PaceAskService
 
 
 def positive_days(value: str) -> int:
@@ -233,6 +236,21 @@ def build_parser() -> ArgumentParser:
     )
     explain_parser.set_defaults(handler=run_explain)
 
+    ask_parser = subparsers.add_parser(
+        "ask",
+        help="fråga AI-assistenten om valda, lokala Pace-fakta",
+    )
+    ask_parser.add_argument(
+        "question",
+        help="en frivillig fråga; varje fråga behandlas separat",
+    )
+    ask_parser.add_argument(
+        "--end-date",
+        type=iso_date,
+        help="sista datum i faktaunderlaget, YYYY-MM-DD (standard: idag)",
+    )
+    ask_parser.set_defaults(handler=run_ask)
+
     return parser
 
 
@@ -421,6 +439,70 @@ def run_explain(args: Namespace, *, today: date | None = None) -> int:
     explanation = ExplanationService().explain(end_date=end_date)
     print(render_explanation_summary(explanation))
     return 0
+
+
+def run_ask(args: Namespace, *, today: date | None = None) -> int:
+    """Ask for an AI explanation without writing Pace state or context."""
+
+    question = args.question.strip()
+    if not question:
+        print("Frågan kan inte vara tom.")
+        return 2
+    try:
+        openai_api_key = resolve_openai_api_key(settings)
+    except ValueError as error:
+        print(f"AI-assistenten är inte konfigurerad: {error}")
+        return 2
+    if not openai_api_key:
+        print(
+            "AI-assistenten är inte konfigurerad. Sätt OPENAI_API_KEY lokalt och "
+            "kör samma kommando igen. Ingen Pace-data har skickats."
+        )
+        return 2
+
+    end_date = args.end_date or today or date.today()
+    try:
+        answer = PaceAskService(
+            client=OpenAIResponsesClient(
+                api_key=openai_api_key,
+                model=settings.openai_model,
+            )
+        ).ask(question=question, end_date=end_date)
+    except PaceAIError as error:
+        print(str(error))
+        return 1
+
+    print(_render_ai_answer(answer, as_of_date=end_date))
+    return 0
+
+
+def _render_ai_answer(answer: PaceAIAnswer, *, as_of_date: date) -> str:
+    """Render a validated AI answer while making unsaved drafts unmistakable."""
+
+    lines = [f"Pace AI ({as_of_date})", answer.answer]
+    if answer.observations:
+        lines.extend(
+            ["", "Observationer:", *[f"- {item}" for item in answer.observations]]
+        )
+    if answer.uncertainties:
+        lines.extend(
+            ["", "Osäkerheter:", *[f"- {item}" for item in answer.uncertainties]]
+        )
+    if answer.context_event_draft is not None:
+        draft = answer.context_event_draft
+        duration = "pågående" if draft.ongoing else str(draft.end_date or draft.start_date)
+        lines.extend(
+            [
+                "",
+                "Context-utkast — inte sparat:",
+                f"- typ: {draft.event_type}",
+                f"- från: {draft.start_date}",
+                f"- till: {duration}",
+                f"- not: {draft.note}",
+                "Bekräfta eller ändra uppgifterna med 'pace note add'; AI:n kan inte spara dem.",
+            ]
+        )
+    return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -1010,6 +1010,60 @@ provenance and risk double-counting.
 
 ---
 
+# Decision #26
+
+## Problem
+
+Pace needs a first conversational AI interface without giving an external model
+raw Garmin data, private context-note text, authority to alter local state, or
+responsibility for deterministic coaching facts.
+
+## Options
+
+- Send the full `pace state show` output and let an LLM answer freely
+- Add an autonomous AI agent with database and note-writing tools
+- Add one explicit, stateless, read-only question command over selected Pace facts
+
+## Chosen
+
+Add `pace ask "question"` as the first AI slice. It builds a compact
+`AIContext` in Python from deterministic metrics, selected context event
+metadata, data quality, Garmin-owned dated facts, rule evaluations, and
+deterministic explanations. Context-note text, raw Garmin payloads,
+credentials, tokens, database dumps, and prior conversations are excluded.
+
+The command uses `gpt-5.6-terra` with low reasoning effort through the
+Responses API. Each request is independent and sets `store=False`; Pace stores
+no AI chat history. The model has no tools and cannot write to SQLite. Its
+structured answer is validated in Python before display. It may return a typed
+context-event draft only when the athlete explicitly supplies new context; the
+draft is never stored automatically.
+
+## Reason
+
+The stable metrics, state, rules, and deterministic explanations already form a
+small auditable fact boundary. A read-only conversational layer can improve
+language and discussion without changing Pace's canonical evidence or privacy
+model. Stateless calls and minimal selected context limit retention, cost, and
+the chance of unrelated history influencing an answer.
+
+## Consequences
+
+- AI assistance reads `OPENAI_API_KEY` from the terminal when supplied there;
+  otherwise it reads only that key from the owner-only local default file
+  `../secrets/running-agent.env`. `PACE_OPENAI_SECRETS_FILE` can select another
+  owner-only file. The key remains ignored by Git and is never printed.
+- An AI call happens only when the athlete explicitly runs `pace ask`; syncs
+  and deterministic commands never trigger it.
+- Python still owns calculations, data quality, and all rule outcomes.
+- AI answers are not medical diagnoses or training recommendations in this
+  slice.
+- A context draft must be reviewed and saved separately with `pace note add`.
+- Weekly AI reviews, planning, tools, chat memory, retrieval, and HTML reports
+  remain future decisions.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |
@@ -1022,7 +1076,7 @@ provenance and risk double-counting.
 | Architecture style | Layered application |
 | Metrics | Deterministic Python |
 | Memory | Structured context events |
-| AI | Later reasoning layer |
+| AI | Explicit, stateless, read-only `pace ask` over selected facts |
 | Product | Persistent coach |
 | Deployment | Local-first |
 | Athlete timezone | Europe/Stockholm |
