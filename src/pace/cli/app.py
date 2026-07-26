@@ -26,6 +26,8 @@ from pace.services.context_service import (
 from pace.services.metric_service import MetricService
 from pace.services.rule_service import RuleService
 from pace.services.athlete_state_service import AthleteStateService
+from pace.services.explanation_service import ExplanationService
+from pace.explanations.hrv import render_explanation_summary
 
 
 def positive_days(value: str) -> int:
@@ -220,6 +222,17 @@ def build_parser() -> ArgumentParser:
     )
     rules_evaluate_parser.set_defaults(handler=run_rules_evaluate)
 
+    explain_parser = subparsers.add_parser(
+        "explain",
+        help="förklara Pace-regler med lokala, deterministiska mallar",
+    )
+    explain_parser.add_argument(
+        "--end-date",
+        type=iso_date,
+        help="sista datum i förklaringen, YYYY-MM-DD (standard: idag)",
+    )
+    explain_parser.set_defaults(handler=run_explain)
+
     return parser
 
 
@@ -398,6 +411,15 @@ def run_rules_evaluate(args: Namespace, *, today: date | None = None) -> int:
     end_date = args.end_date or today or date.today()
     summary = RuleService().evaluate(end_date=end_date)
     print(json.dumps(asdict(summary), default=_json_default, indent=2))
+    return 0
+
+
+def run_explain(args: Namespace, *, today: date | None = None) -> int:
+    """Print readable deterministic explanations without external calls or advice."""
+
+    end_date = args.end_date or today or date.today()
+    explanation = ExplanationService().explain(end_date=end_date)
+    print(render_explanation_summary(explanation))
     return 0
 
 

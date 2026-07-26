@@ -909,6 +909,52 @@ limitation inspectable before an explanation layer is added.
 
 ---
 
+# Decision #24
+
+## Problem
+
+Raw rule JSON is auditable but difficult to use as a daily coaching interface.
+Pace also needs a way to ask for missing athlete context without assuming a
+cause, repeatedly interrogating the athlete, or silently saving sensitive
+information.
+
+## Options
+
+- Send rule JSON directly to an LLM for every explanation
+- Let an LLM choose when to ask follow-up questions
+- Add deterministic templates and a narrowly gated, optional check-in
+
+## Chosen
+
+`pace explain` renders local Swedish templates from the existing rule results.
+It does not calculate new metrics, change rule outcomes, call Garmin, or call
+an LLM.
+
+When `hrv_context_present` has the approved two-day HRV signal but no selected
+context, Pace presents one neutral check-in about `poor_sleep`, `alcohol`,
+`travel`, `work_stress`, or `illness`. It does not claim that any factor caused
+the HRV pattern. It neither prompts interactively nor saves a response; the
+athlete explicitly uses `pace note add` to store context.
+
+## Reason
+
+Deterministic templates make the existing rule evidence readable while keeping
+the wording bounded and inspectable. The narrow gate avoids asking about every
+ordinary HRV change. Explicit note creation keeps the athlete in control of
+sensitive information and provides a safe foundation for a future conversational
+interface.
+
+## Consequences
+
+- `pace rules evaluate` remains the source for structured audit output.
+- `pace explain` is an optional local presentation layer, not a coach that
+  gives training advice.
+- A future LLM may improve wording and understand free text, but Python retains
+  control over when a check-in is eligible and the athlete must confirm any
+  structured context event before storage.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

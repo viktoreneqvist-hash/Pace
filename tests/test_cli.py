@@ -15,6 +15,7 @@ from pace.analysis.models import (
     TrainingWindowSummary,
 )
 from pace.services.garmin_sync_service import GarminSyncResult
+from pace.explanations.models import ExplanationItem, ExplanationSummary
 
 
 def test_login_prompts_for_credentials_and_uses_local_token_directory(
@@ -402,5 +403,37 @@ def test_rules_evaluate_parser_accepts_a_reproducible_end_date():
     parser = app.build_parser()
 
     args = parser.parse_args(["rules", "evaluate", "--end-date", "2026-07-25"])
+
+    assert args.end_date == date(2026, 7, 25)
+
+
+def test_explain_uses_the_deterministic_explanation_service(monkeypatch, capsys):
+    captured: dict[str, date] = {}
+
+    class FakeExplanationService:
+        def explain(self, *, end_date):
+            captured["end_date"] = end_date
+            return ExplanationSummary(
+                as_of_date=end_date,
+                items=(ExplanationItem("test", "Deterministisk testförklaring."),),
+                context_check_in=None,
+            )
+
+    monkeypatch.setattr(app, "ExplanationService", FakeExplanationService)
+
+    exit_code = app.run_explain(
+        Namespace(end_date=None),
+        today=date(2026, 7, 25),
+    )
+
+    assert exit_code == 0
+    assert captured["end_date"] == date(2026, 7, 25)
+    assert "Deterministisk testförklaring." in capsys.readouterr().out
+
+
+def test_explain_parser_accepts_a_reproducible_end_date():
+    parser = app.build_parser()
+
+    args = parser.parse_args(["explain", "--end-date", "2026-07-25"])
 
     assert args.end_date == date(2026, 7, 25)

@@ -147,6 +147,15 @@ interpretations, not hidden calculations or medical diagnoses.
 Turn structured facts and rule output into concise explanations, initially with
 deterministic templates.
 
+- [x] Add a read-only deterministic explanation service and `pace explain`
+- [x] Explain insufficient HRV data without a readiness or health claim
+- [x] Explain the approved two-day HRV pattern and selected context without
+  claiming causality
+- [x] Offer one neutral context check-in only when the HRV signal exists and
+  selected context is absent
+- [x] Never store a response automatically; context remains an explicit note
+- [x] Keep rule JSON available separately through `pace rules evaluate`
+
 ### Batch I — AI assistance
 
 Use AI only for language, discussion, and bounded reasoning over compact
