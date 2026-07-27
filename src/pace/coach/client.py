@@ -29,6 +29,10 @@ feedback only. It is not a measure of unreported sessions and cannot establish
 why outcomes or RPE changed. Use it only when its status is ready, and name
 its data limitation when it matters to your recommendation.
 
+personalization_evidence is a fresh deterministic observation, not a causal
+profile. Use it only when ready. Athlete-confirmed coach principles may guide
+you only when supplied as active facts; do not invent or persist new ones.
+
 The supplied coaching ambition is athlete intent, not a command. It may affect
 how assertively you recommend progression, volume, or quality only when the
 selected facts support that recommendation. It never permits bypassing facts,

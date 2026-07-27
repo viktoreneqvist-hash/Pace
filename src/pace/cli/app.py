@@ -64,6 +64,8 @@ from pace.services.training_plan_service import (
     TrainingPlanService,
 )
 from pace.services.training_response_trend_service import TrainingResponseTrendService
+from pace.services.dashboard_service import DashboardService
+from pace.services.coaching_principle_service import CoachingPrincipleService
 from pace.services.training_preference_service import (
     SUPPORTED_COACHING_AMBITIONS,
     SUPPORTED_SPORT_ROLES,
@@ -608,6 +610,28 @@ def build_parser() -> ArgumentParser:
         "--end-date", type=iso_date, help="slutdatum YYYY-MM-DD (standard: idag)"
     )
     trends_show_parser.set_defaults(handler=run_trends_show)
+
+    dashboard_parser = subparsers.add_parser(
+        "dashboard", help="skapa en lokal, informationstät HTML-dashboard"
+    )
+    dashboard_parser.add_argument(
+        "--end-date", type=iso_date, help="datum YYYY-MM-DD (standard: idag)"
+    )
+    dashboard_parser.set_defaults(handler=run_dashboard)
+
+    profile_parser = subparsers.add_parser("profile", help="hantera bekräftade personliga coachprinciper")
+    profile_subparsers = profile_parser.add_subparsers(dest="profile_command")
+    profile_list_parser = profile_subparsers.add_parser("list", help="visa aktiva och granskningsförfallna principer")
+    profile_list_parser.add_argument("--end-date", type=iso_date)
+    profile_list_parser.set_defaults(handler=run_profile_list)
+    profile_accept_parser = profile_subparsers.add_parser("accept", help="bekräfta en coachprincip från ett planutkast")
+    profile_accept_parser.add_argument("--plan-id", type=int, required=True)
+    profile_accept_parser.add_argument("--principle-index", type=int, required=True)
+    profile_accept_parser.add_argument("--end-date", type=iso_date)
+    profile_accept_parser.set_defaults(handler=run_profile_accept)
+    profile_archive_parser = profile_subparsers.add_parser("archive", help="arkivera en bekräftad coachprincip")
+    profile_archive_parser.add_argument("--id", type=int, required=True)
+    profile_archive_parser.set_defaults(handler=run_profile_archive)
 
     preferences_parser = subparsers.add_parser(
         "preferences",
@@ -1400,6 +1424,45 @@ def run_trends_show(args: Namespace, *, today: date | None = None) -> int:
     end_date = args.end_date or today or date.today()
     trends = TrainingResponseTrendService().get_trends(end_date=end_date)
     print(json.dumps(asdict(trends), default=_json_default, indent=2))
+    return 0
+
+
+def run_dashboard(args: Namespace, *, today: date | None = None) -> int:
+    end_date = args.end_date or today or date.today()
+    try:
+        output_path = DashboardService().write_dashboard(end_date=end_date)
+    except (OSError, ValueError) as error:
+        print(f"Dashboarden kunde inte skapas: {error}")
+        return 2
+    print(f"Privat dashboard sparad: {output_path}")
+    print("Öppna filen i din webbläsare. Dashboarden ändrar inte Pace-data.")
+    return 0
+
+
+def run_profile_list(args: Namespace, *, today: date | None = None) -> int:
+    as_of_date = args.end_date or today or date.today()
+    rows = CoachingPrincipleService().list_active(as_of_date=as_of_date)
+    print(json.dumps([{"id": item.id, "statement": item.statement, "source_plan_id": item.source_plan_id, "review_due_date": item.review_due_date, "review_due": due} for item, due in rows], default=_json_default, indent=2))
+    return 0
+
+
+def run_profile_accept(args: Namespace, *, today: date | None = None) -> int:
+    try:
+        item = CoachingPrincipleService().accept_from_plan(plan_id=args.plan_id, principle_index=args.principle_index, as_of_date=args.end_date or today or date.today())
+    except ValueError as error:
+        print(f"Coachprincipen kunde inte bekräftas: {error}")
+        return 2
+    print(f"Coachprincip {item.id} är bekräftad till {item.review_due_date}.")
+    return 0
+
+
+def run_profile_archive(args: Namespace) -> int:
+    try:
+        CoachingPrincipleService().archive(principle_id=args.id)
+    except ValueError as error:
+        print(f"Coachprincipen kunde inte arkiveras: {error}")
+        return 2
+    print("Coachprincipen är arkiverad.")
     return 0
 
 

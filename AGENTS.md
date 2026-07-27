@@ -142,6 +142,11 @@ Garmin provider
   text through the trend path, create context automatically, claim causality,
   or automatically alter a plan. Six recent feedback records are required for
   trend use; four prior records are required for a comparison.
+- L2 dashboard is a local, owner-only, read-only HTML/SVG view. It must not
+  call AI, sync Garmin, expose raw payloads/private note text, or mutate data.
+- L3 personalisation uses only a current deterministic 56-day explicit-feedback
+  summary and athlete-confirmed coach principles. A principle expires to review
+  after 84 days, is never inferred as fact, and cannot alter a plan automatically.
 - Pace's coach voice is direct, factual, and unsentimental. Do not add praise,
   therapy language, generic wellness language, or routine care-provider
   referrals for ordinary fatigue, poor sleep, or discomfort. This is not a

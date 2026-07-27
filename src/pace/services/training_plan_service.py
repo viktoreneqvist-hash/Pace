@@ -37,6 +37,8 @@ from pace.services.performance_history_service import PerformanceHistoryService
 from pace.services.race_service import resolved_taper
 from pace.services.training_preference_service import TrainingPreferenceService
 from pace.services.training_response_trend_service import TrainingResponseTrendService
+from pace.services.coaching_principle_service import CoachingPrincipleService
+from pace.services.personalization_evidence_service import PersonalizationEvidenceService
 from pace.knowledge.library import load_knowledge_library
 from pace.knowledge.selection import select_for_plan_context, serialize_selected_briefs
 
@@ -356,6 +358,12 @@ class TrainingPlanService:
         training_response_trends = self._training_response_trend_service.get_trends(
             end_date=as_of_date
         )
+        active_principles = tuple(
+            {"id": item.id, "statement": item.statement, "source_plan_id": item.source_plan_id}
+            for item, review_due in CoachingPrincipleService().list_active(as_of_date=as_of_date)
+            if not review_due
+        )
+        personalization_evidence = PersonalizationEvidenceService().get_evidence(end_date=as_of_date)
         with session_scope() as session:
             context_events = get_context_events_in_date_range(
                 session,
@@ -375,6 +383,8 @@ class TrainingPlanService:
             feedback=feedback,
             parent_plan=parent_plan,
             training_response_trends=training_response_trends,
+            active_principles=active_principles,
+            personalization_evidence=personalization_evidence,
         )
         context = _json_safe({"schema_version": 5, "fact_catalog": fact_catalog})
         knowledge_library = load_knowledge_library()
@@ -690,6 +700,8 @@ def _fact_catalog(
     feedback,
     parent_plan,
     training_response_trends,
+    active_principles,
+    personalization_evidence,
 ) -> dict[str, dict[str, object]]:
     """Expose selected deterministic facts by stable IDs for AI citation."""
 
@@ -731,6 +743,10 @@ def _fact_catalog(
         "training_response_trends": _catalog_entry(
             "athlete_reported_python_derived", asdict(training_response_trends)
         ),
+        "athlete_confirmed_coach_principles": _catalog_entry(
+            "explicit_athlete_confirmation", active_principles
+        ),
+        "personalization_evidence": _catalog_entry("athlete_reported_python_derived", asdict(personalization_evidence)),
         "parent_plan": _catalog_entry("local_accepted_plan", parent_plan),
     }
 

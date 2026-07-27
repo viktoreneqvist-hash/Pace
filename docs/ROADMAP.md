@@ -372,6 +372,22 @@ until the library is large enough to need them.
 - [x] Make missing feedback an explicit limitation, never an inferred skipped
   session or causal claim
 
+### Batch L2 — Dense local dashboard
+
+- [x] Add `pace dashboard`, a current owner-only static HTML/SVG view over
+  existing local facts, with no web server, AI call, or mutation
+- [x] Show 28-day training, recovery, feedback, context, plan, and data-quality
+  information without raw Garmin payloads or private note text
+
+### Batch L3 — Bounded personalisation
+
+- [x] Add a deterministic 56-day explicit-feedback evidence gate: 12 records
+  overall and four records for same-sport observations
+- [x] Let the athlete explicitly accept or archive a plan-derived coach
+  principle; mark accepted principles for review after 84 days
+- [x] Supply only current evidence and non-expired athlete-confirmed principles
+  to plan drafting and plan-aware dialogue; never auto-change a plan
+
 ## Explicitly deferred
 
 - Multi-user accounts

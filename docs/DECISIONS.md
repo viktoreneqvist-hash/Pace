@@ -1961,6 +1961,25 @@ judgment. The athlete remains in control of every durable plan change.
 
 ---
 
+# Decision #44
+
+## Chosen
+
+L2 is a dense owner-only local HTML/SVG dashboard over existing facts. It is
+read-only and has no server, external assets, AI call, raw payload, or private
+note text. L3 uses a fresh 56-day explicit-feedback evidence gate (12 records
+overall; four for same-sport observations). An athlete may explicitly accept a
+plan-derived coaching principle; it is sent only while active and becomes due
+for review after 84 days. Neither layer changes a plan automatically.
+
+## Reason
+
+The dashboard improves daily usability without becoming a second source of
+truth. Explicit acceptance preserves continuity without storing opaque model
+opinions as athlete facts.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

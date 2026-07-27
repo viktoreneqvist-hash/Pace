@@ -25,6 +25,8 @@ from pace.services.training_plan_service import (
 )
 from pace.services.training_preference_service import TrainingPreferenceService
 from pace.services.training_response_trend_service import TrainingResponseTrendService
+from pace.services.coaching_principle_service import CoachingPrincipleService
+from pace.services.personalization_evidence_service import PersonalizationEvidenceService
 
 
 MAX_DIALOGUE_MESSAGES = 8
@@ -97,6 +99,12 @@ class CoachDialogueService:
         context["training_response_trends"] = asdict(
             self._training_response_trend_service.get_trends(end_date=end_date)
         )
+        context["athlete_confirmed_coach_principles"] = [
+            {"id": item.id, "statement": item.statement, "source_plan_id": item.source_plan_id}
+            for item, review_due in CoachingPrincipleService().list_active(as_of_date=end_date)
+            if not review_due
+        ]
+        context["personalization_evidence"] = asdict(PersonalizationEvidenceService().get_evidence(end_date=end_date))
         preference = self._preference_service.get_preference()
         if preference is not None:
             context["athlete_preferences"] = {

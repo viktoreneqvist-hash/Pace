@@ -126,6 +126,8 @@ uv run pace coach ask --plan-id 1 "Kan jag cykla i stället för dagens löpning
 uv run pace plan feedback --session-id 1 --outcome completed
 uv run pace plan feedback --session-id 1 --outcome completed --rpe 6
 uv run pace trends show
+uv run pace dashboard
+open reports/dashboard.html
 ```
 
 Om ett pass missas eller blir begränsat registrerar du utfallet och skapar ett
@@ -134,6 +136,14 @@ kort revisionsutkast. Pace skriver aldrig över ett accepterat plan automatiskt.
 ```bash
 uv run pace plan feedback --session-id 1 --outcome skipped --reason schedule --note "Jobbresa"
 uv run pace plan revise --id 1 --days 7
+```
+
+Om ett planutkast innehåller en coachprincip du vill behålla kan du bekräfta
+den. Den granskas igen efter 84 dagar och ändrar aldrig en plan automatiskt:
+
+```bash
+uv run pace profile accept --plan-id 1 --principle-index 0
+uv run pace profile list
 ```
 
 ## Integritet och gränser
