@@ -4,7 +4,7 @@ from dataclasses import asdict
 from datetime import date
 from typing import Protocol
 
-from pace.ai.context import build_ai_context
+from pace.ai.context import build_ai_context, serialize_pace_facts
 from pace.coach.models import CoachDialogueAnswer, CoachDialogueRequest
 from pace.knowledge.library import load_knowledge_library
 from pace.knowledge.selection import (
@@ -26,6 +26,7 @@ from pace.services.training_plan_service import (
 from pace.services.training_preference_service import TrainingPreferenceService
 from pace.services.training_response_trend_service import TrainingResponseTrendService
 from pace.services.coaching_principle_service import CoachingPrincipleService
+from pace.services.coach_training_history_service import CoachTrainingHistoryService
 from pace.services.personalization_evidence_service import PersonalizationEvidenceService
 
 
@@ -47,6 +48,7 @@ class CoachDialogueService:
         rule_service: RuleService | None = None,
         explanation_service: ExplanationService | None = None,
         performance_service: PerformanceHistoryService | None = None,
+        training_history_service: CoachTrainingHistoryService | None = None,
         preference_service: TrainingPreferenceService | None = None,
         training_response_trend_service: TrainingResponseTrendService | None = None,
     ) -> None:
@@ -55,6 +57,9 @@ class CoachDialogueService:
         self._rule_service = rule_service or RuleService()
         self._explanation_service = explanation_service or ExplanationService()
         self._performance_service = performance_service or PerformanceHistoryService()
+        self._training_history_service = (
+            training_history_service or CoachTrainingHistoryService()
+        )
         self._preference_service = preference_service or TrainingPreferenceService()
         self._training_response_trend_service = (
             training_response_trend_service or TrainingResponseTrendService()
@@ -105,6 +110,12 @@ class CoachDialogueService:
             if not review_due
         ]
         context["personalization_evidence"] = asdict(PersonalizationEvidenceService().get_evidence(end_date=end_date))
+        context["training_history"] = self._training_history_service.get_history(
+            end_date=end_date
+        )
+        context["performance_readiness"] = serialize_pace_facts(
+            asdict(self._performance_service.get_readiness(end_date=end_date))
+        )
         preference = self._preference_service.get_preference()
         if preference is not None:
             context["athlete_preferences"] = {

@@ -1,0 +1,110 @@
+from datetime import UTC, date, datetime
+from types import SimpleNamespace
+
+from pace.services.coach_training_history_service import build_coach_training_history
+from pace.trends.models import FeedbackTrendRecord
+
+
+def _activity(*, activity_date, sport_type, duration_seconds, distance_meters):
+    return SimpleNamespace(
+        start_time=datetime.combine(activity_date, datetime.min.time(), tzinfo=UTC),
+        sport_type=sport_type,
+        duration_seconds=duration_seconds,
+        distance_meters=distance_meters,
+        elevation_gain_meters=120.0,
+        average_heart_rate=140,
+        maximum_heart_rate=165,
+        average_speed_mps=3.5,
+        average_power=210.0,
+        training_effect_aerobic=3.1,
+        training_effect_anaerobic=0.4,
+        provider_activity_id="must-not-reach-coach",
+        name="must-not-reach-coach",
+        raw_payload={"must-not-reach-coach": True},
+    )
+
+
+def test_history_uses_three_day_details_28_daily_rows_and_84_day_weeks():
+    end_date = date(2026, 7, 27)
+    history = build_coach_training_history(
+        end_date=end_date,
+        activities=(
+            _activity(
+                activity_date=date(2026, 7, 27),
+                sport_type="ride",
+                duration_seconds=3_000,
+                distance_meters=20_000.0,
+            ),
+            _activity(
+                activity_date=date(2026, 7, 25),
+                sport_type="run",
+                duration_seconds=1_800,
+                distance_meters=None,
+            ),
+            _activity(
+                activity_date=date(2026, 5, 11),
+                sport_type="ride",
+                duration_seconds=7_200,
+                distance_meters=80_000.0,
+            ),
+        ),
+        daily_metrics=(
+            SimpleNamespace(
+                date=end_date,
+                hrv_value=91.0,
+                resting_heart_rate=47,
+                sleep_duration_seconds=28_800,
+            ),
+        ),
+        feedback=(
+            FeedbackTrendRecord(
+                scheduled_date=end_date,
+                sport_type="ride",
+                outcome="completed",
+                perceived_exertion=5,
+                reason_code=None,
+            ),
+        ),
+        context_events=(
+            SimpleNamespace(
+                event_type="travel",
+                start_date=end_date,
+                end_date=None,
+                note="must-not-reach-coach",
+            ),
+        ),
+    )
+
+    assert len(history["recent_detailed_activities"]) == 2
+    assert len(history["daily_history"]) == 28
+    assert len(history["weekly_history"]) == 12
+    assert history["recent_detailed_activities"][0]["sport_type"] == "run"
+    assert "name" not in history["recent_detailed_activities"][0]
+    assert "raw_payload" not in history["recent_detailed_activities"][0]
+    today = history["daily_history"][-1]
+    assert today["recovery"]["hrv_value"] == 91.0
+    assert today["context_event_types"] == ["travel"]
+    assert today["explicit_feedback"][0]["perceived_exertion"] == 5
+    assert history["limits"]["historical_garmin_statuses_included"] is False
+
+
+def test_daily_history_preserves_missing_distance_instead_of_converting_it_to_zero():
+    history = build_coach_training_history(
+        end_date=date(2026, 7, 27),
+        activities=(
+            _activity(
+                activity_date=date(2026, 7, 27),
+                sport_type="run",
+                duration_seconds=1_800,
+                distance_meters=None,
+            ),
+        ),
+        daily_metrics=(),
+        feedback=(),
+        context_events=(),
+    )
+
+    run = history["daily_history"][-1]["training"]["run"]
+
+    assert run["known_distance_meters"] == 0
+    assert run["missing_distance_activity_count"] == 1

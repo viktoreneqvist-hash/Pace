@@ -190,6 +190,13 @@ Garmin provider
   validated service; an LLM may prepare a card but must never write context,
   feedback, preferences, races, or plans directly. Plan adjustments remain
   review-only until an explicit revision workflow is designed.
+- Explicit coach calls receive only the bounded normalized history contract:
+  three detailed activity days, 28 daily rows, and 84 rolling weekly summaries.
+  It may include summary activity fields, current Garmin status facts,
+  structured feedback, and context event types. Never add raw payloads, GPS,
+  provider IDs, activity names, per-second streams, private note text, or
+  historical Garmin readiness/Body Battery/stress/recovery-time data without a
+  new decision. Missing distance must remain explicit rather than becoming zero.
 
 ## Safety and privacy
 

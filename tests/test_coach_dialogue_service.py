@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import date
 
 import pytest
@@ -23,6 +24,11 @@ class StubClient:
     def answer(self, request):
         self.request = request
         return self.answer_value
+
+
+@dataclass(frozen=True)
+class StubPerformanceReadiness:
+    status: str = "ready"
 
 
 def _plan(*, status="accepted") -> TrainingPlanFact:
@@ -87,12 +93,30 @@ def _service(monkeypatch, answer):
         limitations=("explicit_feedback_only",),
     )
     trend_service = type("Trends", (), {"get_trends": lambda *_args, **_kwargs: trends})()
+    performance_service = type(
+        "Performance",
+        (),
+        {"get_readiness": lambda *_args, **_kwargs: StubPerformanceReadiness()},
+    )()
+    history_service = type(
+        "History",
+        (),
+        {
+            "get_history": lambda *_args, **_kwargs: {
+                "recent_detailed_activities": [],
+                "daily_history": [],
+                "weekly_history": [],
+            }
+        },
+    )()
     return CoachDialogueService(
         client=StubClient(answer),
         athlete_state_service=state_service,
         rule_service=rule_service,
         explanation_service=explanation_service,
         training_response_trend_service=trend_service,
+        performance_service=performance_service,
+        training_history_service=history_service,
     )
 
 
@@ -115,6 +139,8 @@ def test_dialogue_sends_only_an_active_accepted_plan_and_keeps_history_bounded(m
     request = service._client.request
     assert request.context["active_plan"]["id"] == 9
     assert request.context["training_response_trends"]["status"] == "ready"
+    assert request.context["training_history"]["weekly_history"] == []
+    assert request.context["performance_readiness"]["status"] == "ready"
     assert len(request.conversation) == 8
     assert request.conversation[0]["text"] == "fråga 2"
 

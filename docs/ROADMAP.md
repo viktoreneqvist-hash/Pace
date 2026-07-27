@@ -492,6 +492,15 @@ until the library is large enough to need them.
   the browser, show only the accepted active plan, and link safely to existing
   local dashboard, plan, and weekly-review HTML reports
 
+### Batch K3 — Layered coach training history
+
+- [x] Give explicit coach calls three days of detailed normalized run/ride
+  activity facts, 28 daily training/recovery rows, and 84 days of rolling
+  weekly summaries
+- [x] Include structured feedback and context event types without private notes
+  and keep only current Garmin status facts; raw payloads, GPS, activity names,
+  provider IDs, and historical device-status values stay local
+
 ### Batch N1 — Synthetic coach evaluation
 
 - [x] Add six reviewed synthetic coaching scenarios with no real athlete data,

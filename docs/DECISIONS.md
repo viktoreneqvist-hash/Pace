@@ -2237,6 +2237,56 @@ application at this stage.
 
 ---
 
+# Decision #51
+
+## Problem
+
+A 28-day aggregate is enough for a high-level dashboard but too coarse for a
+coach question such as whether today's actual session should affect tomorrow's
+plan. Passing raw Garmin payloads directly would instead create an oversized,
+unstable, privacy-sensitive model input with unclear factual meaning.
+
+## Options
+
+- Keep the coach limited to 28-day aggregate state
+- Send raw Garmin payloads and activity streams to the model
+- Send bounded, normalized activity facts at different time resolutions
+
+## Chosen
+
+Explicit coach calls receive three days of detailed normalized run/ride
+activities, 28 daily training/recovery rows, and 84 days of rolling seven-day
+training summaries. They also receive verified performance readiness, current
+Garmin status facts, structured feedback, and context event types without note
+text.
+
+The detailed activity layer may include duration, distance, elevation, summary
+heart rate, run speed, ride power, and Garmin training effects when available.
+It excludes activity name, provider identifier, location/GPS data, raw payload,
+and per-second streams. Daily recovery history includes HRV, resting heart rate
+and sleep only. Training Readiness, Body Battery, stress and recovery time stay
+current-day facts rather than historical trend inputs.
+
+## Reason
+
+This gives the model the detail needed for near-term coaching and enough
+history to assess continuity and sport balance, while retaining one stable
+Pace-defined meaning for every value. It avoids letting the model infer
+semantics from provider-specific raw fields or silently use location and other
+irrelevant data.
+
+## Consequences
+
+- A coach can discuss a synced recent activity directly, but cannot see an
+  unsynced activity until `pace sync` has stored it.
+- Missing distance remains explicitly missing, not zero.
+- The input is larger than the former aggregate-only context, but bounded and
+  predictable rather than unbounded raw history.
+- Raw Garmin data remains local debugging and re-normalization material; any
+  future exception needs its own product decision.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |
