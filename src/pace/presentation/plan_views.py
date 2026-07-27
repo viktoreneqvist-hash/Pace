@@ -26,6 +26,14 @@ _OUTCOME_LABELS = {
     "completed_limited": "Genomfört, begränsat",
     "skipped": "Inte genomfört",
 }
+_FEEDBACK_REASON_LABELS = {
+    "schedule": "Schema",
+    "fatigue": "Trötthet",
+    "pain": "Smärta",
+    "illness": "Sjukdom",
+    "travel": "Resa",
+    "other": "Annat",
+}
 _FACT_REFERENCE_LABELS = {
     "as_of_date": "Planeringsdatum",
     "goal": "Mål och block",
@@ -36,6 +44,7 @@ _FACT_REFERENCE_LABELS = {
     "training_preference": "Dina tillgängliga dagar och sportroll",
     "relevant_context": "Vald strukturerad kontext",
     "feedback": "Delad passåterkoppling",
+    "training_response_trends": "Strukturerade återkopplingstrender",
     "parent_plan": "Accepterad föregående plan",
 }
 
@@ -242,7 +251,7 @@ def _terminal_session_line(session: PlanSessionFact) -> str:
     return (
         f"- {_format_date(session.scheduled_date)} · {_sport_label(session.sport_type)} · "
         f"{session.purpose} · {_session_scope(session)} · {session.target_display}"
-        f"{_feedback_suffix(session.feedback_outcome)}"
+        f"{_feedback_suffix(session)}"
     )
 
 
@@ -283,10 +292,10 @@ def _status_label(status: str) -> str:
     return _STATUS_LABELS.get(status, status)
 
 
-def _feedback_suffix(outcome: str | None) -> str:
-    if outcome is None:
+def _feedback_suffix(session: PlanSessionFact) -> str:
+    if session.feedback_outcome is None:
         return ""
-    return f" · Utfall: {_OUTCOME_LABELS.get(outcome, outcome)}"
+    return f" · Utfall: {_feedback_display(session)}"
 
 
 def _terminal_section(title: str, items: tuple[str, ...]) -> list[str]:
@@ -360,9 +369,7 @@ def _metric_card(label: str, value: str) -> str:
 
 
 def _html_session_row(session: PlanSessionFact) -> str:
-    outcome = "—" if session.feedback_outcome is None else _OUTCOME_LABELS.get(
-        session.feedback_outcome, session.feedback_outcome
-    )
+    outcome = _feedback_display(session)
     return (
         "<tr>"
         f"<td>{escape(_format_date(session.scheduled_date))}</td>"
@@ -373,6 +380,17 @@ def _html_session_row(session: PlanSessionFact) -> str:
         f"<td>{escape(outcome)}</td>"
         "</tr>"
     )
+
+
+def _feedback_display(session: PlanSessionFact) -> str:
+    if session.feedback_outcome is None:
+        return "—"
+    parts = [_OUTCOME_LABELS.get(session.feedback_outcome, session.feedback_outcome)]
+    if session.feedback_perceived_exertion is not None:
+        parts.append(f"RPE {session.feedback_perceived_exertion}/10")
+    if session.feedback_reason_code is not None:
+        parts.append(_FEEDBACK_REASON_LABELS.get(session.feedback_reason_code, session.feedback_reason_code))
+    return " · ".join(parts)
 
 
 def _html_outline_item(item: dict[str, object]) -> str:

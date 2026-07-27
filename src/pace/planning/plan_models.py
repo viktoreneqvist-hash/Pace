@@ -16,6 +16,8 @@ class PlanSessionFact:
     target: "SessionTargetFact"
     target_display: str
     feedback_outcome: str | None
+    feedback_perceived_exertion: int | None = None
+    feedback_reason_code: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

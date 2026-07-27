@@ -1910,6 +1910,57 @@ and explicit invitation remain the access boundary.
 
 ---
 
+# Decision #43
+
+## Problem
+
+Pace needs to learn from an athlete's completed, limited, and skipped plan
+sessions without treating silence as failure, exposing private free text, or
+letting a trend automatically rewrite a plan.
+
+## Options
+
+- Infer every planned-but-unreported session as skipped
+- Save free-text coaching diaries and let the model interpret them directly
+- Store optional structured RPE and reason codes, then derive bounded local
+  trend facts only from explicit feedback
+
+## Chosen
+
+`pace plan feedback` accepts optional RPE 1–10 for `completed` and
+`completed_limited`, plus an optional reason (`schedule`, `fatigue`, `pain`,
+`illness`, `travel`, or `other`) for `completed_limited` and `skipped`.
+
+Pace calculates two fixed 28-day windows locally from those explicit records.
+Six recent feedback records are required before the current window is ready;
+four prior records are required for a window-to-window comparison. The result
+reports its data counts and the permanent limitation
+`explicit_feedback_only`: it cannot say anything about unreported sessions or
+prove why an outcome or RPE changed.
+
+The aggregate, text-free trend fact is available to `pace trends show`, new
+plan drafts, revision drafts, and plan-aware coach dialogue. It never creates
+a context event, diagnoses a condition, changes a plan automatically, or sends
+the athlete's private feedback note to the model.
+
+## Reason
+
+This turns actual athlete feedback into useful personalisation evidence while
+preserving the distinction between observation, unknown data, and coaching
+judgment. The athlete remains in control of every durable plan change.
+
+## Consequences
+
+- Feedback is optional, so an empty trend profile is normal and explicitly
+  limited rather than silently pessimistic.
+- Reason codes are deliberately small and structured; richer narratives stay
+  in the local note and are shared with a revision only by the existing
+  per-note opt-in.
+- Future personalisation can build on this contract, but may not reinterpret
+  it as a causal, medical, or automatic workload system without a new decision.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

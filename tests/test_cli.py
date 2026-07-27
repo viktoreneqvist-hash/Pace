@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from sqlalchemy import create_engine, inspect
+from sqlalchemy.exc import OperationalError
 
 from pace.cli import app
 from pace.analysis.models import (
@@ -591,6 +592,33 @@ def test_preferences_parser_accepts_coaching_ambition():
     )
 
     assert change_args.ambition == "cautious"
+
+
+def test_feedback_and_trends_parsers_accept_structured_l1_fields():
+    parser = app.build_parser()
+
+    feedback = parser.parse_args(
+        [
+            "plan", "feedback", "--session-id", "7", "--outcome", "completed_limited",
+            "--rpe", "8", "--reason", "fatigue",
+        ]
+    )
+    trends = parser.parse_args(["trends", "show", "--end-date", "2026-07-26"])
+
+    assert feedback.rpe == 8
+    assert feedback.reason == "fatigue"
+    assert trends.end_date == date(2026, 7, 26)
+
+
+def test_main_explains_when_the_local_database_needs_a_migration(monkeypatch, capsys):
+    def missing_column(_args):
+        raise OperationalError("select", {}, Exception("no such column: session_feedback.rpe"))
+
+    parser = SimpleNamespace(parse_args=lambda _argv: Namespace(handler=missing_column))
+    monkeypatch.setattr(app, "build_parser", lambda: parser)
+
+    assert app.main([]) == 2
+    assert "uv run pace db init" in capsys.readouterr().out
 
 
 def test_coach_renderer_marks_a_replacement_as_unsaved():

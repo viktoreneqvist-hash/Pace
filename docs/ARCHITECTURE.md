@@ -435,6 +435,14 @@ deletes it. Each planned session may have one structured outcome. Its free-text
 note remains local unless the athlete explicitly marks that note shareable for
 the specific AI revision request.
 
+The same feedback row can optionally store athlete-reported RPE (1–10) for a
+completed or limited session and one structured reason for a limited or skipped
+session. `TrainingResponseTrendService` reads only these text-free, explicit
+records into two fixed 28-day windows. It does not infer outcomes for sessions
+without feedback. The derived profile is read-only evidence for plan drafting,
+revision drafting, and plan-aware dialogue; it cannot mutate a plan, generate
+a context event, or explain a causal relationship.
+
 Each plan version has a contract version. Current drafts store a structured
 `heart_rate_zone` separately from a structured primary `target` (`rpe`,
 verified running `pace`, verified cycling `power`, or `none`). Pace renders
@@ -974,6 +982,8 @@ pace plan report --id 3
 pace plan accept --id 2
 pace plan today
 pace plan feedback --session-id 5 --outcome completed
+pace plan feedback --session-id 5 --outcome completed_limited --rpe 8 --reason fatigue
+pace trends show
 pace plan revise --id 2 --days 7
 ```
 

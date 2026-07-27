@@ -36,12 +36,16 @@ from pace.services.plan_readiness_service import PlanReadinessService
 from pace.services.performance_history_service import PerformanceHistoryService
 from pace.services.race_service import resolved_taper
 from pace.services.training_preference_service import TrainingPreferenceService
+from pace.services.training_response_trend_service import TrainingResponseTrendService
 from pace.knowledge.library import load_knowledge_library
 from pace.knowledge.selection import select_for_plan_context, serialize_selected_briefs
 
 
 SUPPORTED_PLAN_DAYS = frozenset({7, 14})
 SUPPORTED_FEEDBACK_OUTCOMES = frozenset({"completed", "completed_limited", "skipped"})
+SUPPORTED_FEEDBACK_REASON_CODES = frozenset(
+    {"schedule", "fatigue", "pain", "illness", "travel", "other"}
+)
 WEEKDAY_CODES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 CURRENT_PLAN_CONTRACT_VERSION = 2
 
@@ -61,12 +65,16 @@ class TrainingPlanService:
         capacity_service: CapacityService | None = None,
         performance_service: PerformanceHistoryService | None = None,
         preference_service: TrainingPreferenceService | None = None,
+        training_response_trend_service: TrainingResponseTrendService | None = None,
     ) -> None:
         self._generator = generator
         self._plan_readiness_service = plan_readiness_service or PlanReadinessService()
         self._capacity_service = capacity_service or CapacityService()
         self._performance_service = performance_service or PerformanceHistoryService()
         self._preference_service = preference_service or TrainingPreferenceService()
+        self._training_response_trend_service = (
+            training_response_trend_service or TrainingResponseTrendService()
+        )
 
     def generate_draft(
         self,
@@ -245,12 +253,20 @@ class TrainingPlanService:
         *,
         session_id: int,
         outcome: str,
-        note: str | None,
-        share_note_with_ai: bool,
+        perceived_exertion: int | None = None,
+        reason_code: str | None = None,
+        note: str | None = None,
+        share_note_with_ai: bool = False,
     ) -> None:
         normalized_outcome = outcome.strip().lower()
         if normalized_outcome not in SUPPORTED_FEEDBACK_OUTCOMES:
             raise ValueError(f"Unsupported session outcome: {normalized_outcome}.")
+        normalized_reason = _validate_feedback_reason(
+            outcome=normalized_outcome, reason_code=reason_code
+        )
+        normalized_exertion = _validate_feedback_exertion(
+            outcome=normalized_outcome, perceived_exertion=perceived_exertion
+        )
         clean_note = None if note is None else note.strip() or None
         if share_note_with_ai and clean_note is None:
             raise ValueError("A shared feedback note cannot be empty.")
@@ -265,6 +281,8 @@ class TrainingPlanService:
                 session,
                 planned_session_id=planned_session.id,
                 outcome=normalized_outcome,
+                perceived_exertion=normalized_exertion,
+                reason_code=normalized_reason,
                 note=clean_note,
                 share_note_with_ai=share_note_with_ai,
             )
@@ -335,6 +353,9 @@ class TrainingPlanService:
             raise ValueError("Set training preferences before creating a plan draft.")
         capacity = self._capacity_service.get_profile(end_date=as_of_date)
         performance_readiness = self._performance_service.get_readiness(end_date=as_of_date)
+        training_response_trends = self._training_response_trend_service.get_trends(
+            end_date=as_of_date
+        )
         with session_scope() as session:
             context_events = get_context_events_in_date_range(
                 session,
@@ -353,8 +374,9 @@ class TrainingPlanService:
             context_events=context_events,
             feedback=feedback,
             parent_plan=parent_plan,
+            training_response_trends=training_response_trends,
         )
-        context = _json_safe({"schema_version": 4, "fact_catalog": fact_catalog})
+        context = _json_safe({"schema_version": 5, "fact_catalog": fact_catalog})
         knowledge_library = load_knowledge_library()
         selected_briefs = select_for_plan_context(knowledge_library, context=context)
         context["knowledge_briefs"] = serialize_selected_briefs(
@@ -517,6 +539,31 @@ def _validate_plan_days(days: int) -> int:
     return days
 
 
+def _validate_feedback_exertion(*, outcome: str, perceived_exertion: int | None) -> int | None:
+    if perceived_exertion is None:
+        return None
+    if outcome not in {"completed", "completed_limited"}:
+        raise ValueError("RPE can only be saved for a completed session.")
+    if (
+        not isinstance(perceived_exertion, int)
+        or isinstance(perceived_exertion, bool)
+        or not 1 <= perceived_exertion <= 10
+    ):
+        raise ValueError("RPE must be an integer from 1 to 10.")
+    return perceived_exertion
+
+
+def _validate_feedback_reason(*, outcome: str, reason_code: str | None) -> str | None:
+    if reason_code is None:
+        return None
+    normalized_reason = reason_code.strip().lower()
+    if outcome not in {"completed_limited", "skipped"}:
+        raise ValueError("A structured reason can only be saved for a limited or skipped session.")
+    if normalized_reason not in SUPPORTED_FEEDBACK_REASON_CODES:
+        raise ValueError(f"Unsupported feedback reason: {normalized_reason}.")
+    return normalized_reason
+
+
 def _deserialize_outline_item(item: dict[str, object]):
     from pace.planning.draft_models import BlockOutlineItem
 
@@ -556,6 +603,12 @@ def _plan_fact(session, plan: TrainingPlan) -> TrainingPlanFact:
                 target_display=_session_target_display(item),
                 feedback_outcome=(
                     None if item.id not in feedback else feedback[item.id].outcome
+                ),
+                feedback_perceived_exertion=(
+                    None if item.id not in feedback else feedback[item.id].perceived_exertion
+                ),
+                feedback_reason_code=(
+                    None if item.id not in feedback else feedback[item.id].reason_code
                 ),
             )
             for item in sessions
@@ -636,6 +689,7 @@ def _fact_catalog(
     context_events,
     feedback,
     parent_plan,
+    training_response_trends,
 ) -> dict[str, dict[str, object]]:
     """Expose selected deterministic facts by stable IDs for AI citation."""
 
@@ -674,6 +728,9 @@ def _fact_catalog(
             ],
         ),
         "feedback": _catalog_entry("athlete_reported", list(feedback)),
+        "training_response_trends": _catalog_entry(
+            "athlete_reported_python_derived", asdict(training_response_trends)
+        ),
         "parent_plan": _catalog_entry("local_accepted_plan", parent_plan),
     }
 

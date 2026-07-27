@@ -55,6 +55,18 @@ uv run pace state show
 Garmin frågar efter e-post, lösenord och eventuellt MFA direkt i terminalen.
 Pace sparar bara en återanvändbar Garmin-session lokalt på din dator.
 
+## Uppdatera Pace
+
+När du hämtar en ny version, kör detta en gång innan du använder Pace. Det
+uppdaterar bara den lokala databasstrukturen; Garmin-data och planer raderas
+inte.
+
+```bash
+git pull
+uv sync
+uv run pace db init
+```
+
 ## Skapa första planen
 
 Pace behöver 28 aktuella sammanhängande Garmin-dagar innan ett planutkast kan
@@ -112,13 +124,15 @@ uv run pace sync --days 7
 uv run pace plan today
 uv run pace coach ask --plan-id 1 "Kan jag cykla i stället för dagens löpning?"
 uv run pace plan feedback --session-id 1 --outcome completed
+uv run pace plan feedback --session-id 1 --outcome completed --rpe 6
+uv run pace trends show
 ```
 
 Om ett pass missas eller blir begränsat registrerar du utfallet och skapar ett
 kort revisionsutkast. Pace skriver aldrig över ett accepterat plan automatiskt.
 
 ```bash
-uv run pace plan feedback --session-id 1 --outcome skipped "Jobbresa"
+uv run pace plan feedback --session-id 1 --outcome skipped --reason schedule --note "Jobbresa"
 uv run pace plan revise --id 1 --days 7
 ```
 

@@ -12,6 +12,7 @@ from pace.planning.plan_models import (
 )
 from pace.services import coach_dialogue_service
 from pace.services.coach_dialogue_service import CoachDialogueService
+from pace.trends.models import FeedbackWindowSummary, OutcomeSummary, TrainingResponseTrends
 
 
 class StubClient:
@@ -75,11 +76,23 @@ def _service(monkeypatch, answer):
     state_service = type("State", (), {"get_state": lambda *_args, **_kwargs: object()})()
     rule_service = type("Rules", (), {"evaluate_state": lambda *_args, **_kwargs: object()})()
     explanation_service = type("Explain", (), {"explain_state": lambda *_args, **_kwargs: object()})()
+    trends = TrainingResponseTrends(
+        as_of_date=date(2026, 7, 26),
+        status="ready",
+        recent=FeedbackWindowSummary(date(2026, 6, 29), date(2026, 7, 26), OutcomeSummary(6, 5, 1, 0, 83.3), 5.0, 2, (), ()),
+        previous=FeedbackWindowSummary(date(2026, 6, 1), date(2026, 6, 28), OutcomeSummary(4, 4, 0, 0, 100.0), None, 0, (), ()),
+        recent_required_feedback_records=6,
+        previous_required_feedback_records=4,
+        comparison_available=True,
+        limitations=("explicit_feedback_only",),
+    )
+    trend_service = type("Trends", (), {"get_trends": lambda *_args, **_kwargs: trends})()
     return CoachDialogueService(
         client=StubClient(answer),
         athlete_state_service=state_service,
         rule_service=rule_service,
         explanation_service=explanation_service,
+        training_response_trend_service=trend_service,
     )
 
 
@@ -101,6 +114,7 @@ def test_dialogue_sends_only_an_active_accepted_plan_and_keeps_history_bounded(m
     assert answer.adjustment_draft is not None
     request = service._client.request
     assert request.context["active_plan"]["id"] == 9
+    assert request.context["training_response_trends"]["status"] == "ready"
     assert len(request.conversation) == 8
     assert request.conversation[0]["text"] == "fråga 2"
 

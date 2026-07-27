@@ -359,6 +359,19 @@ until the library is large enough to need them.
 - [x] Add GitHub Actions checks for a locked install, Ruff, and the synthetic
   test suite; never run live Garmin or OpenAI commands in CI
 
+### Batch L1 — Explicit feedback trends
+
+- [x] Add optional RPE 1–10 for completed/limited sessions and an optional
+  structured reason for limited/skipped sessions; keep free-text local by
+  default
+- [x] Calculate deterministic, text-free two-window (28 day) trend facts from
+  explicit feedback only; require six recent records and four prior records
+  before comparisons
+- [x] Expose `pace trends show` and send the bounded profile to plan drafts,
+  revisions, and plan-aware coach dialogue without automatic plan changes
+- [x] Make missing feedback an explicit limitation, never an inferred skipped
+  session or causal claim
+
 ## Explicitly deferred
 
 - Multi-user accounts

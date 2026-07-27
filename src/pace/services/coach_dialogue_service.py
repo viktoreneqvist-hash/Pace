@@ -24,6 +24,7 @@ from pace.services.training_plan_service import (
     _validate_session_target,
 )
 from pace.services.training_preference_service import TrainingPreferenceService
+from pace.services.training_response_trend_service import TrainingResponseTrendService
 
 
 MAX_DIALOGUE_MESSAGES = 8
@@ -45,6 +46,7 @@ class CoachDialogueService:
         explanation_service: ExplanationService | None = None,
         performance_service: PerformanceHistoryService | None = None,
         preference_service: TrainingPreferenceService | None = None,
+        training_response_trend_service: TrainingResponseTrendService | None = None,
     ) -> None:
         self._client = client
         self._athlete_state_service = athlete_state_service or AthleteStateService()
@@ -52,6 +54,9 @@ class CoachDialogueService:
         self._explanation_service = explanation_service or ExplanationService()
         self._performance_service = performance_service or PerformanceHistoryService()
         self._preference_service = preference_service or TrainingPreferenceService()
+        self._training_response_trend_service = (
+            training_response_trend_service or TrainingResponseTrendService()
+        )
 
     def ask(
         self,
@@ -89,6 +94,9 @@ class CoachDialogueService:
             knowledge_briefs=knowledge_briefs,
         )
         context["active_plan"] = _serialize_active_plan(plan)
+        context["training_response_trends"] = asdict(
+            self._training_response_trend_service.get_trends(end_date=end_date)
+        )
         preference = self._preference_service.get_preference()
         if preference is not None:
             context["athlete_preferences"] = {

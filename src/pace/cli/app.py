@@ -9,6 +9,7 @@ import shlex
 
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
+from sqlalchemy.exc import OperationalError
 
 from pace.config.settings import PROJECT_ROOT, resolve_openai_api_key, settings
 from pace.database.engine import (
@@ -58,9 +59,11 @@ from pace.services.performance_history_service import PerformanceHistoryService
 from pace.performance.protocols import SUPPORTED_BENCHMARK_PROTOCOLS
 from pace.ai.plan_client import OpenAIPlanClient
 from pace.services.training_plan_service import (
+    SUPPORTED_FEEDBACK_REASON_CODES,
     SUPPORTED_FEEDBACK_OUTCOMES,
     TrainingPlanService,
 )
+from pace.services.training_response_trend_service import TrainingResponseTrendService
 from pace.services.training_preference_service import (
     SUPPORTED_COACHING_AMBITIONS,
     SUPPORTED_SPORT_ROLES,
@@ -103,6 +106,16 @@ def plan_days(value: str) -> int:
     if days not in {7, 14}:
         raise ArgumentTypeError("--days måste vara 7 eller 14.")
     return days
+
+
+def feedback_rpe(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise ArgumentTypeError("--rpe måste vara ett heltal från 1 till 10.") from error
+    if not 1 <= parsed <= 10:
+        raise ArgumentTypeError("--rpe måste vara mellan 1 och 10.")
+    return parsed
 
 
 def iso_date(value: str) -> date:
@@ -556,6 +569,16 @@ def build_parser() -> ArgumentParser:
     plan_feedback_parser.add_argument(
         "--outcome", choices=sorted(SUPPORTED_FEEDBACK_OUTCOMES), required=True
     )
+    plan_feedback_parser.add_argument(
+        "--rpe",
+        type=feedback_rpe,
+        help="valfri upplevd ansträngning 1–10; används bara för genomförda pass",
+    )
+    plan_feedback_parser.add_argument(
+        "--reason",
+        choices=sorted(SUPPORTED_FEEDBACK_REASON_CODES),
+        help="valfri strukturerad orsak för begränsat eller missat pass",
+    )
     plan_feedback_parser.add_argument("--note", help="valfri lokal notering")
     plan_feedback_parser.add_argument(
         "--share-note-with-ai",
@@ -572,6 +595,19 @@ def build_parser() -> ArgumentParser:
     plan_revise_parser.add_argument("--days", type=plan_days, default=14)
     plan_revise_parser.add_argument("--end-date", type=iso_date)
     plan_revise_parser.set_defaults(handler=run_plan_revise)
+
+    trends_parser = subparsers.add_parser(
+        "trends",
+        help="visa lokala trender från uttryckligen registrerad passåterkoppling",
+    )
+    trends_subparsers = trends_parser.add_subparsers(dest="trends_command")
+    trends_show_parser = trends_subparsers.add_parser(
+        "show", help="visa två 28-dagarsfönster utan att ändra någon plan"
+    )
+    trends_show_parser.add_argument(
+        "--end-date", type=iso_date, help="slutdatum YYYY-MM-DD (standard: idag)"
+    )
+    trends_show_parser.set_defaults(handler=run_trends_show)
 
     preferences_parser = subparsers.add_parser(
         "preferences",
@@ -1348,6 +1384,8 @@ def run_plan_feedback(args: Namespace) -> int:
         TrainingPlanService().add_feedback(
             session_id=args.session_id,
             outcome=args.outcome,
+            perceived_exertion=args.rpe,
+            reason_code=args.reason,
             note=args.note,
             share_note_with_ai=args.share_note_with_ai,
         )
@@ -1355,6 +1393,13 @@ def run_plan_feedback(args: Namespace) -> int:
         print(f"Passutfallet kunde inte sparas: {error}")
         return 2
     print("Passutfallet är sparat. Ingen plan har ändrats.")
+    return 0
+
+
+def run_trends_show(args: Namespace, *, today: date | None = None) -> int:
+    end_date = args.end_date or today or date.today()
+    trends = TrainingResponseTrendService().get_trends(end_date=end_date)
+    print(json.dumps(asdict(trends), default=_json_default, indent=2))
     return 0
 
 
@@ -1623,4 +1668,15 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
 
-    return handler(args)
+    try:
+        return handler(args)
+    except OperationalError as error:
+        if _is_missing_database_schema(error):
+            print("Pace-databasen behöver uppdateras. Kör: uv run pace db init")
+            return 2
+        raise
+
+
+def _is_missing_database_schema(error: OperationalError) -> bool:
+    message = str(error).lower()
+    return "no such column" in message or "no such table" in message

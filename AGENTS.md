@@ -136,6 +136,12 @@ Garmin provider
   race, its facts and identity are historical. A cancelled race is retained for
   audit but cannot define or be accepted by a new plan, or receive new Garmin
   race evidence; cancellation is blocked for accepted-plan and evidence use.
+- L1 feedback trends use only explicit structured session feedback: optional
+  RPE for completed/limited sessions and optional reason codes for
+  limited/skipped sessions. Never infer a missing outcome, send private note
+  text through the trend path, create context automatically, claim causality,
+  or automatically alter a plan. Six recent feedback records are required for
+  trend use; four prior records are required for a comparison.
 - Pace's coach voice is direct, factual, and unsentimental. Do not add praise,
   therapy language, generic wellness language, or routine care-provider
   referrals for ordinary fatigue, poor sleep, or discomfort. This is not a

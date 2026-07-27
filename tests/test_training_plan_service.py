@@ -362,6 +362,8 @@ def test_feedback_creates_a_bounded_revision_without_overwriting_parent():
     service.add_feedback(
         session_id=accepted.sessions[0].id,
         outcome="completed_limited",
+        perceived_exertion=7,
+        reason_code="fatigue",
         note="Privat notering.",
         share_note_with_ai=False,
     )
@@ -381,7 +383,31 @@ def test_feedback_creates_a_bounded_revision_without_overwriting_parent():
     assert generator.requests[-1].mode == "revision_draft"
     revision_catalog = generator.requests[-1].context["fact_catalog"]
     assert revision_catalog["feedback"]["value"][0]["note"] is None
+    assert "perceived_exertion" not in revision_catalog["feedback"]["value"][0]
+    assert "reason_code" not in revision_catalog["feedback"]["value"][0]
+    assert revision_catalog["training_response_trends"]["value"]["status"] == "insufficient_data"
     assert "target" in revision_catalog["parent_plan"]["value"]["sessions"][0]
+
+
+def test_feedback_rejects_rpe_or_reason_for_an_incompatible_outcome():
+    service = _service(StubGenerator(_generated_plan()))
+    initial = service.generate_draft(
+        as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
+    )
+    accepted = service.accept_plan(plan_id=initial.id)
+
+    with pytest.raises(ValueError, match="RPE can only"):
+        service.add_feedback(
+            session_id=accepted.sessions[0].id,
+            outcome="skipped",
+            perceived_exertion=5,
+        )
+    with pytest.raises(ValueError, match="structured reason"):
+        service.add_feedback(
+            session_id=accepted.sessions[0].id,
+            outcome="completed",
+            reason_code="fatigue",
+        )
 
 
 def test_only_one_sibling_revision_can_be_accepted():

@@ -64,5 +64,7 @@ class SessionFeedback(TimestampMixin, Base):
         ForeignKey("planned_sessions.id"), nullable=False
     )
     outcome: Mapped[str] = mapped_column(String(30), nullable=False)
+    perceived_exertion: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reason_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     share_note_with_ai: Mapped[bool] = mapped_column(default=False, nullable=False)
