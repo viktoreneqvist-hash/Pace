@@ -1980,6 +1980,23 @@ opinions as athlete facts.
 
 ---
 
+# Decision #45
+
+## Chosen
+
+M1 creates a weekly review only when the athlete explicitly runs `pace review
+weekly`. Python assembles compact facts and selected local knowledge first; a
+stateless AI call with `store=False` returns validated Swedish review sections.
+Pace writes only an owner-only local HTML report. The review cannot write or
+accept a plan, feedback, or context event.
+
+## Reason
+
+This provides a useful coach-level synthesis without turning normal syncs into
+AI jobs or allowing a narrative review to become an automatic plan change.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

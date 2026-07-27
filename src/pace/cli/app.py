@@ -66,6 +66,8 @@ from pace.services.training_plan_service import (
 from pace.services.training_response_trend_service import TrainingResponseTrendService
 from pace.services.dashboard_service import DashboardService
 from pace.services.coaching_principle_service import CoachingPrincipleService
+from pace.services.weekly_review_service import WeeklyReviewService
+from pace.weekly_review.client import WeeklyReviewClient
 from pace.services.training_preference_service import (
     SUPPORTED_COACHING_AMBITIONS,
     SUPPORTED_SPORT_ROLES,
@@ -618,6 +620,12 @@ def build_parser() -> ArgumentParser:
         "--end-date", type=iso_date, help="datum YYYY-MM-DD (standard: idag)"
     )
     dashboard_parser.set_defaults(handler=run_dashboard)
+
+    review_parser = subparsers.add_parser("review", help="skapa en explicit AI-veckoreview som lokal HTML")
+    review_subparsers = review_parser.add_subparsers(dest="review_command")
+    weekly_review_parser = review_subparsers.add_parser("weekly", help="analysera senaste veckan utan att ändra plan")
+    weekly_review_parser.add_argument("--end-date", type=iso_date)
+    weekly_review_parser.set_defaults(handler=run_weekly_review)
 
     profile_parser = subparsers.add_parser("profile", help="hantera bekräftade personliga coachprinciper")
     profile_subparsers = profile_parser.add_subparsers(dest="profile_command")
@@ -1436,6 +1444,21 @@ def run_dashboard(args: Namespace, *, today: date | None = None) -> int:
         return 2
     print(f"Privat dashboard sparad: {output_path}")
     print("Öppna filen i din webbläsare. Dashboarden ändrar inte Pace-data.")
+    return 0
+
+
+def run_weekly_review(args: Namespace, *, today: date | None = None) -> int:
+    api_key = resolve_openai_api_key(settings)
+    if not api_key:
+        print("OPENAI_API_KEY saknas; ingen veckoreview skapades.")
+        return 2
+    try:
+        path = WeeklyReviewService(client=WeeklyReviewClient(api_key=api_key, model=settings.openai_model)).create(end_date=args.end_date or today or date.today())
+    except (ValueError, PaceAIError) as error:
+        print(f"Veckoreviewen kunde inte skapas: {error}")
+        return 2
+    print(f"Privat veckoreview sparad: {path}")
+    print("Öppna filen i din webbläsare. Reviewen ändrar inte planen.")
     return 0
 
 

@@ -128,6 +128,8 @@ uv run pace plan feedback --session-id 1 --outcome completed --rpe 6
 uv run pace trends show
 uv run pace dashboard
 open reports/dashboard.html
+uv run pace review weekly
+open reports/weekly-review.html
 ```
 
 Om ett pass missas eller blir begränsat registrerar du utfallet och skapar ett

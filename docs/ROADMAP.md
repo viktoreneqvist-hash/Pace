@@ -388,6 +388,12 @@ until the library is large enough to need them.
 - [x] Supply only current evidence and non-expired athlete-confirmed principles
   to plan drafting and plan-aware dialogue; never auto-change a plan
 
+### Batch M1 — Explicit weekly coach review
+
+- [x] Add one explicit stateless AI weekly review over selected local facts
+- [x] Render an owner-only local HTML report without plan mutation, raw Garmin
+  payloads, or private note text
+
 ## Explicitly deferred
 
 - Multi-user accounts
