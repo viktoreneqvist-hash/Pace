@@ -350,6 +350,15 @@ until the library is large enough to need them.
 - [x] Preserve every existing factual, availability, intensity-evidence, draft,
   and explicit-acceptance boundary
 
+### Release Batch L0 — Private invited-friend alpha
+
+- [x] Replace the developer-specific AI secret default with one Git-ignored,
+  owner-only `.local/pace.env` per local clone
+- [x] Add a safe key-file template and a simple from-zero README
+- [x] Add the MIT license selected by the owner
+- [x] Add GitHub Actions checks for a locked install, Ruff, and the synthetic
+  test suite; never run live Garmin or OpenAI commands in CI
+
 ## Explicitly deferred
 
 - Multi-user accounts

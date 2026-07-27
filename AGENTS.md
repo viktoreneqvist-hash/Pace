@@ -64,6 +64,10 @@ Garmin provider
   system's disk protection is the privacy boundary for this single-user local
   application; do not add application-level database encryption or key
   management without a new decision.
+- The optional OpenAI key defaults to `.local/pace.env` in each local clone.
+  It must be owner-only and Git-ignored; `OPENAI_API_KEY` in the environment
+  remains an explicit override. Never restore a developer-specific secrets
+  path as the shared default.
 - Missing source values remain `None`. Do not convert unknown distance,
   recovery, or sleep values to zero.
 - Detailed Garmin performance import is a separate at-most-seven-day command.

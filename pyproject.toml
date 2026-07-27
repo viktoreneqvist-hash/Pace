@@ -3,6 +3,7 @@ name = "pace"
 version = "0.1.0"
 description = "A private, local-first endurance coaching system."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.18.5",

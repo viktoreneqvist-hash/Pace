@@ -1,131 +1,154 @@
-## Pace
+# Pace
 
-Pace is a private, local-first endurance coaching system for running and cycling.
+Pace är en privat, lokal träningscoach för löpning och cykling. Den hämtar din
+Garmin-historik till din egen dator, bygger ett granskningsbart kort planutkast
+och använder AI bara när du uttryckligen ber om en plan eller ställer en fråga.
 
-Version 1 is Garmin-first: it will store Garmin activity and recovery data locally,
-calculate deterministic training metrics, and later combine those facts with structured
-athlete context. See `docs/PROJECT_VISION.md` and `docs/ARCHITECTURE.md` for the full design.
+Detta är en tidig privat alpha för inbjudna vänner. Du behöver ett eget
+Garmin-konto och, för AI-planer eller AI-frågor, en egen OpenAI API-nyckel.
+Pace är inte medicinsk rådgivning och diagnostiserar inte skador eller sjukdom.
 
-### Current foundation
+## Du behöver
 
-- Python package: `pace`
-- Database: local SQLite at `data/pace.db` by default
-- External provider: Garmin Connect only
-- Interface direction: `pace` CLI
+- macOS eller annan dator med Python 3.14 och [`uv`](https://docs.astral.sh/uv/)
+- Garmin Connect-konto
+- OpenAI API-nyckel om du vill använda AI-funktionerna
 
-Garmin login stores a reusable session token locally in `.local/garmin_tokens/`. Pace never
-stores the Garmin password in the database or repository. Database and token files use
-owner-only permissions.
-
-Each sync is intentionally limited to seven calendar days. It imports activities plus
-available daily recovery signals: HRV, sleep, stress, Body Battery, resting heart rate,
-and training readiness. Re-running the same batch is safe. Use `--end-date` to import
-older history in bounded batches.
-
-Activity instants are stored as UTC and evaluated in the fixed athlete timezone
-`Europe/Stockholm`. Only Garmin profiles explicitly normalized as running or cycling
-count in metrics; every other activity is excluded.
+På Mac med Homebrew installerar du uv en gång:
 
 ```bash
-uv run pace --help
+brew install uv
+```
+
+## Starta Pace
+
+Klona det privata repo som du blivit inbjuden till:
+
+```bash
+git clone <repo-adress>
+cd pace
+uv sync
+```
+
+Skapa din lokala fil för OpenAI-nyckeln. Den ignoreras av Git och Pace läser
+den automatiskt — du behöver aldrig köra `source` innan du använder Pace.
+
+```bash
+mkdir -p .local
+cp pace.env.example .local/pace.env
+chmod 600 .local/pace.env
+open -e .local/pace.env
+```
+
+Klistra in din egen nyckel efter `OPENAI_API_KEY=` och spara. Hoppa över detta
+om du först bara vill synka Garmin och se vanliga Python-beräknade mått.
+
+Initiera databasen, logga in på Garmin och hämta senaste veckan:
+
+```bash
 uv run pace db init
 uv run pace garmin login
 uv run pace sync --days 7
-uv run pace sync --days 7 --end-date 2026-07-18
-uv run pace metrics summary
-uv run pace note add --type poor_sleep --date 2026-07-25 "Somnade sent."
-uv run pace note list --from 2026-07-19 --to 2026-07-25
 uv run pace state show
-uv run pace rules evaluate
-uv run pace explain
 ```
 
-### Reviewable plan drafts
+Garmin frågar efter e-post, lösenord och eventuellt MFA direkt i terminalen.
+Pace sparar bara en återanvändbar Garmin-session lokalt på din dator.
 
-After at least 28 contiguous, current Garmin days and a saved preference, Pace
-can ask the coach model for a local plan *draft*. It never accepts or alters a
-plan automatically. The model receives a small, provenance-labelled fact
-catalog rather than raw Garmin payloads or private note text; Python checks
-availability, history freshness, structured targets, and plan versioning.
+## Skapa första planen
+
+Pace behöver 28 aktuella sammanhängande Garmin-dagar innan ett planutkast kan
+skapas. Importera äldre veckor i sjudagarsbatcher om `pace plan readiness`
+inte säger `ready`:
 
 ```bash
-uv run pace preferences set --sport-role ride_primary --day mon:any --day tue:any
-uv run pace preferences ambition --ambition ambitious
-uv run pace preferences show
-uv run pace zones show --sport ride
+uv run pace sync --days 7 --end-date 2026-07-18
+uv run pace sync --days 7 --end-date 2026-07-11
+uv run pace sync --days 7 --end-date 2026-07-04
 uv run pace plan readiness
-uv run pace plan draft --days 14
-uv run pace plan review --id 3
-uv run pace plan report --id 3
-uv run pace plan accept --id 2
+```
+
+Spara tillgänglighet och huvudsport. Det är praktiska gränser, inte påståenden
+om din kapacitet:
+
+```bash
+uv run pace preferences set \
+  --sport-role ride_primary \
+  --day mon:any --day tue:any --day wed:any --day thu:any \
+  --day fri:any --day sat:any --day sun:any
+uv run pace preferences ambition --ambition balanced
+```
+
+Lägg till ett lopp när du har ett. `A` är huvudmålet, `B` är ett
+sekundärt lopp med partiell taper och `C` behandlas som ett hårt träningspass:
+
+```bash
+uv run pace race add \
+  --name "Exempel 10 km" \
+  --sport run \
+  --date 2026-10-11 \
+  --distance-km 10 \
+  --priority A \
+  --desired-time 00:45:00
+```
+
+Skapa ett 14-dagars utkast. Planen blir inte aktiv förrän du godkänner den:
+
+```bash
+uv run pace plan draft --race-id 1 --days 14
+uv run pace plan review --id 1
+uv run pace plan report --id 1
+open reports/plan-1.html
+uv run pace plan accept --id 1
+```
+
+Byt `1` mot plan-id:t som Pace skriver ut. HTML-rapporten är privat och lokal;
+den skickas inte till GitHub.
+
+## Till vardags
+
+```bash
+uv run pace sync --days 7
 uv run pace plan today
-uv run pace plan feedback --session-id 5 --outcome completed
-uv run pace plan revise --id 2 --days 7
-uv run pace coach ask --plan-id 2 "Kan jag cykla i stället för dagens löppass?"
-uv run pace coach chat --plan-id 2
+uv run pace coach ask --plan-id 1 "Kan jag cykla i stället för dagens löpning?"
+uv run pace plan feedback --session-id 1 --outcome completed
 ```
 
-### Correcting or cancelling a race
-
-Race facts can be corrected while the race is unused. Once a plan or a Garmin
-race result refers to it, those facts are historical and must not be rewritten.
-Create a new race instead. An unused future race can be deleted permanently;
-`cancel` preserves it for audit but hides it from new planning.
+Om ett pass missas eller blir begränsat registrerar du utfallet och skapar ett
+kort revisionsutkast. Pace skriver aldrig över ett accepterat plan automatiskt.
 
 ```bash
-uv run pace race update --id 1 --date 2026-10-11
-uv run pace race remove --id 1
-uv run pace race cancel --id 1
-uv run pace race list --include-cancelled
+uv run pace plan feedback --session-id 1 --outcome skipped "Jobbresa"
+uv run pace plan revise --id 1 --days 7
 ```
 
-Pace will refuse to cancel a race that is already used by an accepted plan or
-Garmin race evidence. A cancelled race cannot be selected for a new plan,
-accepted as a plan target, or linked as new Garmin race evidence.
+## Integritet och gränser
 
-Every cycling session has distance, duration, and a saved Garmin heart-rate
-zone. The model can additionally use RPE, verified cycling power, or no
-primary target; cycling pace is never generated. Running pace and cycling
-power require an eligible, verified same-sport fact. Existing draft plans from
-before the current contract remain readable but must be regenerated before
-they can be accepted or revised.
+- Databasen finns i `data/pace.db`; Garmin-token finns i `.local/`.
+- De filerna, din AI-nyckel och HTML-rapporter ignoreras av Git.
+- Vid en AI-fråga skickar Pace bara ett litet urval av normaliserade fakta till
+  OpenAI — aldrig Garmin-lösenord, token, rådata, databasdump eller privat
+  context-text.
+- Python räknar mått och datakvalitet. AI:n kan skapa ett granskningsbart
+  utkast, men kan inte acceptera eller skriva över ditt plan.
+- Håll din egen API-nyckel privat. Du betalar själv för din OpenAI-användning.
 
-Coaching ambition is athlete intent, not a training command: `cautious` asks
-for larger margins, `balanced` is the default, and `ambitious` lets the coach
-consider more assertive progression or quality only where local facts support
-it. It never weakens Python's data-quality, availability, intensity-evidence,
-or explicit-acceptance boundaries.
+## Om något krånglar
 
-`pace plan review` is a readable terminal view. `pace plan report` writes a
-self-contained private report to `reports/plan-<id>.html`; open that file in a
-browser when you want to read the plan away from the terminal. The directory
-and report use owner-only permissions, are ignored by Git, contain no raw
-Garmin payloads or private feedback/context-note text, and never change a
-plan.
-
-`pace coach ask` is a quick question over one accepted, active plan. `pace
-coach chat` keeps a short dialogue only in the running terminal process; it is
-discarded when the command exits. Both commands rebuild current local facts for
-each turn and may show a same-day plan-adjustment *draft*. A draft is Python
-validated but never saved or applied. Use the existing separate `pace plan
-revise` flow when you want a persistent plan version.
-
-### Curated coaching knowledge
-
-Pace has a small local library of reviewed coaching briefs. It is not a live
-web search and it is not a database of raw papers. Python selects at most
-three relevant briefs for an AI question or plan draft, and the model may cite
-only those brief IDs. The CLI can show exactly what a brief supports and what
-it does not support:
+Kör detta innan du rapporterar ett problem:
 
 ```bash
-uv run pace knowledge list
-uv run pace knowledge show --id hrv_training_context
+uv run ruff check .
+uv run pytest -q
+uv run pace --help
 ```
 
-The library is versioned in `knowledge/`. Updating it is a deliberate reviewed
-code change; Pace does not download research or learn from external sources at
-runtime.
+Dela eller committa aldrig `data/`, `.local/`, `reports/` eller din lokala
+nyckelfil.
 
-See `AGENTS.md` for implementation invariants, privacy rules, and the local validation
-workflow.
+## För den som vill utveckla
+
+Pace är avsiktligt litet och lokalt. Arkitektur, beslut och roadmap finns i
+`docs/`. Läs [AGENTS.md](AGENTS.md) innan du ändrar kod.
+
+Licens: [MIT](LICENSE).

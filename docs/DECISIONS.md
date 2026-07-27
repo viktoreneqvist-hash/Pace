@@ -1864,6 +1864,52 @@ references, not a model interpretation of whether a race still matters.
 
 ---
 
+# Decision #42
+
+## Problem
+
+Pace started as one developer's local project. A private invited friend needs a
+safe, predictable first run without access to the developer's secret-file
+layout or a need to export an API key in every terminal session.
+
+## Options
+
+- Keep the developer-specific sibling secrets path as the default
+- Require every user to export `OPENAI_API_KEY` before each AI command
+- Read one owner-only, Git-ignored key file inside each local Pace clone while
+  preserving environment variables as an explicit override
+
+## Chosen
+
+Pace's default optional AI-key file is `.local/pace.env` inside the cloned
+repository. It contains only `OPENAI_API_KEY`, must have owner-only permissions,
+and is ignored by Git. `OPENAI_API_KEY` in the environment still takes
+precedence and `PACE_OPENAI_SECRETS_FILE` can explicitly select another file.
+
+Release Batch L0 prepares a private, invited-friend alpha: a simple README,
+an MIT license, and a GitHub Actions workflow that runs the locked dependency
+install, Ruff, and tests on pushes to `main` and pull requests.
+
+## Reason
+
+This gives each athlete their own key and local data by default without
+pretending that Pace is a hosted product. The release guard catches ordinary
+regressions before a collaborator merges them, while the private repository
+and explicit invitation remain the access boundary.
+
+## Consequences
+
+- Each friend pays for and controls their own OpenAI key; Pace never shares
+  the owner's key through the repository.
+- The default is convenient for a local clone, not a global multi-machine
+  secrets manager.
+- GitHub Actions validates code only. It does not run Garmin login, sync, or
+  live OpenAI calls, and it never receives local athlete data or secrets.
+- MIT permits use and modification without warranty. Repository write access
+  must still remain limited to trusted collaborators.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

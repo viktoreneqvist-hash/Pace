@@ -26,6 +26,8 @@ def test_openai_settings_are_optional_and_have_a_bounded_default_model(monkeypat
 
     assert loaded.openai_api_key is None
     assert loaded.openai_model == "gpt-5.6-terra"
+    assert loaded.openai_secrets_file.name == "pace.env"
+    assert loaded.openai_secrets_file.parent.name == ".local"
 
 
 def test_openai_api_key_loads_from_the_private_local_secrets_file(

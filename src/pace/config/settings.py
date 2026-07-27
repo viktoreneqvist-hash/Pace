@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_OPENAI_SECRETS_FILE = PROJECT_ROOT.parent / "secrets" / "running-agent.env"
+DEFAULT_OPENAI_SECRETS_FILE = PROJECT_ROOT / ".local" / "pace.env"
 
 
 @dataclass(frozen=True, slots=True)
