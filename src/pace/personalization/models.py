@@ -5,6 +5,16 @@ from datetime import date
 
 
 @dataclass(frozen=True, slots=True)
+class ObservedPersonalizationPattern:
+    pattern_id: str
+    scope: str
+    metric: str
+    value: float | str
+    data_points: int
+    observation: str
+
+
+@dataclass(frozen=True, slots=True)
 class PersonalizationEvidence:
     as_of_date: date
     start_date: date
@@ -14,3 +24,4 @@ class PersonalizationEvidence:
     sport_required_feedback_records: int
     status: str
     limitations: tuple[str, ...]
+    observed_patterns: tuple[ObservedPersonalizationPattern, ...] = ()

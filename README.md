@@ -129,16 +129,25 @@ fartmål.
 ```bash
 uv run pace sync --days 7
 uv run pace plan today
+uv run pace plan checkpoint
 uv run pace coach ask --plan-id 1 "Kan jag cykla i stället för dagens löpning?"
 uv run pace plan feedback --session-id 1 --outcome completed
 uv run pace plan feedback --session-id 1 --outcome completed --rpe 6
+uv run pace performance sync --days 7
 uv run pace plan workout evaluate --session-id 1
 uv run pace trends show
-uv run pace dashboard
-open reports/dashboard.html
+uv run pace analysis show
+uv run pace home
+open reports/home.html
 uv run pace review weekly
 open reports/weekly-review.html
 ```
+
+`pace home` bygger om den lokala dashboarden och den aktiva planrapporten och
+samlar dem på en startsida. Den synkar inte Garmin, anropar inte AI och ändrar
+inte planen. `pace plan checkpoint` säger när detaljfönstret håller på att ta
+slut eller ett lopp närmar sig. Den visar bara vilket utkast du bör skapa; den
+skapar eller accepterar aldrig revisionen åt dig.
 
 Om ett pass missas eller blir begränsat registrerar du utfallet och skapar ett
 kort revisionsutkast. Pace skriver aldrig över ett accepterat plan automatiskt.
@@ -148,10 +157,16 @@ uv run pace plan feedback --session-id 1 --outcome skipped --reason schedule --n
 uv run pace plan revise --id 1 --days 7
 ```
 
-`pace plan workout evaluate` jämför bara det planerade upplägget med ditt
-uttryckliga utfall och Garmin-aktiviteter samma dag och sport. En Garmin-träff
-är inte ett bevis på att passets intervaller utfördes; din registrerade feedback
-är det som kan ligga till grund för nästa revisionsutkast.
+`pace performance sync` hämtar integritetsminimerade Garmin-detaljer och splits
+för redan synkade löp- och cykelpass. `pace plan workout evaluate` jämför sedan
+planerad tid, distans och intervallstruktur med dessa data. Splits är fortfarande
+inte ett bevis på att varje intervall utfördes rätt; din registrerade feedback
+är det enda uttryckliga utfallet och det som kan ligga till grund för nästa
+revisionsutkast.
+
+`pace analysis show` visar de faktiska 28-dagarsvärdena för tid, distans,
+frekvens, feedback/RPE och recovery-täckning. Pace skapar inget eget dolt
+belastningsscore. Saknad distans visas som saknad, inte som noll.
 
 Om ett planutkast innehåller en coachprincip du vill behålla kan du bekräfta
 den. Den granskas igen efter 84 dagar och ändrar aldrig en plan automatiskt:
@@ -195,5 +210,19 @@ nyckelfil.
 
 Pace är avsiktligt litet och lokalt. Arkitektur, beslut och roadmap finns i
 `docs/`. Läs [AGENTS.md](AGENTS.md) innan du ändrar kod.
+
+Den nätverksfria testsuiten kör även sex syntetiska coachscenarier. Du kan läsa
+scenariokatalogen utan API-anrop:
+
+```bash
+uv run pace eval scenarios
+```
+
+Ett riktigt modelltest är separat och kostar sex syntetiska OpenAI-anrop. Det
+använder ingen riktig Garmin- eller atletdata och körs aldrig automatiskt:
+
+```bash
+uv run pace eval coach --live
+```
 
 Licens: [MIT](LICENSE).

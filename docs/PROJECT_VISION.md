@@ -179,6 +179,16 @@ short explanation when relevant
 
 The system should not regenerate an expensive full coaching report after every synchronization.
 
+The same principle applies to training plans. Pace should maintain a long
+block direction while detailing only the next one or two weeks. A deterministic
+checkpoint may say that a new revision is due, but a model can create only a
+new draft and the athlete must accept it explicitly.
+
+Workout choice should be fact-led rather than template-led. The coach may use
+continuous endurance, progression, hills, threshold work, short or long
+intervals when current capacity, recovery, race priority, and block purpose
+support the choice. Variety is not a goal by itself.
+
 ### 5. Local-first and private
 
 The first version should run locally on the user's computer.
@@ -192,6 +202,11 @@ Sensitive information must remain local by default, including:
 - contextual life events
 
 Garmin passwords and tokens must never be sent to an AI model.
+
+Local presentation should converge on one static Pace Home page rather than
+requiring the athlete to read JSON for everyday use. The underlying facts stay
+available as inspectable CLI output, and Pace must not hide coaching decisions
+behind a proprietary training-load score.
 
 ---
 

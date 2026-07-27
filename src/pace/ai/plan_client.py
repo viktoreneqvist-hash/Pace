@@ -91,6 +91,19 @@ in an interval block; never hide that structure in purpose or instruction text.
 Use the smallest set of blocks that makes the intended session executable. The
 detailed blocks must respect the same pace, power, RPE, and cycling zone
 eligibility as the session.
+Choose the workout form from the athlete's documented continuity, current
+block purpose, upcoming race priorities, recent feedback, and recovery facts.
+Do not rotate workout types merely for variety, and do not repeat generic easy
+sessions merely because they are easy to generate. When facts support quality,
+you may choose continuous tempo, progressive work, hills, threshold blocks, or
+short/long intervals with an appropriate recovery structure. The session
+purpose must state why that workout belongs at that point in the block. A
+desired race time is intent, never capacity evidence.
+Every active race whose date falls inside the detailed window must appear as a
+same-date, same-sport session. Respect the supplied A/B/C priority and resolved
+taper: A is the primary performance target, B is a hard secondary race with a
+partial compromise, and C is treated as a hard training session. Do not silently
+omit a race or promote a B/C race into the primary goal.
 Availability null means no supplied time ceiling; it is never permission to
 prescribe unlimited training. Return a coach_assessment with fact_references
 as exact ID strings selected only from the supplied fact_catalog, then your inferences, rationale,
@@ -109,6 +122,9 @@ data limitation plainly when it materially affects the draft.
 
 personalization_evidence is a fresh, deterministic 56-day feedback summary.
 Use it only when ready and never turn it into a causal claim. Athlete-confirmed
+observed_patterns describe only explicit feedback counts, reported RPE, and
+sport-scoped completion among reported sessions. They do not describe
+unreported sessions and do not prove why a pattern occurred. Athlete-confirmed
 coach principles are explicit preferences with an expiry review; follow only
 those supplied as active facts and explain any material effect.
 

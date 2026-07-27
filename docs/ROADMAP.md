@@ -441,6 +441,54 @@ until the library is large enough to need them.
 - [x] Make simple continuous sessions one steady block by default; warmup and
   cooldown are optional coaching tools, not required pass decoration
 
+### Batch J5 — Rolling plan checkpoint
+
+- [x] Add a read-only checkpoint over the active accepted plan, its detailed
+  window, and races in the next 21 days
+- [x] Recommend a new draft or bounded revision when needed, but never create,
+  accept, or overwrite one automatically
+
+### Batch J6 — Fact-led workout composition
+
+- [x] Make the coach model choose continuous, progressive, hill, threshold, or
+  interval structure from current facts and block purpose instead of rotating
+  templates for artificial variety
+- [x] Require an active race inside the detailed window to appear as a
+  same-date, same-sport session while preserving its A/B/C priority
+- [x] Keep every existing Python gate for availability, evidence, target type,
+  cycling zones, and explicit plan acceptance
+
+### Batch J7 — Split-aware workout comparison
+
+- [x] Compare planned duration, distance, and interval repetitions with
+  privacy-minimized same-day Garmin details and normalized splits
+- [x] Keep the comparison read-only and explicitly limited: splits do not prove
+  interval compliance and athlete feedback remains the authoritative outcome
+
+### Batch L4 — Observed personalisation patterns
+
+- [x] Derive non-causal completion, RPE, reason, and same-sport observations
+  only after the existing 56-day feedback thresholds are met
+- [x] Keep missing feedback unknown and prevent observed associations from
+  becoming automatic plan changes or claims about causes
+
+### Batch M2 — Pace Home and transparent analysis
+
+- [x] Add `pace home`, one owner-only local entry page linking the current
+  dashboard, active plan, weekly review, races, checkpoint, and personalisation
+- [x] Add `pace analysis show` with inspectable 28-day duration, distance,
+  frequency, explicit feedback/RPE, and recovery coverage
+- [x] Do not invent a proprietary training-load score or convert missing
+  distance into zero
+
+### Batch N1 — Synthetic coach evaluation
+
+- [x] Add six reviewed synthetic coaching scenarios with no real athlete data,
+  Garmin access, credentials, or required network call
+- [x] Run the deterministic fake-coach contract in the normal test suite
+- [x] Keep real model evaluation explicit behind `pace eval coach --live`; it
+  performs six synthetic OpenAI calls and never runs in CI
+
 ## Explicitly deferred
 
 - Multi-user accounts
@@ -452,4 +500,5 @@ until the library is large enough to need them.
 - Append-only raw ingestion history
 - Application-level SQLite encryption
 - Embeddings and vector search
+- Garmin workout export
 - Medical or clinical interpretation

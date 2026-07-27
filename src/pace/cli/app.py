@@ -68,6 +68,13 @@ from pace.services.dashboard_service import DashboardService
 from pace.services.coaching_principle_service import CoachingPrincipleService
 from pace.services.weekly_review_service import WeeklyReviewService
 from pace.services.workout_evaluation_service import WorkoutEvaluationService
+from pace.services.plan_checkpoint_service import PlanCheckpointService
+from pace.services.home_service import HomeService
+from pace.services.coach_evaluation_service import CoachEvaluationService
+from pace.services.transparent_training_analysis_service import (
+    TransparentTrainingAnalysisService,
+)
+from pace.coach_evaluation.scenarios import load_scenarios
 from pace.weekly_review.client import WeeklyReviewClient
 from pace.services.training_preference_service import (
     SUPPORTED_COACHING_AMBITIONS,
@@ -494,6 +501,13 @@ def build_parser() -> ArgumentParser:
     )
     plan_readiness_parser.set_defaults(handler=run_plan_readiness)
 
+    plan_checkpoint_parser = plan_subparsers.add_parser(
+        "checkpoint",
+        help="visa när nästa explicita planrevision behövs och vilka lopp som närmar sig",
+    )
+    plan_checkpoint_parser.add_argument("--end-date", type=iso_date)
+    plan_checkpoint_parser.set_defaults(handler=run_plan_checkpoint)
+
     plan_draft_parser = plan_subparsers.add_parser(
         "draft",
         help="skapa ett AI-genererat, granskningsbart planutkast",
@@ -626,6 +640,20 @@ def build_parser() -> ArgumentParser:
     )
     trends_show_parser.set_defaults(handler=run_trends_show)
 
+    analysis_parser = subparsers.add_parser(
+        "analysis",
+        help="visa transparenta träningsfakta utan ett dolt belastningsscore",
+    )
+    analysis_subparsers = analysis_parser.add_subparsers(dest="analysis_command")
+    analysis_show_parser = analysis_subparsers.add_parser(
+        "show",
+        help="visa ett lokalt 28-dagarsfönster för träning, feedback och datatäckning",
+    )
+    analysis_show_parser.add_argument(
+        "--end-date", type=iso_date, help="slutdatum YYYY-MM-DD (standard: idag)"
+    )
+    analysis_show_parser.set_defaults(handler=run_analysis_show)
+
     dashboard_parser = subparsers.add_parser(
         "dashboard", help="skapa en lokal, informationstät HTML-dashboard"
     )
@@ -633,6 +661,32 @@ def build_parser() -> ArgumentParser:
         "--end-date", type=iso_date, help="datum YYYY-MM-DD (standard: idag)"
     )
     dashboard_parser.set_defaults(handler=run_dashboard)
+
+    home_parser = subparsers.add_parser(
+        "home", help="skapa en central lokal HTML-startsida för Pace"
+    )
+    home_parser.add_argument(
+        "--end-date", type=iso_date, help="datum YYYY-MM-DD (standard: idag)"
+    )
+    home_parser.set_defaults(handler=run_home)
+
+    eval_parser = subparsers.add_parser(
+        "eval", help="granska Paces coachkontrakt med syntetiska scenarier"
+    )
+    eval_subparsers = eval_parser.add_subparsers(dest="eval_command")
+    eval_scenarios_parser = eval_subparsers.add_parser(
+        "scenarios", help="lista den lokala, nätverksfria coach-testkatalogen"
+    )
+    eval_scenarios_parser.set_defaults(handler=run_eval_scenarios)
+    eval_coach_parser = eval_subparsers.add_parser(
+        "coach", help="kör ett uttryckligt live-AI-test mot syntetiska fakta"
+    )
+    eval_coach_parser.add_argument(
+        "--live",
+        action="store_true",
+        help="bekräfta sex OpenAI-anrop; ingen riktig atletdata används",
+    )
+    eval_coach_parser.set_defaults(handler=run_eval_coach)
 
     review_parser = subparsers.add_parser("review", help="skapa en explicit AI-veckoreview som lokal HTML")
     review_subparsers = review_parser.add_subparsers(dest="review_command")
@@ -1263,6 +1317,14 @@ def run_plan_readiness(args: Namespace, *, today: date | None = None) -> int:
     return 0
 
 
+def run_plan_checkpoint(args: Namespace, *, today: date | None = None) -> int:
+    checkpoint = PlanCheckpointService().get_checkpoint(
+        as_of_date=args.end_date or today or date.today()
+    )
+    print(json.dumps(asdict(checkpoint), default=_json_default, indent=2))
+    return 0
+
+
 def run_preferences_set(args: Namespace) -> int:
     try:
         preference = TrainingPreferenceService().set_preference(
@@ -1458,6 +1520,14 @@ def run_trends_show(args: Namespace, *, today: date | None = None) -> int:
     return 0
 
 
+def run_analysis_show(args: Namespace, *, today: date | None = None) -> int:
+    analysis = TransparentTrainingAnalysisService().get_analysis(
+        end_date=args.end_date or today or date.today()
+    )
+    print(json.dumps(asdict(analysis), default=_json_default, indent=2))
+    return 0
+
+
 def run_dashboard(args: Namespace, *, today: date | None = None) -> int:
     end_date = args.end_date or today or date.today()
     try:
@@ -1468,6 +1538,52 @@ def run_dashboard(args: Namespace, *, today: date | None = None) -> int:
     print(f"Privat dashboard sparad: {output_path}")
     print("Öppna filen i din webbläsare. Dashboarden ändrar inte Pace-data.")
     return 0
+
+
+def run_home(args: Namespace, *, today: date | None = None) -> int:
+    try:
+        output_path = HomeService().write_home(
+            end_date=args.end_date or today or date.today()
+        )
+    except (OSError, ValueError) as error:
+        print(f"Pace Home kunde inte skapas: {error}")
+        return 2
+    print(f"Pace Home sparad: {output_path}")
+    print("Öppna reports/home.html. Sidan synkar inte Garmin och ändrar ingen plan.")
+    return 0
+
+
+def run_eval_scenarios(_args: Namespace) -> int:
+    print(
+        json.dumps(
+            [
+                {
+                    "id": item.scenario_id,
+                    "description": item.description,
+                    "allowed_sports": item.allowed_sports,
+                    "allowed_target_kinds": item.allowed_target_kinds,
+                }
+                for item in load_scenarios()
+            ],
+            indent=2,
+        )
+    )
+    return 0
+
+
+def run_eval_coach(args: Namespace) -> int:
+    if not args.live:
+        print("Live-evalueringen startades inte. Lägg till --live för sex syntetiska AI-anrop.")
+        return 2
+    api_key = resolve_openai_api_key(settings)
+    if not api_key:
+        print("OPENAI_API_KEY saknas; ingen live-evaluering kördes.")
+        return 2
+    report = CoachEvaluationService().evaluate(
+        generator=OpenAIPlanClient(api_key=api_key, model=settings.openai_model)
+    )
+    print(json.dumps(asdict(report), default=_json_default, indent=2))
+    return 0 if report.failed == 0 else 1
 
 
 def run_weekly_review(args: Namespace, *, today: date | None = None) -> int:

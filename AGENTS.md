@@ -159,6 +159,29 @@ Garmin provider
   A same-day Garmin activity is only a candidate when evaluating a planned
   workout, never proof that its structure was completed. Explicit feedback
   remains the only completion outcome and plans are never altered automatically.
+- A plan checkpoint may recommend a new draft or bounded revision when the
+  detailed window ends or a race approaches. It must never generate, accept, or
+  overwrite a plan. Every active race inside a generated detailed window must
+  remain visible as a same-date, same-sport session with its stored A/B/C role.
+- Workout form is model-owned coaching judgment over selected Pace facts and
+  block purpose. Do not add a fixed workout-template rotation for cosmetic
+  variety. Python continues to own all availability, sport, target, evidence,
+  and persistence gates.
+- Split-aware workout evaluation may expose normalized Garmin split facts and
+  planned-versus-actual summary differences. It must not infer interval
+  compliance or completion; explicit athlete feedback remains authoritative.
+- Personalisation patterns are non-persistent observations over explicit
+  feedback and appear only after the existing 56-day thresholds. They must
+  state their data counts, remain non-causal, and never alter a plan.
+- Pace Home and transparent analysis are local read-only presentation and
+  fact layers. They may compose existing services and write owner-only reports,
+  but must not sync Garmin, call AI, mutate plans, invent a proprietary load
+  score, or treat missing data as zero.
+- Synthetic coach evaluation uses reviewed fake facts only. The deterministic
+  contract runs in the normal test suite; a real-model evaluation requires an
+  explicit live command and must never use real athlete data or run in CI.
+- Garmin workout export is deferred. Do not add calendar/device writes or other
+  externally mutating plan delivery without a new product and safety decision.
 
 ## Safety and privacy
 

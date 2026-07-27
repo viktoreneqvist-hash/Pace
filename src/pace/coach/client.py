@@ -32,7 +32,8 @@ why outcomes or RPE changed. Use it only when its status is ready, and name
 its data limitation when it matters to your recommendation.
 
 personalization_evidence is a fresh deterministic observation, not a causal
-profile. Use it only when ready. Athlete-confirmed coach principles may guide
+profile. Use its observed_patterns only when ready; they describe reported
+sessions, not silence or causality. Athlete-confirmed coach principles may guide
 you only when supplied as active facts; do not invent or persist new ones.
 
 The supplied coaching ambition is athlete intent, not a command. It may affect

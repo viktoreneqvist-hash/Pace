@@ -1,6 +1,12 @@
 from datetime import date, datetime, timezone
 
-from pace.database.models import Activity, PlannedSession, SessionFeedback, TrainingPlan
+from pace.database.models import (
+    Activity,
+    ActivityPerformanceDetail,
+    PlannedSession,
+    SessionFeedback,
+    TrainingPlan,
+)
 from pace.database.session import session_scope
 from pace.services.workout_evaluation_service import WorkoutEvaluationService
 
@@ -99,6 +105,35 @@ def test_workout_evaluation_keeps_feedback_authoritative_and_garmin_only_a_candi
                 raw_payload={},
             )
         )
+        session.flush()
+        activity = next(
+            item
+            for item in session.query(Activity).all()
+            if item.provider_activity_id == "candidate-1"
+        )
+        session.add(
+            ActivityPerformanceDetail(
+                activity_id=activity.id,
+                duration_seconds=4_000,
+                distance_meters=12_000,
+                average_heart_rate=160,
+                maximum_heart_rate=180,
+                average_speed_mps=3.0,
+                average_cadence=175,
+                average_power=None,
+                splits=[
+                    {
+                        "split_number": 1,
+                        "duration_seconds": 300,
+                        "distance_meters": 1_000,
+                        "average_heart_rate": 155,
+                        "average_speed_mps": 3.33,
+                        "average_cadence": 176,
+                        "average_power": None,
+                    }
+                ],
+            )
+        )
         session_id = planned.id
 
     evaluation = WorkoutEvaluationService().evaluate(session_id=session_id)
@@ -107,5 +142,9 @@ def test_workout_evaluation_keeps_feedback_authoritative_and_garmin_only_a_candi
     assert evaluation.feedback_perceived_exertion == 9
     assert evaluation.planned_steps[0].repetitions == 10
     assert evaluation.matching_activities[0].provider_activity_id == "candidate-1"
+    assert evaluation.matching_activities[0].detail_available is True
+    assert evaluation.matching_activities[0].splits[0].distance_meters == 1_000
+    assert evaluation.comparisons[0].duration_difference_seconds == -800
+    assert evaluation.comparisons[0].planned_interval_repetitions == 10
     assert "garmin_match_is_not_proof_of_step_completion" in evaluation.limitations
     assert "explicit_feedback_missing" not in evaluation.limitations

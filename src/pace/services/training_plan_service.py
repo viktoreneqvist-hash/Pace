@@ -419,6 +419,7 @@ class TrainingPlanService:
         _validate_fact_references(generated=generated, context=context)
         _validate_knowledge_references(generated=generated, context=context)
         _validate_availability(generated=generated, context=context)
+        _validate_races_in_detailed_window(generated=generated, context=context)
         allowed_intensity = {
             fact.sport_type: set(fact.allowed_intensity_types)
             for fact in performance_readiness.sports
@@ -775,6 +776,48 @@ def _render_catalog_fact(entry: dict[str, object]) -> str:
         ensure_ascii=False,
         sort_keys=True,
     )
+
+
+def _validate_races_in_detailed_window(
+    *, generated: GeneratedPlanDraft, context: dict[str, object]
+) -> None:
+    catalog = context.get("fact_catalog")
+    if not isinstance(catalog, dict):
+        return
+    detailed_window = _catalog_value(catalog, "detailed_window")
+    planning = _catalog_value(catalog, "planning_readiness")
+    if not isinstance(detailed_window, dict) or not isinstance(planning, dict):
+        return
+    try:
+        start = date.fromisoformat(str(detailed_window["start_date"]))
+        end = date.fromisoformat(str(detailed_window["end_date"]))
+    except (KeyError, ValueError):
+        return
+    races = planning.get("upcoming_races")
+    if not isinstance(races, list):
+        return
+    for race in races:
+        if not isinstance(race, dict):
+            continue
+        try:
+            race_date = date.fromisoformat(str(race["race_date"]))
+        except (KeyError, ValueError):
+            continue
+        if not start <= race_date <= end:
+            continue
+        sport_type = race.get("sport_type")
+        if not any(
+            session.scheduled_date == race_date and session.sport_type == sport_type
+            for session in generated.sessions
+        ):
+            raise ValueError(
+                "AI plan draft omitted an active race inside the detailed window."
+            )
+
+
+def _catalog_value(catalog: dict[str, object], key: str) -> object:
+    entry = catalog.get(key)
+    return entry.get("value") if isinstance(entry, dict) else None
 
 
 def _validate_fact_references(

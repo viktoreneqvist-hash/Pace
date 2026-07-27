@@ -131,6 +131,42 @@ The LLM should not receive the complete raw Garmin history by default.
 
 ---
 
+# Current Coaching Loop
+
+```text
+Garmin summaries + privacy-minimized performance splits
+    + explicit context and session feedback
+    -> deterministic Pace facts and readiness gates
+    -> stateless coach draft with structured workout blocks
+    -> Python validation
+    -> local immutable draft
+    -> explicit athlete acceptance
+    -> explicit feedback and read-only workout comparison
+    -> checkpoint recommends the next bounded revision
+```
+
+The model chooses the useful workout form from the selected facts and block
+purpose. Python does not rotate templates to manufacture variety. Python still
+owns the hard contract: dates, availability, supported sports, target evidence,
+cycling zones, race presence inside the detailed window, and draft-only writes.
+
+Garmin splits can support a transparent planned-versus-observed comparison, but
+they do not prove that an interval prescription was followed. Explicit athlete
+feedback remains the durable session outcome.
+
+`pace home` is a static local composition layer over existing reports and
+services. `pace analysis show` exposes duration, known distance, frequency,
+feedback/RPE, and recovery coverage directly; Pace deliberately has no opaque
+proprietary training-load score.
+
+Coach evaluation has two boundaries:
+
+- the normal test suite runs a fake generator against reviewed synthetic facts
+- a real model is tested only by an explicit live command using the same
+  synthetic scenarios, never real athlete history
+
+---
+
 # Layers
 
 ## 1. Garmin Integration Layer

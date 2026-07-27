@@ -2117,6 +2117,73 @@ coaching model's general knowledge.
 
 ---
 
+# Decision #49
+
+## Problem
+
+Pace can create structured short plans, but a usable feedback loop also needs
+to know when another explicit revision is due, compare prescribed work with
+available Garmin detail, learn only defensible patterns from repeated feedback,
+and present the current state without forcing the athlete to read several JSON
+documents. These additions must not turn Pace into an autonomous plan writer or
+hide its reasoning inside a proprietary score.
+
+## Options
+
+- Regenerate and accept a plan automatically after every sync
+- Rotate fixed workout templates and infer completion from Garmin
+- Keep planning model-led but bounded by deterministic facts, explicit
+  feedback, visible comparisons, and athlete acceptance
+
+## Chosen
+
+Pace adds a read-only rolling checkpoint. It recommends a new draft or bounded
+revision when the detailed window ends or a race approaches, but never creates
+or accepts one. The coach model owns workout form from the selected facts and
+block purpose; Python does not rotate templates. An active race inside the
+detailed window must appear as a same-date, same-sport session and retains its
+stored A/B/C role.
+
+Workout evaluation includes privacy-minimized Garmin detail and splits plus
+planned-versus-observed duration and distance. These are comparison facts only:
+splits do not prove interval compliance and explicit athlete feedback remains
+the durable outcome.
+
+Personalisation emits non-causal observations only after the existing 56-day
+thresholds: 12 explicit feedback records overall and four for a same-sport
+observation. Missing feedback remains unknown.
+
+`pace home` is a static owner-only entry page over the dashboard, active plan,
+weekly review, races, checkpoint, and personalisation. `pace analysis show`
+exposes 28-day duration, known distance, frequency, explicit feedback/RPE, and
+recovery coverage. Pace does not create a proprietary training-load score.
+
+Six synthetic coach scenarios run through a fake generator in the normal test
+suite. Real-model evaluation is an explicit six-call command over synthetic
+facts only and never runs in CI. Garmin workout export remains deferred.
+
+## Reason
+
+This closes the practical plan-feedback-revision loop while preserving the
+system's strongest boundaries: code calculates inspectable facts, the model
+makes coaching judgments, and the athlete controls every durable plan change.
+The evaluation path detects contract regressions without exposing personal data
+or making routine tests depend on a paid external service.
+
+## Consequences
+
+- `pace home` may regenerate local reports, but it never syncs, calls AI, or
+  mutates application data.
+- A checkpoint is guidance, not an autonomous scheduler.
+- Different model calls may still make different coaching judgments; accepted
+  plans and stored assessments remain immutable reviewable snapshots.
+- Personalisation can describe repeated explicit outcomes but cannot claim why
+  they occurred.
+- Device workout export, automated acceptance, causal inference, and opaque
+  training-load formulas require separate future decisions.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |
@@ -2125,7 +2192,7 @@ coaching model's general knowledge.
 | Package management | uv |
 | Data source | Garmin only |
 | Database | SQLite |
-| Interface | CLI first |
+| Interface | CLI plus owner-only local static HTML |
 | Architecture style | Layered application |
 | Metrics | Deterministic Python |
 | Memory | Structured context events |

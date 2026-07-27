@@ -20,7 +20,10 @@ from pace.planning.draft_models import (
 )
 from pace.planning.models import HistoryCoverage, PlanReadiness
 from pace.repositories.training_plan_repository import get_training_plan, list_training_plans
-from pace.services.training_plan_service import TrainingPlanService
+from pace.services.training_plan_service import (
+    TrainingPlanService,
+    _validate_races_in_detailed_window,
+)
 from pace.services.training_preference_service import _parse_available_days
 
 
@@ -441,6 +444,40 @@ def test_plan_rejects_an_outline_that_does_not_cover_the_entire_block():
     with pytest.raises(ValueError, match="cover the full plan block"):
         _service(StubGenerator(short_outline)).generate_draft(
             as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
+        )
+
+
+def test_plan_cannot_omit_an_active_race_inside_the_detailed_window():
+    context = {
+        "fact_catalog": {
+            "detailed_window": {
+                "provenance": "python_derived",
+                "value": {
+                    "start_date": "2026-07-26",
+                    "end_date": "2026-08-08",
+                },
+            },
+            "planning_readiness": {
+                "provenance": "python_derived",
+                "value": {
+                    "upcoming_races": [
+                        {
+                            "id": 7,
+                            "name": "B-lopp",
+                            "sport_type": "run",
+                            "race_date": "2026-08-01",
+                            "priority": "B",
+                        }
+                    ]
+                },
+            },
+        }
+    }
+
+    with pytest.raises(ValueError, match="omitted an active race"):
+        _validate_races_in_detailed_window(
+            generated=_generated_plan(),
+            context=context,
         )
 
 
