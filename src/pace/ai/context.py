@@ -24,7 +24,7 @@ def build_ai_context(
     return {
         "schema_version": AI_CONTEXT_SCHEMA_VERSION,
         "as_of_date": athlete_state.as_of_date.isoformat(),
-        "metrics": _serialize(asdict(athlete_state.metrics)),
+        "metrics": serialize_pace_facts(asdict(athlete_state.metrics)),
         "relevant_context": {
             "start_date": athlete_state.relevant_context.start_date.isoformat(),
             "end_date": athlete_state.relevant_context.end_date.isoformat(),
@@ -32,17 +32,17 @@ def build_ai_context(
                 {
                     "event_type": event.event_type,
                     "start_date": event.start_date.isoformat(),
-                    "end_date": _serialize(event.end_date),
+                    "end_date": serialize_pace_facts(event.end_date),
                     "status": event.status,
                 }
                 for event in athlete_state.relevant_context.events
             ],
         },
-        "data_quality": _serialize(asdict(athlete_state.data_quality)),
-        "garmin_current_facts": _serialize(
+        "data_quality": serialize_pace_facts(asdict(athlete_state.data_quality)),
+        "garmin_current_facts": serialize_pace_facts(
             [asdict(fact) for fact in athlete_state.garmin_current_facts]
         ),
-        "rule_evaluations": _serialize(
+        "rule_evaluations": serialize_pace_facts(
             [asdict(evaluation) for evaluation in rule_summary.evaluations]
         ),
         "deterministic_explanations": {
@@ -62,13 +62,13 @@ def build_ai_context(
     }
 
 
-def _serialize(value: Any) -> Any:
-    """Convert dataclass-shaped Pace facts to JSON-compatible primitives."""
+def serialize_pace_facts(value: Any) -> Any:
+    """Convert Pace facts to JSON-compatible primitives before an AI boundary."""
 
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, dict):
-        return {key: _serialize(item) for key, item in value.items()}
+        return {key: serialize_pace_facts(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
-        return [_serialize(item) for item in value]
+        return [serialize_pace_facts(item) for item in value]
     return value

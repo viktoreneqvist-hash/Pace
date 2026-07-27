@@ -74,7 +74,7 @@ def test_responses_client_rejects_an_invalid_unsaved_context_draft():
         client.answer(PaceAIRequest(question="Test", context={}))
 
 
-def test_responses_client_rejects_a_knowledge_reference_outside_selected_briefs():
+def test_responses_client_discards_an_unselected_knowledge_reference():
     responses = FakeResponses(
         SimpleNamespace(
             output_text=(
@@ -88,10 +88,11 @@ def test_responses_client_rejects_a_knowledge_reference_outside_selected_briefs(
         client=SimpleNamespace(responses=responses),
     )
 
-    with pytest.raises(PaceAIResponseError, match="inte valts av Pace"):
-        client.answer(
-            PaceAIRequest(
-                question="Test",
-                context={"knowledge_briefs": {"briefs": [{"id": "known"}]}},
-            )
+    answer = client.answer(
+        PaceAIRequest(
+            question="Test",
+            context={"knowledge_briefs": {"briefs": [{"id": "known"}]}},
         )
+    )
+
+    assert answer.knowledge_references == ()

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 class WeeklyReviewAnswer:
     summary: str
     observations: tuple[str, ...]
+    coach_assessment: tuple[str, ...]
     recommendations: tuple[str, ...]
     uncertainties: tuple[str, ...]
     knowledge_references: tuple[str, ...]

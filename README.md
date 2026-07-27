@@ -2,7 +2,7 @@
 
 Pace är en privat, lokal träningscoach för löpning och cykling. Den hämtar din
 Garmin-historik till din egen dator, bygger ett granskningsbart kort planutkast
-och använder AI bara när du uttryckligen ber om en plan eller ställer en fråga.
+och använder AI bara när du uttryckligen ber om en plan, fråga eller veckoreview.
 
 Detta är en tidig privat alpha för inbjudna vänner. Du behöver ett eget
 Garmin-konto och, för AI-planer eller AI-frågor, en egen OpenAI API-nyckel.
@@ -157,6 +157,9 @@ uv run pace profile list
   context-text.
 - Python räknar mått och datakvalitet. AI:n kan skapa ett granskningsbart
   utkast, men kan inte acceptera eller skriva över ditt plan.
+- Pace-fakta beskriver dig och din träning. AI:n får använda allmän
+  tränarkunskap för sin bedömning, men den visas som coachbedömning — inte som
+  ny Pace-data eller forskning.
 - Håll din egen API-nyckel privat. Du betalar själv för din OpenAI-användning.
 
 ## Om något krånglar

@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime
 import json
 
-from pace.ai.context import AI_CONTEXT_SCHEMA_VERSION, build_ai_context
+from pace.ai.context import AI_CONTEXT_SCHEMA_VERSION, build_ai_context, serialize_pace_facts
 from pace.database.models import Activity, ContextEvent, DailyMetric
 from pace.database.session import session_scope
 from pace.services.athlete_state_service import AthleteStateService
@@ -67,3 +67,13 @@ def test_ai_context_contains_selected_facts_but_never_context_note_text_or_raw_p
     assert "private_provider_value" not in serialized_context
     assert "private_daily_value" not in serialized_context
     assert context["knowledge_briefs"] == {"library_schema_version": 1, "briefs": []}
+
+
+def test_serialize_pace_facts_makes_nested_dates_json_compatible():
+    value = {"date": date(2026, 7, 27), "nested": [("start", date(2026, 7, 26))]}
+
+    assert serialize_pace_facts(value) == {
+        "date": "2026-07-27",
+        "nested": [["start", "2026-07-26"]],
+    }
+    json.dumps(serialize_pace_facts(value))

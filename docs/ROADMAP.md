@@ -322,8 +322,9 @@ until the library is large enough to need them.
   AI question or plan draft; do not fetch the web at runtime
 - [x] Send only selected brief claims, limitations, applicability, and source
   IDs to the model, never raw papers or the full library
-- [x] Require and validate plan/answer knowledge references against the
-  selected IDs, and expose each brief through `pace knowledge list/show`
+- [x] Validate any plan/answer knowledge references against the selected IDs,
+  while allowing a general coach assessment without a local reference; expose
+  each brief through `pace knowledge list/show`
 - [x] Keep the library human-reviewed and versioned with the repository;
   defer automatic ingestion, embeddings, and vector search
 
@@ -393,6 +394,18 @@ until the library is large enough to need them.
 - [x] Add one explicit stateless AI weekly review over selected local facts
 - [x] Render an owner-only local HTML report without plan mutation, raw Garmin
   payloads, or private note text
+
+### Batch M1.1 — General coach reasoning with factual boundaries
+
+- [x] Treat supplied Pace data as the complete athlete-specific factual
+  contract, while allowing the model to use general endurance-coaching knowledge
+  for explicitly separate coach assessments and recommendations
+- [x] Make curated local briefs optional support rather than a hard knowledge
+  allowlist; retain only references to selected local briefs
+- [x] Preserve deterministic facts, Python target/availability gates, medical
+  boundaries, stateless calls, and explicit plan acceptance
+- [x] Render weekly reviews with separate Pace-fact and coach-assessment
+  sections so the user can see which kind of claim is being made
 
 ## Explicitly deferred
 

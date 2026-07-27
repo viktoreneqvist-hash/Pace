@@ -153,7 +153,11 @@ AI should later improve:
 - workout generation
 - discussion with the athlete
 
-AI should reason over compact structured data, not raw Garmin history.
+AI should reason over compact structured data, not raw Garmin history. Pace
+facts remain the sole source for claims about the athlete; the model may apply
+general endurance-coaching knowledge for clearly labelled coach assessments and
+recommendations. A small local knowledge library supports traceability but is
+not a limit on the model's coaching competence.
 
 ### 4. Incremental updates before full regeneration
 

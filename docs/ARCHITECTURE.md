@@ -454,13 +454,16 @@ Each current plan also stores a `coach_assessment`: fact-catalog reference
 IDs, locally rendered observed facts with provenance, coach inferences,
 rationale, uncertainties, and named general coaching principles. The model
 may reference only the selected, minimal fact catalog; these are AI reasoning,
-not new Pace facts. K1 adds a separate `knowledge_references` list: Python
-deterministically selects at most three local curated briefs and validates that
-the model cites only those IDs. A brief contains supported claims,
-limitations, applicability, and source metadata; it does not override local
-facts or Python safety gates. Private context-note text, raw Garmin payloads,
-and unbounded plan history are absent. The library is checked-in Markdown and
-JSON, with no runtime web retrieval, embeddings, or vector database.
+not new Pace facts. The model may additionally apply general endurance-coaching
+knowledge, but must frame it as a coach assessment rather than athlete data or
+an external source. K1 adds an optional `knowledge_references` list: Python
+deterministically selects at most three local curated briefs and retains only
+references to those IDs. A brief contains supported claims, limitations,
+applicability, and source metadata; it supports the assessment but does not
+override local facts or Python safety gates. Private context-note text, raw
+Garmin payloads, and unbounded plan history are absent. The library is
+checked-in Markdown and JSON, with no runtime web retrieval, embeddings, or
+vector database.
 
 Revision drafts use their accepted parent as bounded context and preserve its
 block dates and outline. A sibling revision becomes stale when another
@@ -485,7 +488,9 @@ keep, skip, or replacement draft. Python verifies that the referenced session
 belongs to that accepted plan and date, and verifies a replacement's
 availability, sport, zone, and target eligibility. The draft is not persisted
 or applied. A separate revision draft and explicit acceptance remain required
-for a durable plan change.
+for a durable plan change. In every response, Pace facts remain constrained to
+the supplied contract while coach reasoning may use general endurance knowledge;
+local brief references are optional support, never a hard allowlist.
 
 #### Coaching ambition
 

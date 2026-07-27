@@ -1,9 +1,6 @@
 from types import SimpleNamespace
 import json
 
-import pytest
-
-from pace.ai.client import PaceAIResponseError
 from pace.coach.client import COACH_DIALOGUE_SCHEMA, OpenAICoachDialogueClient
 from pace.coach.models import CoachDialogueRequest
 
@@ -78,7 +75,7 @@ def test_coach_client_uses_a_stateless_structured_request_and_parses_replacement
     assert "Tidigare fråga." in responses.kwargs["input"]
 
 
-def test_coach_client_rejects_a_knowledge_reference_outside_selected_briefs():
+def test_coach_client_discards_an_unselected_knowledge_reference():
     responses = FakeResponses(
         SimpleNamespace(output_text=_replacement_payload(knowledge_references=["unknown"]))
     )
@@ -88,5 +85,6 @@ def test_coach_client_rejects_a_knowledge_reference_outside_selected_briefs():
         client=SimpleNamespace(responses=responses),
     )
 
-    with pytest.raises(PaceAIResponseError, match="inte valts av Pace"):
-        client.answer(_request())
+    answer = client.answer(_request())
+
+    assert answer.knowledge_references == ()

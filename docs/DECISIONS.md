@@ -1997,6 +1997,51 @@ AI jobs or allowing a narrative review to become an automatic plan change.
 
 ---
 
+# Decision #46
+
+## Problem
+
+The curated local knowledge library is intentionally small. Treating it as a
+hard allowlist for all model reasoning makes the coach less useful and can
+discard an otherwise valid answer merely because it uses general training
+knowledge.
+
+## Options
+
+- Restrict every AI conclusion to selected local knowledge briefs
+- Allow unconstrained model claims about athlete data
+- Keep athlete facts constrained to Pace while allowing labelled general coach
+  reasoning
+
+## Chosen
+
+Pace facts are the complete factual contract about the athlete. The model may
+apply general endurance-coaching knowledge for a separate coach assessment and
+recommendations. Curated local briefs are optional, source-attributed support;
+they are not a complete allowlist. Only selected local brief IDs are retained
+as citations.
+
+## Reason
+
+Python and Pace data are the reliable source for numerical facts, dates,
+history, data quality, and target eligibility. A capable coaching model should
+still use its general domain knowledge to choose a sensible interpretation,
+session purpose, and recommendation from those facts. Separating the two makes
+the reasoning more useful without making model opinion look like athlete data
+or research evidence.
+
+## Consequences
+
+- Unknown or invented local knowledge references cannot discard an otherwise
+  valid answer; Pace removes them rather than displaying them as sources.
+- Weekly reviews show Pace facts and coach assessments as separate sections.
+- Plan drafts and dialogue retain all deterministic availability, target,
+  data-quality, draft, and acceptance gates.
+- General model knowledge must not be presented as a study, external citation,
+  diagnosis, or a fact about the athlete.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

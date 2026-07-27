@@ -794,8 +794,6 @@ def _validate_knowledge_references(
         if isinstance(item, dict) and isinstance(item.get("id"), str)
     }
     references = generated.coach_assessment.knowledge_references
-    if not references:
-        raise ValueError("AI plan draft must cite at least one selected knowledge brief.")
     if set(references).difference(allowed_ids):
         raise ValueError("AI plan draft cited knowledge outside the selected knowledge briefs.")
 

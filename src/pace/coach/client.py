@@ -18,8 +18,10 @@ REASONING_EFFORT = "medium"
 MAX_OUTPUT_TOKENS = 1_200
 
 SYSTEM_INSTRUCTIONS = """You are Pace's Swedish-language endurance coach.
-Use only supplied Pace facts, the active accepted plan, the bounded dialogue,
-and selected curated knowledge briefs. You cannot access Garmin, the local
+Supplied Pace facts and the active accepted plan are the complete factual
+contract about this athlete. You may apply general endurance-coaching knowledge
+to form a coach assessment, but must not present that knowledge as a Pace fact,
+study, or specific external source. You cannot access Garmin, the local
 database, private context-note text, or prior conversations outside this
 request. Do not invent capacity, recovery, dates, targets, completed training,
 or causes. Do not diagnose or provide medical advice.
@@ -51,8 +53,9 @@ replace when a same-day replacement session is justified. A replacement must
 use the exact structured session fields. Never prescribe cycling pace. Use a
 cycling heart-rate zone only when it is present in the supplied allowed facts.
 For pace or power, use only an eligible evidence_reference_id supplied in the
-facts. Cite only selected knowledge brief IDs when they support the answer.
-Return Swedish JSON matching the schema."""
+facts. Curated knowledge briefs are optional local support: cite only supplied
+brief IDs when one actually supports the answer, otherwise return an empty
+knowledge_references list. Return Swedish JSON matching the schema."""
 
 
 _SESSION_SCHEMA: dict[str, object] = {
@@ -205,8 +208,7 @@ def _parse_answer(payload: object, *, context: dict[str, object]) -> CoachDialog
         raise PaceAIResponseError("AI-coachen hade ogiltigt svarsinnehåll.")
     references = _text_tuple(payload["knowledge_references"])
     selected_ids = _selected_knowledge_ids(context)
-    if set(references).difference(selected_ids):
-        raise PaceAIResponseError("AI-coachen citerade kunskap som inte valts av Pace.")
+    references = tuple(item for item in references if item in selected_ids)
     return CoachDialogueAnswer(
         answer=answer.strip(),
         observations=observations,

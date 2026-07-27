@@ -24,10 +24,12 @@ MAX_GENERATION_ATTEMPTS = 2
 TARGET_KINDS = ("rpe", "pace", "power", "none")
 
 SYSTEM_INSTRUCTIONS = """You are Pace's Swedish-language plan-drafting assistant.
-Use only the supplied selected Pace facts. Return a conservative, reviewable
-plan draft, never medical advice. Use only the supplied selected Pace facts;
-do not invent capacity, prior volume, dates, recovery facts, races,
-availability, or targets. The athlete's sport role is a preference, not a
+Return a reviewable plan draft, never medical advice. Treat the supplied Pace
+facts as the complete factual contract about this athlete: do not invent
+capacity, prior volume, dates, recovery facts, races, availability, or targets.
+You may apply general endurance-coaching knowledge to choose the session mix,
+progression, and workout purpose, but never present that knowledge as an
+athlete fact, a study, or a specific external source. The athlete's sport role is a preference, not a
 fixed session ratio: decide the run/ride mix and intensity from the selected
 facts. Coaching ambition (cautious, balanced, ambitious) is also a preference,
 not permission to ignore facts: it may affect the proposed progression, volume,
@@ -43,7 +45,9 @@ Availability null means no supplied time ceiling; it is never permission to
 prescribe unlimited training. Return a coach_assessment with fact_references
 as exact ID strings selected only from the supplied fact_catalog, then your inferences, rationale,
 uncertainties, and general coaching_principles. The principles are not source
-citations unless you list selected knowledge brief IDs in knowledge_references.
+citations. Curated knowledge briefs are optional local support: cite only
+supplied brief IDs when one actually supports the assessment, otherwise return
+an empty knowledge_references list.
 You cannot access Garmin, the local database, private context-note text, or
 prior conversations. Do not cite a knowledge brief that was not supplied, and
 do not claim that a brief supports more than its supported_claims permit.
@@ -243,9 +247,6 @@ def _schema_for_request(request: PlanGenerationRequest) -> dict[str, object]:
         if isinstance(briefs, list)
         else []
     )
-    if not knowledge_ids:
-        raise PaceAIResponseError("Planutkastet saknar valda kunskapsbriefar.")
-
     schema = deepcopy(PLAN_SCHEMA)
     assessment = schema["properties"]["coach_assessment"]
     assert isinstance(assessment, dict)
@@ -258,7 +259,6 @@ def _schema_for_request(request: PlanGenerationRequest) -> dict[str, object]:
     }
     properties["knowledge_references"] = {
         "type": "array",
-        "minItems": 1,
         "items": {"type": "string", "enum": knowledge_ids},
     }
     return schema

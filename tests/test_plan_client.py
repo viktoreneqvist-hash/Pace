@@ -100,6 +100,24 @@ def test_plan_client_binds_structured_citations_to_selected_ids():
     assert schema["properties"]["coach_assessment"]["properties"]["knowledge_references"]["items"]["enum"] == [
         "progression_continuity"
     ]
+    assert "minItems" not in schema["properties"]["coach_assessment"]["properties"]["knowledge_references"]
+
+
+def test_plan_client_allows_general_coaching_assessment_without_a_local_reference():
+    payload = _payload()
+    assessment = payload["coach_assessment"]
+    assert isinstance(assessment, dict)
+    assessment["knowledge_references"] = []
+    responses = FakeResponses(SimpleNamespace(output_text=json.dumps(payload)))
+    client = OpenAIPlanClient(
+        api_key="test-key",
+        model="test-model",
+        client=SimpleNamespace(responses=responses),
+    )
+
+    plan = client.generate(_request())
+
+    assert plan.coach_assessment.knowledge_references == ()
 
 
 def test_plan_client_retries_one_malformed_structured_response():
