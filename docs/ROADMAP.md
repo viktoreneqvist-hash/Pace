@@ -301,6 +301,14 @@ feedback for a later revision draft; never overwrite an accepted plan.
 - [x] Keep reports Git-ignored and make the report a read-only view over a
   persisted plan, leaving acceptance, feedback, and revisions explicit
 
+### Batch J3.4 — Safe race lifecycle
+
+- [x] Permit correction or permanent removal only for unused future races
+- [x] Preserve cancelled races as local audit history and exclude them from
+  future planning and Garmin evidence linking
+- [x] Protect races referenced by plans or Garmin evidence from factual rewrites
+  and deletion; protect accepted-plan targets from cancellation
+
 ### Batch K1 — Curated coaching knowledge
 
 Build a local, source-attributed knowledge library before treating an AI

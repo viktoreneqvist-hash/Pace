@@ -1820,6 +1820,50 @@ plan acceptance.
 
 ---
 
+# Decision #41
+
+## Problem
+
+An athlete must be able to correct a mistaken future race date or remove a
+race that was entered by mistake. Once a plan or Garmin result points at that
+race, however, altering or deleting it would silently change the meaning of
+stored history.
+
+## Options
+
+- Let any race be edited or deleted at any time
+- Make every race permanently immutable after creation
+- Allow changes while a future race is unused, then preserve referenced races
+  and provide a non-destructive cancellation state
+
+## Chosen
+
+An unused future race can have its facts corrected or be deleted. A race with
+any plan or Garmin evidence reference cannot have its facts changed or be
+deleted. `cancelled` is a retained local state: it disappears from upcoming
+race selection and cannot be used for a new plan or Garmin evidence link.
+
+Cancellation is allowed for an unused or draft-plan-only future race. It is
+blocked once an accepted plan or Garmin race evidence uses the race. This
+avoids silently changing an active coaching commitment or historical result.
+
+## Reason
+
+The athlete can fix ordinary entry mistakes without turning the race table into
+mutable history. The restriction is deliberately based on real local
+references, not a model interpretation of whether a race still matters.
+
+## Consequences
+
+- To correct a referenced race, add a new race and create the appropriate new
+  plan rather than rewriting the original record.
+- Draft plans that refer to a cancelled race remain readable but cannot be
+  accepted; a newly generated draft will use only active races.
+- Cancelled races remain available through an explicit audit list, so an
+  accidental cancellation is visible rather than silently erased.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

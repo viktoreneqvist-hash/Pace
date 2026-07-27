@@ -21,3 +21,4 @@ class Race(TimestampMixin, Base):
     priority: Mapped[str] = mapped_column(String(1), nullable=False)
     desired_time_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     taper_override: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)

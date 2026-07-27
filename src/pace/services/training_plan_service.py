@@ -216,6 +216,10 @@ class TrainingPlanService:
                 raise ValueError("Only a draft plan can be accepted.")
             if plan.contract_version != CURRENT_PLAN_CONTRACT_VERSION:
                 raise ValueError("Legacy draft plans must be regenerated before acceptance.")
+            if plan.race_id is not None:
+                race = get_race_by_id(session, plan.race_id)
+                if race is None or race.status != "active":
+                    raise ValueError("A draft for a cancelled race cannot be accepted.")
             if not _has_complete_assessment(plan.coach_assessment):
                 raise ValueError("A complete coach assessment is required before acceptance.")
             if plan.parent_plan_id is not None:
@@ -280,6 +284,8 @@ class TrainingPlanService:
             race = get_race_by_id(session, race_id)
         if race is None:
             raise ValueError(f"No race exists with id {race_id}.")
+        if race.status != "active":
+            raise ValueError("A cancelled race cannot define a new plan block.")
         if race.race_date < as_of_date:
             raise ValueError("A plan target race must be today or in the future.")
         if race.priority != "A":

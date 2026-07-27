@@ -244,6 +244,30 @@ def test_race_link_rejects_a_different_activity_day():
         )
 
 
+def test_race_link_rejects_a_cancelled_race():
+    with session_scope() as session:
+        session.add(_activity("cancelled-race-run", date(2026, 7, 20)))
+        race = Race(
+            name="Cancelled 5k",
+            sport_type="run",
+            race_date=date(2026, 7, 20),
+            distance_meters=5_000,
+            priority="B",
+            status="cancelled",
+        )
+        session.add(race)
+        session.flush()
+        race_id = race.id
+    PerformanceHistoryService(StubPerformanceSource()).sync_details(
+        start_date=date(2026, 7, 20), end_date=date(2026, 7, 20)
+    )
+
+    with pytest.raises(ValueError, match="cancelled race"):
+        PerformanceHistoryService().link_race_evidence(
+            garmin_activity_id="cancelled-race-run", race_id=race_id
+        )
+
+
 def test_performance_history_falls_back_to_normalized_activity_scalars():
     with session_scope() as session:
         activity = _activity("run-summary-fallback", date(2026, 7, 20))

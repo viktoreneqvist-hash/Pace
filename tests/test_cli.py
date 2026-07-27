@@ -711,6 +711,29 @@ def test_race_and_plan_parsers_accept_the_j1_contract():
     assert readiness_args.end_date == date(2026, 7, 25)
 
 
+def test_race_management_parser_accepts_fact_correction_and_safe_removal():
+    parser = app.build_parser()
+
+    update_args = parser.parse_args(
+        [
+            "race",
+            "update",
+            "--id",
+            "4",
+            "--date",
+            "2026-11-01",
+            "--distance-km",
+            "21.0975",
+        ]
+    )
+    remove_args = parser.parse_args(["race", "remove", "--id", "4"])
+    cancel_args = parser.parse_args(["race", "cancel", "--id", "4"])
+
+    assert update_args.date == date(2026, 11, 1)
+    assert update_args.distance_km == 21.0975
+    assert remove_args.id == cancel_args.id == 4
+
+
 def test_capacity_show_prints_read_only_capacity_facts(monkeypatch, capsys):
     profile = CapacityProfile(
         as_of_date=date(2026, 7, 25),

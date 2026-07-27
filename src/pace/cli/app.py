@@ -421,13 +421,24 @@ def build_parser() -> ArgumentParser:
         action="store_true",
         help="inkludera historiska lopp, exempelvis för att länka ett Garmin-resultat",
     )
+    race_list_parser.add_argument(
+        "--include-cancelled",
+        action="store_true",
+        help="inkludera avbrutna framtida lopp i listan",
+    )
     race_list_parser.set_defaults(handler=run_race_list)
 
     race_update_parser = race_subparsers.add_parser(
         "update",
-        help="ändra prioritet eller taper för ett befintligt lopp",
+        help="rätta ett oanvänt lopp eller ändra dess prioritet/taper",
     )
     race_update_parser.add_argument("--id", type=int, required=True)
+    race_update_parser.add_argument("--name")
+    race_update_parser.add_argument("--date", type=iso_date)
+    race_update_parser.add_argument("--sport", choices=sorted(SUPPORTED_RACE_SPORT_TYPES))
+    race_update_parser.add_argument("--distance-km", type=positive_distance_km)
+    race_update_parser.add_argument("--desired-time", type=duration_seconds)
+    race_update_parser.add_argument("--clear-desired-time", action="store_true")
     race_update_parser.add_argument(
         "--priority",
         choices=sorted(SUPPORTED_RACE_PRIORITIES),
@@ -437,6 +448,17 @@ def build_parser() -> ArgumentParser:
         choices=sorted(SUPPORTED_TAPER_CHOICES),
     )
     race_update_parser.set_defaults(handler=run_race_update)
+
+    race_remove_parser = race_subparsers.add_parser(
+        "remove", help="ta bort ett oanvänt framtida lopp permanent"
+    )
+    race_remove_parser.add_argument("--id", type=int, required=True)
+    race_remove_parser.set_defaults(handler=run_race_remove)
+    race_cancel_parser = race_subparsers.add_parser(
+        "cancel", help="avbryt ett framtida lopp utan att radera historik"
+    )
+    race_cancel_parser.add_argument("--id", type=int, required=True)
+    race_cancel_parser.set_defaults(handler=run_race_cancel)
 
     plan_parser = subparsers.add_parser(
         "plan",
@@ -1082,6 +1104,7 @@ def run_race_list(args: Namespace, *, today: date | None = None) -> int:
     races = RaceService().list_races(
         as_of_date=as_of_date,
         include_past=getattr(args, "include_past", False),
+        include_cancelled=getattr(args, "include_cancelled", False),
     )
     payload = [
         {
@@ -1094,6 +1117,7 @@ def run_race_list(args: Namespace, *, today: date | None = None) -> int:
             "desired_time_seconds": race.desired_time_seconds,
             "taper_override": race.taper_override,
             "taper": resolved_taper(race),
+            "status": race.status,
         }
         for race in races
     ]
@@ -1102,11 +1126,19 @@ def run_race_list(args: Namespace, *, today: date | None = None) -> int:
 
 
 def run_race_update(args: Namespace) -> int:
-    """Update only the approved race priority and taper choices."""
+    """Correct an unused race, preserving any linked plan/result history."""
 
     try:
         race = RaceService().update_race(
             race_id=args.id,
+            name=args.name,
+            sport_type=args.sport,
+            race_date=args.date,
+            distance_meters=(
+                None if args.distance_km is None else args.distance_km * 1000
+            ),
+            desired_time_seconds=args.desired_time,
+            clear_desired_time=args.clear_desired_time,
             priority=args.priority,
             taper_override=args.taper,
         )
@@ -1115,9 +1147,29 @@ def run_race_update(args: Namespace) -> int:
         return 2
 
     print(
-        f"Lopp uppdaterat: {race.name}, prioritet {race.priority}, "
-        f"taper {resolved_taper(race)}."
+        f"Lopp uppdaterat: {race.name} ({race.race_date}), prioritet "
+        f"{race.priority}, taper {resolved_taper(race)}."
     )
+    return 0
+
+
+def run_race_remove(args: Namespace, *, today: date | None = None) -> int:
+    try:
+        RaceService().remove_race(race_id=args.id, as_of_date=today or date.today())
+    except ValueError as error:
+        print(f"Loppet kunde inte tas bort: {error}")
+        return 2
+    print("Loppet är borttaget. Inga planer eller Garmin-resultat påverkades.")
+    return 0
+
+
+def run_race_cancel(args: Namespace, *, today: date | None = None) -> int:
+    try:
+        race = RaceService().cancel_race(race_id=args.id, as_of_date=today or date.today())
+    except ValueError as error:
+        print(f"Loppet kunde inte avbrytas: {error}")
+        return 2
+    print(f"Loppet är avbrutet: {race.name}. Det används inte i ny planering.")
     return 0
 
 

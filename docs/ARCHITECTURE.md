@@ -389,6 +389,13 @@ sport, and Stockholm-local date. A benchmark link requires an approved,
 deterministically validated Pace protocol. All observed time, distance, pace,
 heart-rate, and power facts remain Garmin-derived.
 
+Race goals have an explicit lifecycle. An `active` race is available to future
+planning and athlete-confirmed Garmin race linking. A `cancelled` race remains
+local audit history but is excluded from those new uses. Race facts may change
+only before any plan or evidence reference exists; deletes have the same
+unused-future restriction. This prevents a correction from silently rewriting
+the meaning of a plan or observed result.
+
 The J2C readiness service consumes these evidence rows together with the
 existing capacity/history gate. It returns a sport-specific eligibility result
 for future intensity proposals; it does not calculate a pace, power, fitness

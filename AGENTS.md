@@ -127,6 +127,11 @@ Garmin provider
   never a numerical volume/intensity rule or permission to bypass factual,
   availability, evidence, or acceptance boundaries. The coach model must
   explain how it affected a draft or why the facts prevented that effect.
+- Race records have an explicit `active`/`cancelled` lifecycle. Correct or
+  delete only unused future races. Once a plan or Garmin evidence references a
+  race, its facts and identity are historical. A cancelled race is retained for
+  audit but cannot define or be accepted by a new plan, or receive new Garmin
+  race evidence; cancellation is blocked for accepted-plan and evidence use.
 - Pace's coach voice is direct, factual, and unsentimental. Do not add praise,
   therapy language, generic wellness language, or routine care-provider
   referrals for ordinary fatigue, poor sleep, or discomfort. This is not a

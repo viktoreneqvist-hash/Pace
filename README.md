@@ -65,6 +65,24 @@ uv run pace coach ask --plan-id 2 "Kan jag cykla i stället för dagens löppass
 uv run pace coach chat --plan-id 2
 ```
 
+### Correcting or cancelling a race
+
+Race facts can be corrected while the race is unused. Once a plan or a Garmin
+race result refers to it, those facts are historical and must not be rewritten.
+Create a new race instead. An unused future race can be deleted permanently;
+`cancel` preserves it for audit but hides it from new planning.
+
+```bash
+uv run pace race update --id 1 --date 2026-10-11
+uv run pace race remove --id 1
+uv run pace race cancel --id 1
+uv run pace race list --include-cancelled
+```
+
+Pace will refuse to cancel a race that is already used by an accepted plan or
+Garmin race evidence. A cancelled race cannot be selected for a new plan,
+accepted as a plan target, or linked as new Garmin race evidence.
+
 Every cycling session has distance, duration, and a saved Garmin heart-rate
 zone. The model can additionally use RPE, verified cycling power, or no
 primary target; cycling pace is never generated. Running pace and cycling

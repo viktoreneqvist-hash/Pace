@@ -196,6 +196,8 @@ class PerformanceHistoryService:
             race = get_race_by_id(session, race_id)
             if race is None:
                 raise ValueError(f"No race exists with id {race_id}.")
+            if race.status != "active":
+                raise ValueError("A cancelled race cannot be linked as Garmin race evidence.")
             if activity.sport_type not in INCLUDED_SPORT_TYPES:
                 raise ValueError("Only normalized run and ride activities can be race evidence.")
             if activity.sport_type != race.sport_type:

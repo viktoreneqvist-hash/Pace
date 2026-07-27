@@ -3,6 +3,8 @@ from datetime import date
 import pytest
 
 from pace.services.race_service import RaceInput, RaceService, resolved_taper
+from pace.database.models import TrainingPlan
+from pace.database.session import session_scope
 
 
 def test_race_service_stores_an_explicit_goal_without_treating_goal_time_as_capacity():
@@ -94,3 +96,87 @@ def test_race_service_rejects_invalid_sport_priority_distance_or_taper():
         service.add_race(RaceInput(sport_type="run", distance_meters=0, **{key: value for key, value in base_input.items() if key != "distance_meters"}))
     with pytest.raises(ValueError, match="taper"):
         service.add_race(RaceInput(sport_type="run", taper_override="auto", **base_input))
+
+
+def test_unused_future_race_can_correct_all_facts_or_be_removed():
+    service = RaceService()
+    race = service.add_race(
+        RaceInput(
+            name="Wrong date",
+            sport_type="run",
+            race_date=date(2026, 10, 10),
+            distance_meters=10_000,
+            priority="A",
+        )
+    )
+
+    updated = service.update_race(
+        race_id=race.id,
+        name="Correct race",
+        sport_type="ride",
+        race_date=date(2026, 11, 1),
+        distance_meters=80_000,
+        desired_time_seconds=10_800,
+    )
+    service.remove_race(race_id=race.id, as_of_date=date(2026, 7, 27))
+
+    assert updated.name == "Correct race"
+    assert updated.sport_type == "ride"
+    assert updated.race_date == date(2026, 11, 1)
+    assert service.list_races(as_of_date=date(2026, 7, 27), include_past=False) == []
+
+
+def test_cancelled_race_is_hidden_from_upcoming_planning_but_remains_auditable():
+    service = RaceService()
+    race = service.add_race(
+        RaceInput(
+            name="Cancelled race",
+            sport_type="run",
+            race_date=date(2026, 10, 10),
+            distance_meters=10_000,
+            priority="A",
+        )
+    )
+
+    cancelled = service.cancel_race(race_id=race.id, as_of_date=date(2026, 7, 27))
+
+    assert cancelled.status == "cancelled"
+    assert service.list_upcoming_races(as_of_date=date(2026, 7, 27)) == []
+    assert service.list_races(
+        as_of_date=date(2026, 7, 27), include_past=False, include_cancelled=True
+    )[0].id == race.id
+
+
+def test_linked_race_facts_and_removal_are_protected():
+    service = RaceService()
+    race = service.add_race(
+        RaceInput(
+            name="Linked race",
+            sport_type="run",
+            race_date=date(2026, 10, 10),
+            distance_meters=10_000,
+            priority="A",
+        )
+    )
+    with session_scope() as session:
+        session.add(
+            TrainingPlan(
+                status="draft",
+                contract_version=2,
+                goal_mode="race",
+                race_id=race.id,
+                as_of_date=date(2026, 7, 27),
+                block_start_date=date(2026, 7, 27),
+                block_end_date=date(2026, 10, 10),
+                detailed_start_date=date(2026, 7, 27),
+                detailed_end_date=date(2026, 8, 9),
+                block_outline=[],
+                context_snapshot={},
+                coach_assessment={},
+            )
+        )
+
+    with pytest.raises(ValueError, match="cannot change"):
+        service.update_race(race_id=race.id, race_date=date(2026, 10, 11))
+    with pytest.raises(ValueError, match="cannot be removed"):
+        service.remove_race(race_id=race.id, as_of_date=date(2026, 7, 27))
