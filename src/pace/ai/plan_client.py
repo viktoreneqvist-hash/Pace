@@ -81,12 +81,16 @@ must include a concise purpose, distance, duration, and zone target. The
 primary target object is structured: use its target kind and numeric field,
 never hide pace or watts in free text. Pace and power targets must cite one
 eligible evidence_reference_id from the fact catalog.
-Every session must include ordered workout_steps. Use warmup, steady, interval,
-and cooldown blocks to make the workout executable. A quality workout must put
-its repetitions, work distance or duration, recovery, and recovery target in
-an interval block; never hide that structure in purpose or instruction text.
-Use simple steady blocks for easy and long sessions. The detailed blocks must
-respect the same pace, power, RPE, and cycling zone eligibility as the session.
+Every session must include ordered workout_steps, but do not use a fixed
+warmup/steady/cooldown template. A simple continuous session such as 50 minutes
+in zone 2 must be one steady block and nothing else. Add warmup and cooldown
+only when they have a specific coaching purpose, normally for a quality,
+technical, or deliberately transition-focused session. A quality workout must
+put its repetitions, work distance or duration, recovery, and recovery target
+in an interval block; never hide that structure in purpose or instruction text.
+Use the smallest set of blocks that makes the intended session executable. The
+detailed blocks must respect the same pace, power, RPE, and cycling zone
+eligibility as the session.
 Availability null means no supplied time ceiling; it is never permission to
 prescribe unlimited training. Return a coach_assessment with fact_references
 as exact ID strings selected only from the supplied fact_catalog, then your inferences, rationale,

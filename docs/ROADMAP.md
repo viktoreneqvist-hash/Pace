@@ -434,6 +434,13 @@ until the library is large enough to need them.
 - [x] Never infer completion from Garmin or mutate a plan; pass evaluation and
   structured feedback only inform a separate explicit revision draft
 
+### Batch J4.3 — Readable workout presentation and minimal block design
+
+- [x] Render plan sessions as readable workout cards with separate work,
+  recovery, target, and instruction fields instead of a single dense text cell
+- [x] Make simple continuous sessions one steady block by default; warmup and
+  cooldown are optional coaching tools, not required pass decoration
+
 ## Explicitly deferred
 
 - Multi-user accounts

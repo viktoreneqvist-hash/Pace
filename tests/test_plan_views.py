@@ -8,6 +8,7 @@ from pace.planning.plan_models import (
     PlanSessionFact,
     SessionTargetFact,
     TrainingPlanFact,
+    WorkoutStepFact,
 )
 from pace.presentation.plan_views import (
     render_plan_html,
@@ -50,6 +51,19 @@ def _plan(*, identifier: int = 3, status: str = "draft") -> TrainingPlanFact:
                 target=SessionTargetFact("rpe", 2, 3, None, None, None),
                 target_display="Z1 (99–118 bpm) | RPE 2–3",
                 feedback_outcome="completed",
+                workout_steps=(
+                    WorkoutStepFact(
+                        kind="steady",
+                        repetitions=1,
+                        distance_meters=20_000,
+                        duration_seconds=2_700,
+                        target=SessionTargetFact("rpe", 2, 3, None, None, None),
+                        recovery_distance_meters=None,
+                        recovery_duration_seconds=None,
+                        recovery_target=None,
+                        instruction="Håll jämn zon 2.",
+                    ),
+                ),
             ),
             PlanSessionFact(
                 id=17,
@@ -118,6 +132,9 @@ def test_html_report_is_escaped_private_and_rendered_with_owner_only_permissions
     assert "Lätt &lt;aerob&gt; cykling." in html
     assert "raw-provider-data-must-not-be-rendered" not in html
     assert "Kunskapsstöd" in html
+    assert 'class="session-card"' in html
+    assert "Jämn del" in html
+    assert "<table>" not in html
     assert "Progression utan universell veckoregel" in html
     assert "Rapporten är en läsvy och ändrar inte planen." in html
 

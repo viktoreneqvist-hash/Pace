@@ -194,12 +194,8 @@ def render_plan_html(plan: TrainingPlanFact) -> str:
     </section>
     <section>
       <h2>Detaljerade pass</h2>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Datum</th><th>Sport</th><th>Pass</th><th>Upplägg</th><th>Omfattning</th><th>Mål</th><th>Utfall</th></tr></thead>
-          <tbody>{''.join(_html_session_row(session) for session in sessions)}</tbody>
-        </table>
-      </div>
+      <p class="muted">Varje block är en faktisk del av passet. Ett enkelt distanspass visas som ett enda block.</p>
+      <div class="session-list">{''.join(_html_session_card(session) for session in sessions)}</div>
     </section>
     <section>
       <h2>Blocköversikt</h2>
@@ -419,18 +415,84 @@ def _metric_card(label: str, value: str) -> str:
     return f'<div class="metric"><span>{escape(label)}</span><strong>{escape(value)}</strong></div>'
 
 
-def _html_session_row(session: PlanSessionFact) -> str:
-    outcome = _feedback_display(session)
+def _html_session_card(session: PlanSessionFact) -> str:
+    steps = session.workout_steps
+    blocks = (
+        "".join(_html_workout_step(step) for step in steps)
+        if steps
+        else '<p class="muted">Inget detaljerat upplägg finns för denna äldre plan.</p>'
+    )
     return (
-        "<tr>"
-        f"<td>{escape(_format_date(session.scheduled_date))}</td>"
-        f"<td>{escape(_sport_label(session.sport_type))}</td>"
-        f"<td>{escape(session.purpose)}</td>"
-        f"<td>{escape(_workout_outline(session))}</td>"
-        f"<td>{escape(_session_scope(session))}</td>"
-        f"<td>{escape(session.target_display)}</td>"
-        f"<td>{escape(outcome)}</td>"
-        "</tr>"
+        '<article class="session-card">'
+        '<div class="session-date">'
+        f'<strong>{escape(_format_date(session.scheduled_date))}</strong>'
+        f'<span class="sport-chip {escape(session.sport_type)}">{escape(_sport_label(session.sport_type))}</span>'
+        "</div>"
+        '<div class="session-main">'
+        f'<h3>{escape(session.purpose)}</h3>'
+        '<div class="session-meta">'
+        f'<span><b>Omfattning</b>{escape(_session_scope(session))}</span>'
+        f'<span><b>Huvudmål</b>{escape(session.target_display)}</span>'
+        f'<span><b>Utfall</b>{escape(_feedback_display(session))}</span>'
+        "</div>"
+        f'<div class="workout-blocks">{blocks}</div>'
+        "</div>"
+        "</article>"
+    )
+
+
+def _html_workout_step(step) -> str:
+    label = {
+        "warmup": "Uppvärmning",
+        "steady": "Jämn del",
+        "interval": "Intervaller",
+        "cooldown": "Nedjogg",
+    }.get(step.kind, step.kind)
+    scope = _workout_step_scope(step)
+    target = _target_fact_display(step.target)
+    recovery = _html_recovery(step)
+    instruction = escape(step.instruction) if step.instruction else ""
+    return (
+        f'<section class="workout-step {escape(step.kind)}">'
+        f'<p class="step-kind">{escape(label)}</p>'
+        f'<p class="step-scope">{escape(scope)}</p>'
+        f'<p class="step-target">{escape(target)}</p>'
+        f'{recovery}'
+        f'<p class="step-instruction">{instruction}</p>'
+        "</section>"
+    )
+
+
+def _workout_step_scope(step) -> str:
+    scope = " · ".join(
+        value
+        for value in (_format_distance(step.distance_meters), _format_duration(step.duration_seconds))
+        if value
+    )
+    if step.kind == "interval":
+        return f"{step.repetitions} × {scope}"
+    return scope or "Ingen omfattning angiven"
+
+
+def _html_recovery(step) -> str:
+    if step.kind != "interval":
+        return ""
+    recovery_scope = " · ".join(
+        value
+        for value in (
+            _format_distance(step.recovery_distance_meters),
+            _format_duration(step.recovery_duration_seconds),
+        )
+        if value
+    )
+    recovery_target = (
+        _target_fact_display(step.recovery_target)
+        if step.recovery_target is not None
+        else "ingen separat intensitet"
+    )
+    return (
+        '<p class="step-recovery"><b>Vila</b>'
+        f"{escape(recovery_scope)} · {escape(recovery_target)}</p>"
     )
 
 
@@ -479,7 +541,7 @@ section { background: #fff; border: 1px solid #e1e6e2; border-radius: 16px; marg
 .subtitle, .muted { color: #5c6961; }.rationale { font-size: 1.12rem; line-height: 1.6; }
 .metrics { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); background: transparent; border: 0; box-shadow: none; padding: 0; }
 .metric { background: #e6f0e9; border-radius: 14px; min-height: 90px; padding: 18px; }.metric span { color: #536158; display: block; font-size: .82rem; }.metric strong { display: block; font-size: 1.15rem; margin-top: 8px; }
-.table-wrap { overflow-x: auto; } table { border-collapse: collapse; min-width: 760px; width: 100%; } th { color: #5b675f; font-size: .75rem; letter-spacing: .06em; text-align: left; text-transform: uppercase; } td, th { border-bottom: 1px solid #e5e9e6; padding: 12px 8px; vertical-align: top; } td:nth-child(3) { min-width: 230px; }
+.session-list { display: grid; gap: 14px; }.session-card { border: 1px solid #e1e6e2; border-radius: 14px; display: grid; grid-template-columns: 132px minmax(0, 1fr); overflow: hidden; }.session-date { background: #eff5f0; display: flex; flex-direction: column; gap: 10px; padding: 18px; }.session-date strong { font-size: 1rem; line-height: 1.3; }.sport-chip { align-self: flex-start; border-radius: 999px; font-size: .75rem; font-weight: 700; padding: 5px 8px; }.sport-chip.run { background: #e5edff; color: #2958ae; }.sport-chip.ride { background: #e1f3eb; color: #25714e; }.session-main { min-width: 0; padding: 18px; }.session-main h3 { font-size: 1.05rem; margin: 0 0 13px; }.session-meta { color: #536158; display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: .84rem; margin-bottom: 16px; }.session-meta span { display: grid; gap: 2px; }.session-meta b { color: #7a867e; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; }.workout-blocks { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); }.workout-step { background: #f7f9f7; border: 1px solid #e4eae5; border-radius: 11px; margin: 0; min-width: 0; padding: 13px; }.workout-step.interval { background: #fff8e9; border-color: #efdcae; }.step-kind { color: #5c6961; font-size: .7rem; font-weight: 700; letter-spacing: .08em; margin: 0 0 7px; text-transform: uppercase; }.step-scope { font-size: 1.05rem; font-weight: 750; margin: 0 0 3px; }.step-target { color: #35684d; font-size: .88rem; font-weight: 650; margin: 0; }.step-recovery { border-top: 1px solid #eadfc3; font-size: .82rem; margin: 10px 0 0; padding-top: 9px; }.step-recovery b { display: block; font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; }.step-instruction { color: #5c6961; font-size: .8rem; line-height: 1.45; margin: 9px 0 0; }
 ul, ol { line-height: 1.55; padding-left: 22px; }.outline li { margin-bottom: 13px; } footer { color: #6a756d; font-size: .82rem; padding: 28px 4px 0; text-align: center; }
-@media (max-width: 720px) { main { padding: 28px 14px 48px; } section { padding: 18px; }.metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) { main { padding: 28px 14px 48px; } section { padding: 18px; }.metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }.session-card { grid-template-columns: 1fr; }.session-date { align-items: center; flex-direction: row; justify-content: space-between; }.workout-blocks { grid-template-columns: 1fr; } }
 """

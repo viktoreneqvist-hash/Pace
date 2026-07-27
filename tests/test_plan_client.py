@@ -162,6 +162,7 @@ def test_plan_client_parses_a_structured_target_and_separate_coach_assessment():
     assert plan.coach_assessment.inferences == ("En coachslutsats.",)
     assert plan.sessions[0].target.kind == "rpe"
     assert plan.sessions[0].target.rpe_max == 3
+    assert plan.sessions[0].workout_steps[0].kind == "steady"
 
 
 def test_plan_client_rejects_an_assessment_that_omits_uncertainties():

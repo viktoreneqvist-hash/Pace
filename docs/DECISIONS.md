@@ -2060,7 +2060,9 @@ enough structure to judge what was attempted.
 ## Chosen
 
 New plan contract v3 stores ordered `workout_steps` JSON on every planned
-session. A step is warmup, steady work, interval, or cooldown. Intervals carry
+session. A step is warmup, steady work, interval, or cooldown. A continuous
+easy or endurance session normally consists of one `steady` block; warmup and
+cooldown are optional tools, not mandatory ceremony. Intervals carry
 their repetitions, work dose, recovery dose, work target, and recovery target.
 The exact same Python target-evidence gates validate every work and recovery
 target as validate the session overall. Existing v2 plans remain readable as
