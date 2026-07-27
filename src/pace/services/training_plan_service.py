@@ -12,12 +12,14 @@ from pace.planning.draft_models import (
     GeneratedPlanDraft,
     PlanGenerationRequest,
     SessionTargetDraft,
+    WorkoutStepDraft,
 )
 from pace.planning.plan_models import (
     CoachAssessmentFact,
     PlanSessionFact,
     SessionTargetFact,
     TrainingPlanFact,
+    WorkoutStepFact,
 )
 from pace.repositories.context_event_repository import get_context_events_in_date_range
 from pace.repositories.race_repository import get_race_by_id
@@ -49,7 +51,7 @@ SUPPORTED_FEEDBACK_REASON_CODES = frozenset(
     {"schedule", "fatigue", "pain", "illness", "travel", "other"}
 )
 WEEKDAY_CODES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
-CURRENT_PLAN_CONTRACT_VERSION = 2
+CURRENT_PLAN_CONTRACT_VERSION = 3
 
 
 class PlanDraftGenerator(Protocol):
@@ -161,6 +163,9 @@ class TrainingPlanService:
                 "session_id": item.id,
                 "scheduled_date": item.scheduled_date.isoformat(),
                 "outcome": feedback_by_session[item.id].outcome,
+                "perceived_exertion": feedback_by_session[item.id].perceived_exertion,
+                "reason_code": feedback_by_session[item.id].reason_code,
+                "workout_steps": _serialize_stored_workout_steps(item),
                 "note": (
                     feedback_by_session[item.id].note
                     if feedback_by_session[item.id].share_note_with_ai
@@ -447,6 +452,11 @@ class TrainingPlanService:
                 session=item,
                 performance_readiness=performance_readiness,
             )
+            _validate_workout_steps(
+                session=item,
+                allowed_intensity_types=allowed_intensity.get(item.sport_type, set()),
+                performance_readiness=performance_readiness,
+            )
 
     def _persist_plan(
         self,
@@ -505,6 +515,7 @@ class TrainingPlanService:
                         ),
                         heart_rate_zone=item.heart_rate_zone,
                         target=_serialize_session_target(item.target),
+                        workout_steps=_serialize_workout_steps(item.workout_steps),
                     ),
                 )
             return _plan_fact(session, plan)
@@ -620,6 +631,7 @@ def _plan_fact(session, plan: TrainingPlan) -> TrainingPlanFact:
                 feedback_reason_code=(
                     None if item.id not in feedback else feedback[item.id].reason_code
                 ),
+                workout_steps=_workout_steps_fact(item),
             )
             for item in sessions
         ),
@@ -926,6 +938,7 @@ def _parent_plan_context(*, parent, sessions, feedback_by_session) -> dict[str, 
                 "heart_rate_zone": session.heart_rate_zone,
                 "target": _serialize_session_target(_session_target_draft(session)),
                 "target_display": _session_target_display(session),
+                "workout_steps": _serialize_stored_workout_steps(session),
                 "feedback_outcome": (
                     None
                     if session.id not in feedback_by_session
@@ -1020,6 +1033,57 @@ def _validate_session_target(
     raise ValueError("AI plan draft had an unsupported target kind.")
 
 
+def _validate_workout_steps(
+    *,
+    session,
+    allowed_intensity_types: set[str],
+    performance_readiness: PerformanceReadiness,
+) -> None:
+    """Validate each generated workout block with the same evidence gates as its pass."""
+
+    if not session.workout_steps:
+        raise ValueError("Each AI plan session needs at least one structured workout step.")
+    for step in session.workout_steps:
+        if step.kind not in {"warmup", "steady", "interval", "cooldown"}:
+            raise ValueError("AI plan draft contains an unsupported workout-step kind.")
+        if step.distance_meters is None and step.duration_seconds is None:
+            raise ValueError("Each workout step needs distance or duration.")
+        if step.kind == "interval":
+            if step.repetitions < 2:
+                raise ValueError("An interval workout step needs at least two repetitions.")
+            if (
+                step.recovery_distance_meters is None
+                and step.recovery_duration_seconds is None
+            ) or step.recovery_target is None:
+                raise ValueError("An interval workout step needs recovery duration or distance and target.")
+        elif (
+            step.repetitions != 1
+            or step.recovery_distance_meters is not None
+            or step.recovery_duration_seconds is not None
+            or step.recovery_target is not None
+        ):
+            raise ValueError("Only interval workout steps may use repetitions or recovery.")
+        _validate_session_target(
+            session=_WorkoutStepSession(session.sport_type, step.target),
+            allowed_intensity_types=allowed_intensity_types,
+            performance_readiness=performance_readiness,
+        )
+        if step.recovery_target is not None:
+            _validate_session_target(
+                session=_WorkoutStepSession(session.sport_type, step.recovery_target),
+                allowed_intensity_types=allowed_intensity_types,
+                performance_readiness=performance_readiness,
+            )
+
+
+class _WorkoutStepSession:
+    """Small compatibility view for target validation on a workout block."""
+
+    def __init__(self, sport_type: str, target: SessionTargetDraft) -> None:
+        self.sport_type = sport_type
+        self.target = target
+
+
 def _render_target_display(*, item, performance_readiness: PerformanceReadiness) -> str:
     """Render targets from structured fields; never persist free AI target text."""
 
@@ -1061,6 +1125,35 @@ def _serialize_session_target(target: SessionTargetDraft) -> dict[str, object]:
     }
 
 
+def _serialize_workout_steps(
+    steps: tuple[WorkoutStepDraft, ...],
+) -> list[dict[str, object]]:
+    return [
+        {
+            "kind": step.kind,
+            "repetitions": step.repetitions,
+            "distance_meters": step.distance_meters,
+            "duration_seconds": step.duration_seconds,
+            "target": _serialize_session_target(step.target),
+            "recovery_distance_meters": step.recovery_distance_meters,
+            "recovery_duration_seconds": step.recovery_duration_seconds,
+            "recovery_target": (
+                None
+                if step.recovery_target is None
+                else _serialize_session_target(step.recovery_target)
+            ),
+            "instruction": step.instruction,
+        }
+        for step in steps
+    ]
+
+
+def _serialize_stored_workout_steps(session) -> list[dict[str, object]]:
+    """Return plan snapshots as JSON-safe context, tolerating pre-v3 plans."""
+
+    return list(session.workout_steps) if isinstance(session.workout_steps, list) else []
+
+
 def _session_target_draft(session) -> SessionTargetDraft:
     """Read current stored structured targets, with a safe legacy representation."""
 
@@ -1100,6 +1193,51 @@ def _session_target_fact(session) -> SessionTargetFact:
     )
 
 
+def _workout_steps_fact(session) -> tuple[WorkoutStepFact, ...]:
+    raw_steps = session.workout_steps if isinstance(session.workout_steps, list) else []
+    steps: list[WorkoutStepFact] = []
+    for raw in raw_steps:
+        if not isinstance(raw, dict):
+            continue
+        target = _session_target_fact_from_raw(raw.get("target"))
+        recovery_raw = raw.get("recovery_target")
+        steps.append(
+            WorkoutStepFact(
+                kind=str(raw.get("kind") or "steady"),
+                repetitions=_stored_int(raw.get("repetitions")) or 1,
+                distance_meters=_stored_float(raw.get("distance_meters")),
+                duration_seconds=_stored_int(raw.get("duration_seconds")),
+                target=target,
+                recovery_distance_meters=_stored_float(raw.get("recovery_distance_meters")),
+                recovery_duration_seconds=_stored_int(raw.get("recovery_duration_seconds")),
+                recovery_target=(
+                    _session_target_fact_from_raw(recovery_raw)
+                    if isinstance(recovery_raw, dict)
+                    else None
+                ),
+                instruction=str(raw.get("instruction") or ""),
+            )
+        )
+    return tuple(steps)
+
+
+def _session_target_fact_from_raw(raw: object) -> SessionTargetFact:
+    if not isinstance(raw, dict):
+        return SessionTargetFact("none", None, None, None, None, None)
+    return SessionTargetFact(
+        kind=str(raw.get("kind") or "none"),
+        rpe_min=_stored_int(raw.get("rpe_min")),
+        rpe_max=_stored_int(raw.get("rpe_max")),
+        pace_seconds_per_km=_stored_int(raw.get("pace_seconds_per_km")),
+        power_watts=_stored_int(raw.get("power_watts")),
+        evidence_reference_id=(
+            raw.get("evidence_reference_id")
+            if isinstance(raw.get("evidence_reference_id"), str)
+            else None
+        ),
+    )
+
+
 def _session_target_display(session) -> str:
     # Current plans persist display text produced by _render_target_display,
     # never text supplied by the model. Keeping it also preserves the saved
@@ -1111,3 +1249,7 @@ def _session_target_display(session) -> str:
 
 def _stored_int(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _stored_float(value: object) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None

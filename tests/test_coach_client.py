@@ -42,6 +42,26 @@ def _replacement_payload(*, knowledge_references=None) -> str:
                         "power_watts": None,
                         "evidence_reference_id": None,
                     },
+                    "workout_steps": [
+                        {
+                            "kind": "steady",
+                            "repetitions": 1,
+                            "distance_meters": 5000,
+                            "duration_seconds": 1800,
+                            "target": {
+                                "kind": "rpe",
+                                "rpe_min": 2,
+                                "rpe_max": 3,
+                                "pace_seconds_per_km": None,
+                                "power_watts": None,
+                                "evidence_reference_id": None,
+                            },
+                            "recovery_distance_meters": None,
+                            "recovery_duration_seconds": None,
+                            "recovery_target": None,
+                            "instruction": "Lugnt och kontrollerat.",
+                        }
+                    ],
                 },
             },
         }

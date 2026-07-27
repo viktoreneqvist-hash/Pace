@@ -2042,6 +2042,79 @@ or research evidence.
 
 ---
 
+# Decision #47
+
+## Problem
+
+Plans could previously describe a session only as purpose, duration/distance,
+and one overall target. That cannot represent an executable workout such as
+10 × 1 km with recovery, and it gave neither the athlete nor a future revision
+enough structure to judge what was attempted.
+
+## Options
+
+- Keep free-text pass descriptions
+- Create a separate relational table for workout blocks
+- Store a validated structured workout snapshot on each immutable plan session
+
+## Chosen
+
+New plan contract v3 stores ordered `workout_steps` JSON on every planned
+session. A step is warmup, steady work, interval, or cooldown. Intervals carry
+their repetitions, work dose, recovery dose, work target, and recovery target.
+The exact same Python target-evidence gates validate every work and recovery
+target as validate the session overall. Existing v2 plans remain readable as
+history but must be regenerated before revision.
+
+`pace plan workout evaluate --session-id` is read-only. It shows the stored
+steps, explicit feedback, and same-day same-sport Garmin candidates. It never
+marks a session completed, derives interval compliance, changes feedback, or
+rewrites a plan.
+
+## Reason
+
+Plans are immutable version snapshots already. Embedded validated JSON keeps a
+workout together with the accepted plan version, avoids a premature table and
+join model, and is sufficient while Pace does not yet ingest interval-level
+Garmin data. Explicit athlete feedback remains the durable outcome source.
+
+## Consequences
+
+- New plans can express genuine quality sessions with visible work and recovery.
+- A Garmin activity match is deliberately not treated as evidence that every
+  prescribed interval occurred.
+- If Pace later needs interval-level compliance analytics, a normalized workout
+  block table can be introduced by a new migration and decision.
+
+---
+
+# Decision #48
+
+## Chosen
+
+K1.1 broadens the checked-in reviewed knowledge library from five to fifty
+briefs across structured
+workouts, cycling, strength, HRV, sleep, recovery, pacing, taper, and
+run/cycle transfer. Python selects at most five relevant briefs, still with no
+runtime web search, embeddings, vector database, raw-paper storage, or
+automatic ingestion. Briefs remain optional support under Decision #46.
+
+## Reason
+
+The original library was useful but too narrow to provide transparent local
+support across the kinds of decisions Pace now makes. More reviewed source
+summaries improve coverage without pretending that a finite catalog replaces a
+coaching model's general knowledge.
+
+## Consequences
+
+- The library is more useful as an inspectable reference, but it remains
+  versioned content that needs human review when expanded.
+- Athlete-specific facts, data quality, and deterministic Python gates retain
+  priority over every brief.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

@@ -20,6 +20,35 @@ class PlannedSessionDraft:
     duration_seconds: int | None
     heart_rate_zone: int | None
     target: "SessionTargetDraft"
+    workout_steps: tuple["WorkoutStepDraft", ...] = ()
+
+    def __post_init__(self) -> None:
+        """Keep direct internal callers structured while AI output stays schema-required.
+
+        The OpenAI schema and parser require explicit blocks. This fallback only
+        keeps older test fixtures and trusted in-process generators from
+        persisting a new v3 session without an executable steady block.
+        """
+
+        if self.workout_steps:
+            return
+        object.__setattr__(
+            self,
+            "workout_steps",
+            (
+                WorkoutStepDraft(
+                    kind="steady",
+                    repetitions=1,
+                    distance_meters=self.distance_meters,
+                    duration_seconds=self.duration_seconds,
+                    target=self.target,
+                    recovery_distance_meters=None,
+                    recovery_duration_seconds=None,
+                    recovery_target=None,
+                    instruction=self.purpose,
+                ),
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +61,21 @@ class SessionTargetDraft:
     pace_seconds_per_km: int | None
     power_watts: int | None
     evidence_reference_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class WorkoutStepDraft:
+    """One ordered block in a structured workout; intervals keep work and recovery together."""
+
+    kind: str
+    repetitions: int
+    distance_meters: float | None
+    duration_seconds: int | None
+    target: SessionTargetDraft
+    recovery_distance_meters: float | None
+    recovery_duration_seconds: int | None
+    recovery_target: SessionTargetDraft | None
+    instruction: str
 
 
 @dataclass(frozen=True, slots=True)

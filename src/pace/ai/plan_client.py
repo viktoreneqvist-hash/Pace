@@ -15,6 +15,7 @@ from pace.planning.draft_models import (
     PlanGenerationRequest,
     PlannedSessionDraft,
     SessionTargetDraft,
+    WorkoutStepDraft,
 )
 
 
@@ -22,6 +23,45 @@ REASONING_EFFORT = "medium"
 MAX_OUTPUT_TOKENS = 4800
 MAX_GENERATION_ATTEMPTS = 2
 TARGET_KINDS = ("rpe", "pace", "power", "none")
+WORKOUT_STEP_KINDS = ("warmup", "steady", "interval", "cooldown")
+
+_TARGET_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "kind", "rpe_min", "rpe_max", "pace_seconds_per_km", "power_watts",
+        "evidence_reference_id",
+    ],
+    "properties": {
+        "kind": {"type": "string", "enum": list(TARGET_KINDS)},
+        "rpe_min": {"type": ["integer", "null"]},
+        "rpe_max": {"type": ["integer", "null"]},
+        "pace_seconds_per_km": {"type": ["integer", "null"]},
+        "power_watts": {"type": ["integer", "null"]},
+        "evidence_reference_id": {"type": ["string", "null"]},
+    },
+}
+
+_WORKOUT_STEP_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "kind", "repetitions", "distance_meters", "duration_seconds", "target",
+        "recovery_distance_meters", "recovery_duration_seconds", "recovery_target",
+        "instruction",
+    ],
+    "properties": {
+        "kind": {"type": "string", "enum": list(WORKOUT_STEP_KINDS)},
+        "repetitions": {"type": "integer", "minimum": 1},
+        "distance_meters": {"type": ["number", "null"]},
+        "duration_seconds": {"type": ["integer", "null"]},
+        "target": _TARGET_SCHEMA,
+        "recovery_distance_meters": {"type": ["number", "null"]},
+        "recovery_duration_seconds": {"type": ["integer", "null"]},
+        "recovery_target": {"anyOf": [{"type": "null"}, _TARGET_SCHEMA]},
+        "instruction": {"type": "string", "minLength": 1},
+    },
+}
 
 SYSTEM_INSTRUCTIONS = """You are Pace's Swedish-language plan-drafting assistant.
 Return a reviewable plan draft, never medical advice. Treat the supplied Pace
@@ -41,6 +81,12 @@ must include a concise purpose, distance, duration, and zone target. The
 primary target object is structured: use its target kind and numeric field,
 never hide pace or watts in free text. Pace and power targets must cite one
 eligible evidence_reference_id from the fact catalog.
+Every session must include ordered workout_steps. Use warmup, steady, interval,
+and cooldown blocks to make the workout executable. A quality workout must put
+its repetitions, work distance or duration, recovery, and recovery target in
+an interval block; never hide that structure in purpose or instruction text.
+Use simple steady blocks for easy and long sessions. The detailed blocks must
+respect the same pace, power, RPE, and cycling zone eligibility as the session.
 Availability null means no supplied time ceiling; it is never permission to
 prescribe unlimited training. Return a coach_assessment with fact_references
 as exact ID strings selected only from the supplied fact_catalog, then your inferences, rationale,
@@ -141,6 +187,7 @@ PLAN_SCHEMA: dict[str, object] = {
                     "duration_seconds",
                     "heart_rate_zone",
                     "target",
+                    "workout_steps",
                 ],
                 "properties": {
                     "scheduled_date": {"type": "string"},
@@ -168,6 +215,11 @@ PLAN_SCHEMA: dict[str, object] = {
                             "power_watts": {"type": ["integer", "null"]},
                             "evidence_reference_id": {"type": ["string", "null"]},
                         },
+                    },
+                    "workout_steps": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": _WORKOUT_STEP_SCHEMA,
                     },
                 },
             },
@@ -332,7 +384,7 @@ def _parse_coach_assessment(item: object) -> CoachAssessmentDraft:
 
 def _parse_session(item: object) -> PlannedSessionDraft:
     if not isinstance(item, dict) or set(item) != {
-        "scheduled_date", "sport_type", "purpose", "distance_meters", "duration_seconds", "heart_rate_zone", "target"
+        "scheduled_date", "sport_type", "purpose", "distance_meters", "duration_seconds", "heart_rate_zone", "target", "workout_steps"
     }:
         raise PaceAIResponseError("AI-planen hade ogiltiga passfält.")
     distance = item["distance_meters"]
@@ -356,6 +408,53 @@ def _parse_session(item: object) -> PlannedSessionDraft:
         duration_seconds=duration,
         heart_rate_zone=heart_rate_zone,
         target=_parse_target(item["target"]),
+        workout_steps=tuple(_parse_workout_step(step) for step in item["workout_steps"]),
+    )
+
+
+def _parse_workout_step(item: object) -> WorkoutStepDraft:
+    required_fields = {
+        "kind", "repetitions", "distance_meters", "duration_seconds", "target",
+        "recovery_distance_meters", "recovery_duration_seconds", "recovery_target",
+        "instruction",
+    }
+    if not isinstance(item, dict) or set(item) != required_fields:
+        raise PaceAIResponseError("AI-planen hade ogiltiga passblocks-fält.")
+    kind = item["kind"]
+    repetitions = item["repetitions"]
+    if kind not in WORKOUT_STEP_KINDS or not isinstance(repetitions, int) or isinstance(repetitions, bool):
+        raise PaceAIResponseError("AI-planen hade ogiltigt passblock.")
+    distance = item["distance_meters"]
+    duration = item["duration_seconds"]
+    recovery_distance = item["recovery_distance_meters"]
+    recovery_duration = item["recovery_duration_seconds"]
+    for value in (distance, recovery_distance):
+        if value is not None and (not isinstance(value, (int, float)) or value <= 0):
+            raise PaceAIResponseError("AI-planen hade ogiltig blockdistans.")
+    for value in (duration, recovery_duration):
+        if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value <= 0):
+            raise PaceAIResponseError("AI-planen hade ogiltig blocktid.")
+    if distance is None and duration is None:
+        raise PaceAIResponseError("AI-planen hade ett block utan omfattning.")
+    recovery_target = item["recovery_target"]
+    if kind == "interval":
+        if repetitions < 2 or (recovery_distance is None and recovery_duration is None) or recovery_target is None:
+            raise PaceAIResponseError("AI-planens intervallblock saknar återhämtning.")
+    elif repetitions != 1 or any(value is not None for value in (recovery_distance, recovery_duration, recovery_target)):
+        raise PaceAIResponseError("AI-planens vanliga block har ogiltig återhämtning.")
+    instruction = item["instruction"]
+    if not isinstance(instruction, str) or not instruction.strip():
+        raise PaceAIResponseError("AI-planen saknar blockinstruktion.")
+    return WorkoutStepDraft(
+        kind=kind,
+        repetitions=repetitions,
+        distance_meters=None if distance is None else float(distance),
+        duration_seconds=duration,
+        target=_parse_target(item["target"]),
+        recovery_distance_meters=None if recovery_distance is None else float(recovery_distance),
+        recovery_duration_seconds=recovery_duration,
+        recovery_target=None if recovery_target is None else _parse_target(recovery_target),
+        instruction=instruction.strip(),
     )
 
 

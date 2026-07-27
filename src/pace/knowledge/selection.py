@@ -3,13 +3,18 @@
 from pace.knowledge.models import KnowledgeBrief, KnowledgeLibrary, SelectedKnowledgeBrief
 
 
-MAX_SELECTED_BRIEFS = 3
+MAX_SELECTED_BRIEFS = 5
 _TAG_WEIGHTS = {
     # Topic-specific evidence should not be crowded out by the two general
     # planning tags when the local facts clearly indicate a narrower topic.
-    "recovery": 3,
-    "run_ride": 3,
-    "taper": 3,
+    "recovery": 20,
+    "run_ride": 20,
+    "taper": 20,
+    "workout_structure": 3,
+    "race_pacing": 3,
+    "strength": 2,
+    "cycling": 2,
+    "sleep": 2,
     "progression": 1,
     "intensity": 1,
 }
@@ -28,6 +33,14 @@ def select_for_question(
         tags.add("taper")
     if any(term in normalized for term in ("hrv", "återhämt", "sömn")):
         tags.add("recovery")
+    if any(term in normalized for term in ("intervall", "400", "1 km", "passupplägg")):
+        tags.add("workout_structure")
+    if any(term in normalized for term in ("styrk", "gym", "plyometr")):
+        tags.add("strength")
+    if any(term in normalized for term in ("fart", "pacing", "öppna", "disponera")):
+        tags.add("race_pacing")
+    if any(term in normalized for term in ("cykel", "cycling", "ride")):
+        tags.add("cycling")
     if any(term in normalized for term in ("cykel", "cycling", "ride")) and any(
         term in normalized for term in ("löp", "running", "run")
     ):
@@ -42,17 +55,24 @@ def select_for_plan_context(
 ) -> tuple[SelectedKnowledgeBrief, ...]:
     """Select plan knowledge from bounded Pace context, not model judgment."""
 
-    tags = {"progression", "intensity"}
+    tags = {"progression", "intensity", "workout_structure"}
     fact_catalog = context.get("fact_catalog")
     if isinstance(fact_catalog, dict):
         goal = _catalog_value(fact_catalog, "goal")
         if isinstance(goal, dict) and goal.get("race") is not None:
             tags.add("taper")
+            race = goal.get("race")
+            if isinstance(race, dict) and race.get("sport_type") == "run":
+                tags.add("race_pacing")
         capacity = _catalog_value(fact_catalog, "capacity_profile")
         if isinstance(capacity, dict):
             sports = capacity.get("sports")
             if isinstance(sports, list) and {item.get("sport_type") for item in sports if isinstance(item, dict)} >= {"run", "ride"}:
                 tags.add("run_ride")
+            if isinstance(sports, list) and any(
+                item.get("sport_type") == "ride" for item in sports if isinstance(item, dict)
+            ):
+                tags.add("cycling")
     return select_for_tags(library, tags=tags)
 
 

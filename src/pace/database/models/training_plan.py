@@ -49,6 +49,7 @@ class PlannedSession(TimestampMixin, Base):
     intensity_target: Mapped[str] = mapped_column(Text, nullable=False)
     heart_rate_zone: Mapped[int | None] = mapped_column(Integer, nullable=True)
     target: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    workout_steps: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
 
 
 class SessionFeedback(TimestampMixin, Base):

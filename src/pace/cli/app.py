@@ -67,6 +67,7 @@ from pace.services.training_response_trend_service import TrainingResponseTrendS
 from pace.services.dashboard_service import DashboardService
 from pace.services.coaching_principle_service import CoachingPrincipleService
 from pace.services.weekly_review_service import WeeklyReviewService
+from pace.services.workout_evaluation_service import WorkoutEvaluationService
 from pace.weekly_review.client import WeeklyReviewClient
 from pace.services.training_preference_service import (
     SUPPORTED_COACHING_AMBITIONS,
@@ -590,6 +591,18 @@ def build_parser() -> ArgumentParser:
         help="tillåt att just denna notering skickas i ett framtida revisionsutkast",
     )
     plan_feedback_parser.set_defaults(handler=run_plan_feedback)
+
+    plan_workout_parser = plan_subparsers.add_parser(
+        "workout",
+        help="granska ett planerat pass mot explicit feedback och samma dags Garmin-data",
+    )
+    plan_workout_subparsers = plan_workout_parser.add_subparsers(dest="plan_workout_command")
+    plan_workout_evaluate_parser = plan_workout_subparsers.add_parser(
+        "evaluate",
+        help="utvärdera utan att ändra plan eller registrera genomförande automatiskt",
+    )
+    plan_workout_evaluate_parser.add_argument("--session-id", type=int, required=True)
+    plan_workout_evaluate_parser.set_defaults(handler=run_plan_workout_evaluate)
 
     plan_revise_parser = plan_subparsers.add_parser(
         "revise",
@@ -1425,6 +1438,16 @@ def run_plan_feedback(args: Namespace) -> int:
         print(f"Passutfallet kunde inte sparas: {error}")
         return 2
     print("Passutfallet är sparat. Ingen plan har ändrats.")
+    return 0
+
+
+def run_plan_workout_evaluate(args: Namespace) -> int:
+    try:
+        evaluation = WorkoutEvaluationService().evaluate(session_id=args.session_id)
+    except ValueError as error:
+        print(f"Passet kunde inte utvärderas: {error}")
+        return 2
+    print(json.dumps(asdict(evaluation), default=_json_default, indent=2))
     return 0
 
 

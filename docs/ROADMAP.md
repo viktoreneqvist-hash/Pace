@@ -407,6 +407,33 @@ until the library is large enough to need them.
 - [x] Render weekly reviews with separate Pace-fact and coach-assessment
   sections so the user can see which kind of claim is being made
 
+### Batch K1.1 — Broadened reviewed coaching library
+
+- [x] Expand the checked-in, source-attributed local brief library from five to
+  fifty reviewed briefs across
+  workout structure, cycling periodisation, strength, HRV, sleep, recovery,
+  pacing, taper, and run/cycle transfer
+- [x] Expand deterministic topic selection to at most five relevant briefs;
+  still no runtime web search, raw-paper storage, embeddings, or vector search
+- [x] Keep source briefs as optional evidence support: athlete-specific facts
+  remain the only factual contract crossing into an AI decision
+
+### Batch J4.1 — Structured workout prescription
+
+- [x] Store an ordered workout contract on every new planned session:
+  warmup, steady work, intervals with explicit repetitions/recovery, and cooldown
+- [x] Apply the existing target-evidence gates to every work and recovery block
+  and bump the immutable plan contract to v3; older plans remain readable but
+  must be regenerated before revision
+- [x] Render the detailed workout structure in terminal and local HTML plan views
+
+### Batch J4.2 — Explicit workout evaluation
+
+- [x] Add a read-only comparison of a planned session, explicit athlete feedback,
+  and same-day same-sport Garmin activity candidates
+- [x] Never infer completion from Garmin or mutate a plan; pass evaluation and
+  structured feedback only inform a separate explicit revision draft
+
 ## Explicitly deferred
 
 - Multi-user accounts

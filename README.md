@@ -117,6 +117,13 @@ uv run pace plan accept --id 1
 Byt `1` mot plan-id:t som Pace skriver ut. HTML-rapporten är privat och lokal;
 den skickas inte till GitHub.
 
+Ett nytt planutkast innehåller ett faktiskt passupplägg, inte bara en rubrik:
+uppvärmning, jämna delar, intervallrepetitioner med vila och nedjogg. Pace kan
+alltså uttrycka exempelvis `10 × 1 km` eller `20 × 400 m` när din aktuella
+fakta- och kapacitetsgrund tillåter det. Löpfart kräver fortfarande aktuell
+verifierad löpevidens; annars använder planen RPE. Cykling använder aldrig
+fartmål.
+
 ## Till vardags
 
 ```bash
@@ -125,6 +132,7 @@ uv run pace plan today
 uv run pace coach ask --plan-id 1 "Kan jag cykla i stället för dagens löpning?"
 uv run pace plan feedback --session-id 1 --outcome completed
 uv run pace plan feedback --session-id 1 --outcome completed --rpe 6
+uv run pace plan workout evaluate --session-id 1
 uv run pace trends show
 uv run pace dashboard
 open reports/dashboard.html
@@ -139,6 +147,11 @@ kort revisionsutkast. Pace skriver aldrig över ett accepterat plan automatiskt.
 uv run pace plan feedback --session-id 1 --outcome skipped --reason schedule --note "Jobbresa"
 uv run pace plan revise --id 1 --days 7
 ```
+
+`pace plan workout evaluate` jämför bara det planerade upplägget med ditt
+uttryckliga utfall och Garmin-aktiviteter samma dag och sport. En Garmin-träff
+är inte ett bevis på att passets intervaller utfördes; din registrerade feedback
+är det som kan ligga till grund för nästa revisionsutkast.
 
 Om ett planutkast innehåller en coachprincip du vill behålla kan du bekräfta
 den. Den granskas igen efter 84 dagar och ändrar aldrig en plan automatiskt:
@@ -160,6 +173,9 @@ uv run pace profile list
 - Pace-fakta beskriver dig och din träning. AI:n får använda allmän
   tränarkunskap för sin bedömning, men den visas som coachbedömning — inte som
   ny Pace-data eller forskning.
+- Den lokala kunskapsbasen är ett granskat, källhänvisat stöd för vanliga
+  uthållighetsfrågor. Den laddas från repot, söks inte på webben vid körning
+  och begränsar inte AI:ns allmänna coachkunskap eller Paces faktagränser.
 - Håll din egen API-nyckel privat. Du betalar själv för din OpenAI-användning.
 
 ## Om något krånglar

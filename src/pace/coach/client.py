@@ -6,7 +6,7 @@ from typing import Any
 from openai import OpenAI
 
 from pace.ai.client import PaceAIResponseError, PaceAIUnavailableError
-from pace.ai.plan_client import _parse_session
+from pace.ai.plan_client import _WORKOUT_STEP_SCHEMA, _parse_session
 from pace.coach.models import (
     CoachDialogueAnswer,
     CoachDialogueRequest,
@@ -69,6 +69,7 @@ _SESSION_SCHEMA: dict[str, object] = {
         "duration_seconds",
         "heart_rate_zone",
         "target",
+        "workout_steps",
     ],
     "properties": {
         "scheduled_date": {"type": "string"},
@@ -96,6 +97,11 @@ _SESSION_SCHEMA: dict[str, object] = {
                 "power_watts": {"type": ["integer", "null"]},
                 "evidence_reference_id": {"type": ["string", "null"]},
             },
+        },
+        "workout_steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": _WORKOUT_STEP_SCHEMA,
         },
     },
 }

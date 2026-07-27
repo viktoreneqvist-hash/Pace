@@ -114,9 +114,9 @@ Garmin provider
   mutate the plan. HTML reports are written only under Git-ignored `reports/`
   with owner-only permissions and omit raw payloads and all private note text.
 - K1 coaching knowledge is a checked-in, curated local library, never a
-  runtime web search. Python selects at most three topic-relevant briefs for
-  an AI request; each model knowledge reference must be one of those selected
-  IDs. Briefs state supported claims and limitations, and cannot override
+  runtime web search. Python selects at most five topic-relevant briefs for
+  an AI request; model references are optional but, when present, must be one
+  of those selected IDs. Briefs state supported claims and limitations, and cannot override
   local Pace facts, athlete preferences, eligibility gates, or safety rules.
   Do not add automatic source ingestion, raw-paper storage, embeddings, or a
   vector database without a new product decision.
@@ -152,6 +152,13 @@ Garmin provider
   referrals for ordinary fatigue, poor sleep, or discomfort. This is not a
   license to prescribe through pain or give medical advice: say plainly when
   the factual situation supports reducing or skipping a session.
+- New plan contract v3 sessions persist a structured workout: warmup, steady,
+  interval (with repetition and recovery), and cooldown blocks. Python applies
+  the same factual target-evidence gates to every block. v2 plans stay readable
+  as historical records but cannot be revised; regenerate before changing them.
+  A same-day Garmin activity is only a candidate when evaluating a planned
+  workout, never proof that its structure was completed. Explicit feedback
+  remains the only completion outcome and plans are never altered automatically.
 
 ## Safety and privacy
 

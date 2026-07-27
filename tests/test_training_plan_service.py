@@ -157,7 +157,7 @@ def _assessment(*, fact_references: tuple[str, ...] = ("planning_readiness",)):
         rationale="Förslaget prioriterar kontinuitet.",
         uncertainties=("Underlaget är syntetiskt i detta test.",),
         coaching_principles=("Gradvis progression.",),
-        knowledge_references=("progression_continuity",),
+        knowledge_references=(),
     )
 
 
@@ -242,7 +242,7 @@ def test_initial_plan_is_a_persisted_draft_with_selected_fact_catalog_only():
     )
 
     assert plan.status == "draft"
-    assert plan.contract_version == 2
+    assert plan.contract_version == 3
     assert plan.goal_mode == "general"
     assert plan.sessions[0].target.kind == "rpe"
     assert plan.sessions[0].target_display == "RPE 2–3"
@@ -383,8 +383,9 @@ def test_feedback_creates_a_bounded_revision_without_overwriting_parent():
     assert generator.requests[-1].mode == "revision_draft"
     revision_catalog = generator.requests[-1].context["fact_catalog"]
     assert revision_catalog["feedback"]["value"][0]["note"] is None
-    assert "perceived_exertion" not in revision_catalog["feedback"]["value"][0]
-    assert "reason_code" not in revision_catalog["feedback"]["value"][0]
+    assert revision_catalog["feedback"]["value"][0]["perceived_exertion"] == 7
+    assert revision_catalog["feedback"]["value"][0]["reason_code"] == "fatigue"
+    assert revision_catalog["feedback"]["value"][0]["workout_steps"]
     assert revision_catalog["training_response_trends"]["value"]["status"] == "insufficient_data"
     assert "target" in revision_catalog["parent_plan"]["value"]["sessions"][0]
 

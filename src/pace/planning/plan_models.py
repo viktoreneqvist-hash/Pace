@@ -18,6 +18,7 @@ class PlanSessionFact:
     feedback_outcome: str | None
     feedback_perceived_exertion: int | None = None
     feedback_reason_code: str | None = None
+    workout_steps: tuple["WorkoutStepFact", ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +29,19 @@ class SessionTargetFact:
     pace_seconds_per_km: int | None
     power_watts: int | None
     evidence_reference_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class WorkoutStepFact:
+    kind: str
+    repetitions: int
+    distance_meters: float | None
+    duration_seconds: int | None
+    target: SessionTargetFact
+    recovery_distance_meters: float | None
+    recovery_duration_seconds: int | None
+    recovery_target: SessionTargetFact | None
+    instruction: str
 
 
 @dataclass(frozen=True, slots=True)

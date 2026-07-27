@@ -196,7 +196,7 @@ def render_plan_html(plan: TrainingPlanFact) -> str:
       <h2>Detaljerade pass</h2>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Datum</th><th>Sport</th><th>Pass</th><th>Omfattning</th><th>Mål</th><th>Utfall</th></tr></thead>
+          <thead><tr><th>Datum</th><th>Sport</th><th>Pass</th><th>Upplägg</th><th>Omfattning</th><th>Mål</th><th>Utfall</th></tr></thead>
           <tbody>{''.join(_html_session_row(session) for session in sessions)}</tbody>
         </table>
       </div>
@@ -250,7 +250,7 @@ def _next_session_heading(
 def _terminal_session_line(session: PlanSessionFact) -> str:
     return (
         f"- {_format_date(session.scheduled_date)} · {_sport_label(session.sport_type)} · "
-        f"{session.purpose} · {_session_scope(session)} · {session.target_display}"
+        f"{session.purpose} · {_workout_outline(session)} · {_session_scope(session)} · {session.target_display}"
         f"{_feedback_suffix(session)}"
     )
 
@@ -261,6 +261,57 @@ def _session_scope(session: PlanSessionFact) -> str:
         _format_duration(session.duration_seconds),
     ]
     return " · ".join(item for item in details if item) or "Ingen omfattning angiven"
+
+
+def _workout_outline(session: PlanSessionFact) -> str:
+    if not session.workout_steps:
+        return "Inget detaljerat upplägg (äldre plan)"
+    return " → ".join(_workout_step_outline(step) for step in session.workout_steps)
+
+
+def _workout_step_outline(step) -> str:
+    label = {
+        "warmup": "Uppvärmning",
+        "steady": "Jämn del",
+        "interval": "Intervall",
+        "cooldown": "Nedjogg",
+    }.get(step.kind, step.kind)
+    scope = " · ".join(
+        value
+        for value in (_format_distance(step.distance_meters), _format_duration(step.duration_seconds))
+        if value
+    )
+    if step.kind == "interval":
+        scope = f"{step.repetitions} × {scope}"
+        recovery_scope = " · ".join(
+            value
+            for value in (
+                _format_distance(step.recovery_distance_meters),
+                _format_duration(step.recovery_duration_seconds),
+            )
+            if value
+        )
+        if recovery_scope:
+            scope = f"{scope}, vila {recovery_scope}"
+    target = _target_fact_display(step.target)
+    recovery_target = (
+        f", vila {_target_fact_display(step.recovery_target)}"
+        if step.recovery_target is not None
+        else ""
+    )
+    instruction = f" ({step.instruction})" if step.instruction else ""
+    return f"{label}: {scope} · {target}{recovery_target}{instruction}"
+
+
+def _target_fact_display(target) -> str:
+    if target.kind == "rpe":
+        return f"RPE {target.rpe_min}–{target.rpe_max}"
+    if target.kind == "pace" and target.pace_seconds_per_km is not None:
+        minutes, seconds = divmod(target.pace_seconds_per_km, 60)
+        return f"{minutes}:{seconds:02d} min/km"
+    if target.kind == "power" and target.power_watts is not None:
+        return f"{target.power_watts} W"
+    return "ingen separat intensitet"
 
 
 def _format_date(value: date) -> str:
@@ -375,6 +426,7 @@ def _html_session_row(session: PlanSessionFact) -> str:
         f"<td>{escape(_format_date(session.scheduled_date))}</td>"
         f"<td>{escape(_sport_label(session.sport_type))}</td>"
         f"<td>{escape(session.purpose)}</td>"
+        f"<td>{escape(_workout_outline(session))}</td>"
         f"<td>{escape(_session_scope(session))}</td>"
         f"<td>{escape(session.target_display)}</td>"
         f"<td>{escape(outcome)}</td>"

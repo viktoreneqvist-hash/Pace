@@ -40,6 +40,86 @@
       "publication_year": 2023,
       "evidence_type": "scoping review",
       "url": "https://pubmed.ncbi.nlm.nih.gov/37178349/"
+    },
+    {
+      "id": "llanos_lagos_2024_strength",
+      "title": "Effects of Different Strength Training Methods on Running Economy in Middle- and Long-Distance Runners",
+      "authors": "Llanos-Lagos et al.",
+      "publication_year": 2024,
+      "evidence_type": "systematic review and meta-analysis",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/38165636/"
+    },
+    {
+      "id": "eihara_2022_strength",
+      "title": "Effects of Heavy Resistance Training and Plyometric Training on Running Economy and Running Time Trial Performance",
+      "authors": "Eihara et al.",
+      "publication_year": 2022,
+      "evidence_type": "systematic review and meta-analysis",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/36370207/"
+    },
+    {
+      "id": "denadai_2017_strength",
+      "title": "Effects of Strength Training on Running Economy in Highly Trained Runners",
+      "authors": "Denadai, de Aguiar, Greco",
+      "publication_year": 2017,
+      "evidence_type": "systematic review with meta-analysis",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/27497600/"
+    },
+    {
+      "id": "clemente_2023_cycling_periodization",
+      "title": "Training Periodization, Intensity Distribution, and Volume in Trained Cyclists",
+      "authors": "Clemente et al.",
+      "publication_year": 2023,
+      "evidence_type": "systematic review",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/36640771/"
+    },
+    {
+      "id": "franch_2019_marathon_training",
+      "title": "Training Characteristics of World-Class Distance Runners: An Update",
+      "authors": "Franch, Mujika",
+      "publication_year": 2019,
+      "evidence_type": "narrative review",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/31704026/"
+    },
+    {
+      "id": "duking_2021_hrv",
+      "title": "Heart Rate Variability-Guided Training for Enhancing Endurance Performance",
+      "authors": "Duking et al.",
+      "publication_year": 2021,
+      "evidence_type": "systematic review and meta-analysis",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/34489178/"
+    },
+    {
+      "id": "murphy_2024_sleep_overreaching",
+      "title": "Sleep and the Monitoring of Training Load and Recovery in Athletes",
+      "authors": "Murphy et al.",
+      "publication_year": 2024,
+      "evidence_type": "systematic review and meta-analysis",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/38809828/"
+    },
+    {
+      "id": "burke_2024_recovery",
+      "title": "Recovery Strategies for Endurance Athletes",
+      "authors": "Burke et al.",
+      "publication_year": 2024,
+      "evidence_type": "umbrella review",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/38753045/"
+    },
+    {
+      "id": "pacing_marathon_2024",
+      "title": "Pacing Strategies in Marathon Running",
+      "authors": "Nikolaidis et al.",
+      "publication_year": 2024,
+      "evidence_type": "systematic review",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/39281580/"
+    },
+    {
+      "id": "balsalobre_2016_strength",
+      "title": "The Effects of Strength Training on Running Economy in Highly Trained Runners",
+      "authors": "Balsalobre-Fernández, Santos-Concejero, Grivas",
+      "publication_year": 2016,
+      "evidence_type": "systematic review with meta-analysis",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/26694507/"
     }
   ]
 }
