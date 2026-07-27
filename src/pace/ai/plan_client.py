@@ -184,6 +184,13 @@ class OpenAIPlanClient:
                         f"Plan mode: {request.mode}\n\n"
                         "Selected Pace facts (JSON):\n"
                         f"{json.dumps(request.context, ensure_ascii=False, sort_keys=True)}"
+                        + (
+                            "\n\nPython rejected the previous candidate. Return a complete new "
+                            "JSON plan that corrects this exact validation failure:\n"
+                            f"{request.repair_instruction}"
+                            if request.repair_instruction is not None
+                            else ""
+                        )
                     ),
                     text={
                         "format": {

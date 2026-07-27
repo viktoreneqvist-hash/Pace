@@ -3,7 +3,7 @@
 from dataclasses import asdict
 from datetime import date, timedelta
 import json
-from typing import Protocol
+from typing import Callable, Protocol
 
 from pace.database.models import PlannedSession, TrainingPlan
 from pace.database.session import session_scope
@@ -91,18 +91,18 @@ class TrainingPlanService:
             feedback=(),
             parent_plan=None,
         )
-        generated = self._require_generator().generate(
-            PlanGenerationRequest(mode="initial_draft", context=context)
-        )
         performance_readiness = self._performance_service.get_readiness(end_date=as_of_date)
-        self._validate_generated_plan(
-            generated=generated,
-            detailed_start_date=detailed_start_date,
-            detailed_end_date=detailed_end_date,
-            block_start_date=goal["block_start_date"],
-            block_end_date=goal["block_end_date"],
-            performance_readiness=performance_readiness,
-            context=context,
+        generated = self._generate_validated(
+            request=PlanGenerationRequest(mode="initial_draft", context=context),
+            validate=lambda candidate: self._validate_generated_plan(
+                generated=candidate,
+                detailed_start_date=detailed_start_date,
+                detailed_end_date=detailed_end_date,
+                block_start_date=goal["block_start_date"],
+                block_end_date=goal["block_end_date"],
+                performance_readiness=performance_readiness,
+                context=context,
+            ),
         )
         return self._persist_plan(
             parent_plan_id=None,
@@ -172,27 +172,36 @@ class TrainingPlanService:
                 feedback_by_session=feedback_by_session,
             ),
         )
-        generated = self._require_generator().generate(
-            PlanGenerationRequest(mode="revision_draft", context=context)
-        )
         # The accepted parent owns its block outline. A revision may only
         # replace the short detailed window, never silently redefine the block.
-        generated = GeneratedPlanDraft(
-            block_outline=tuple(
-                _deserialize_outline_item(item) for item in parent.block_outline
-            ),
-            sessions=generated.sessions,
-            coach_assessment=generated.coach_assessment,
+        parent_outline = tuple(
+            _deserialize_outline_item(item) for item in parent.block_outline
         )
         performance_readiness = self._performance_service.get_readiness(end_date=as_of_date)
-        self._validate_generated_plan(
-            generated=generated,
-            detailed_start_date=detailed_start_date,
-            detailed_end_date=detailed_end_date,
-            block_start_date=goal["block_start_date"],
-            block_end_date=goal["block_end_date"],
-            performance_readiness=performance_readiness,
-            context=context,
+
+        def validate_revision(candidate: GeneratedPlanDraft) -> None:
+            self._validate_generated_plan(
+                generated=GeneratedPlanDraft(
+                    block_outline=parent_outline,
+                    sessions=candidate.sessions,
+                    coach_assessment=candidate.coach_assessment,
+                ),
+                detailed_start_date=detailed_start_date,
+                detailed_end_date=detailed_end_date,
+                block_start_date=goal["block_start_date"],
+                block_end_date=goal["block_end_date"],
+                performance_readiness=performance_readiness,
+                context=context,
+            )
+
+        candidate = self._generate_validated(
+            request=PlanGenerationRequest(mode="revision_draft", context=context),
+            validate=validate_revision,
+        )
+        generated = GeneratedPlanDraft(
+            block_outline=parent_outline,
+            sessions=candidate.sessions,
+            coach_assessment=candidate.coach_assessment,
         )
         return self._persist_plan(
             parent_plan_id=parent.id,
@@ -467,6 +476,34 @@ class TrainingPlanService:
                     ),
                 )
             return _plan_fact(session, plan)
+
+    def _generate_validated(
+        self,
+        *,
+        request: PlanGenerationRequest,
+        validate: Callable[[GeneratedPlanDraft], None],
+    ) -> GeneratedPlanDraft:
+        """Give one rejected AI candidate a bounded, explicit correction attempt."""
+
+        repair_instruction: str | None = None
+        last_error: ValueError | None = None
+        for _attempt in range(2):
+            candidate = self._require_generator().generate(
+                PlanGenerationRequest(
+                    mode=request.mode,
+                    context=request.context,
+                    repair_instruction=repair_instruction,
+                )
+            )
+            try:
+                validate(candidate)
+            except ValueError as error:
+                last_error = error
+                repair_instruction = str(error)
+                continue
+            return candidate
+        assert last_error is not None
+        raise last_error
 
     def _require_generator(self) -> PlanDraftGenerator:
         if self._generator is None:

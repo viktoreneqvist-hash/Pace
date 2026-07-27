@@ -34,6 +34,16 @@ class StubGenerator:
         return self.generated
 
 
+class SequenceGenerator:
+    def __init__(self, generated: list[GeneratedPlanDraft]) -> None:
+        self.generated = generated
+        self.requests: list[PlanGenerationRequest] = []
+
+    def generate(self, request: PlanGenerationRequest) -> GeneratedPlanDraft:
+        self.requests.append(request)
+        return self.generated.pop(0)
+
+
 class StubPlanReadinessService:
     def get_readiness(self, *, as_of_date: date) -> PlanReadiness:
         return PlanReadiness(
@@ -241,6 +251,25 @@ def test_initial_plan_is_a_persisted_draft_with_selected_fact_catalog_only():
     assert catalog["training_preference"]["value"]["sport_role"] == "run_primary"
     assert catalog["training_preference"]["value"]["coaching_ambition"] == "balanced"
     assert "note" not in str(catalog["relevant_context"])
+
+
+def test_initial_plan_retries_one_python_rejected_ai_candidate():
+    complete = _generated_plan()
+    incomplete_outline = GeneratedPlanDraft(
+        block_outline=(complete.block_outline[0],),
+        sessions=complete.sessions,
+        coach_assessment=complete.coach_assessment,
+    )
+    generator = SequenceGenerator([incomplete_outline, complete])
+
+    plan = _service(generator).generate_draft(
+        as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
+    )
+
+    assert plan.status == "draft"
+    assert len(generator.requests) == 2
+    assert generator.requests[0].repair_instruction is None
+    assert "block outline must cover" in generator.requests[1].repair_instruction
 
 
 def test_plan_rejects_pace_without_python_intensity_eligibility_and_persists_nothing():

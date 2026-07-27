@@ -57,3 +57,4 @@ class GeneratedPlanDraft:
 class PlanGenerationRequest:
     mode: str
     context: dict[str, object]
+    repair_instruction: str | None = None
