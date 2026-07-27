@@ -1044,6 +1044,27 @@ The CLI should not:
 
 ---
 
+## 13. Local Web Layer
+
+`pace serve` is a local convenience interface, not a hosted product API. The
+CLI starts a FastAPI process on `127.0.0.1`; it renders a small HTML/JavaScript
+application in the athlete's browser.
+
+```text
+Browser on same computer
+    -> loopback HTTP + CSRF confirmation
+    -> web presentation layer
+    -> existing Pace services
+    -> SQLite / optional explicit AI request
+```
+
+The web layer may compose read models, ask the existing coach dialogue service,
+and ask existing persistence services to save an athlete-confirmed card. It
+must not contain business rules, open a remote listener, store chat history,
+leak credentials or raw payloads, or let an LLM mutate data directly.
+
+---
+
 # Current Package Structure
 
 ```text
@@ -1200,5 +1221,6 @@ The following constraints apply until an explicit decision changes them:
 - Rule-based interpretation precedes AI interpretation.
 - AI is optional and introduced later.
 - Credentials and tokens are never sent to AI.
-- A web framework is not required for version 1.
+- The optional web interface is loopback-only and reuses the CLI service
+  boundaries; it is not a public or multi-user API.
 - Cloud infrastructure is not required for version 1.

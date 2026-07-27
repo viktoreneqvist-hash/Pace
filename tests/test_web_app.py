@@ -1,0 +1,236 @@
+from dataclasses import dataclass
+from datetime import date
+import re
+from types import SimpleNamespace
+
+from fastapi.testclient import TestClient
+
+from pace.ai.models import ContextEventDraft
+from pace.coach.models import CoachDialogueAnswer, SessionFeedbackDraft
+from pace.personalization.models import PersonalizationEvidence
+from pace.planning.checkpoint_models import PlanCheckpoint
+from pace.training_analysis.models import SportWindowAnalysis, TransparentTrainingAnalysis
+from pace.web.app import WebServices, create_app
+
+
+@dataclass
+class FakePlanService:
+    plan: object
+    feedback_calls: list[dict]
+    accepted_ids: list[int]
+
+    def list_plans(self):
+        return (self.plan,)
+
+    def add_feedback(self, **kwargs):
+        self.feedback_calls.append(kwargs)
+
+    def accept_plan(self, *, plan_id: int):
+        self.accepted_ids.append(plan_id)
+        return self.plan
+
+
+class FakeCoachService:
+    def __init__(self):
+        self.calls = []
+
+    def ask(self, **kwargs):
+        self.calls.append(kwargs)
+        return CoachDialogueAnswer(
+            answer="Det här är ett avgränsat coachsvar.",
+            observations=("Explicit feedback saknas.",),
+            uncertainties=("Orsaken till tröttheten är okänd.",),
+            knowledge_references=(),
+            adjustment_draft=None,
+            context_event_draft=ContextEventDraft(
+                event_type="work_stress",
+                start_date=date(2026, 7, 27),
+                end_date=None,
+                ongoing=True,
+                note="Hög arbetsstress.",
+            ),
+            feedback_draft=SessionFeedbackDraft(
+                planned_session_id=12,
+                outcome="completed_limited",
+                perceived_exertion=8,
+                reason_code="fatigue",
+                note="Ovanligt trött.",
+            ),
+        )
+
+
+class FakeContextService:
+    def __init__(self):
+        self.inputs = []
+
+    def add_event(self, event_input):
+        self.inputs.append(event_input)
+        return SimpleNamespace(id=44)
+
+
+def _web_client():
+    session = SimpleNamespace(
+        id=12,
+        scheduled_date=date(2026, 7, 27),
+        sport_type="ride",
+        purpose="Jämn distanscykling.",
+        distance_meters=30_000,
+        duration_seconds=5_400,
+        target_display="Z2 (119–138 bpm)",
+        feedback_outcome=None,
+    )
+    plan = SimpleNamespace(
+        id=7,
+        status="accepted",
+        goal_mode="race",
+        block_start_date=date(2026, 7, 20),
+        block_end_date=date(2026, 8, 22),
+        detailed_end_date=date(2026, 8, 2),
+        sessions=(session,),
+    )
+    plan_service = FakePlanService(plan, [], [])
+    coach = FakeCoachService()
+    context = FakeContextService()
+    checkpoint = PlanCheckpoint(
+        as_of_date=date(2026, 7, 27),
+        status="current",
+        active_plan_id=7,
+        detailed_end_date=date(2026, 8, 2),
+        detailed_days_remaining=6,
+        upcoming_races=(),
+        reasons=("detailed_window_current",),
+        recommended_command=None,
+    )
+    personalization = PersonalizationEvidence(
+        as_of_date=date(2026, 7, 27),
+        start_date=date(2026, 6, 2),
+        feedback_records=2,
+        required_feedback_records=12,
+        sport_feedback_records=(("ride", 2),),
+        sport_required_feedback_records=4,
+        status="insufficient_data",
+        limitations=("explicit_feedback_only",),
+    )
+    analysis = TransparentTrainingAnalysis(
+        start_date=date(2026, 6, 30),
+        end_date=date(2026, 7, 27),
+        sports=(
+            SportWindowAnalysis("run", 1, 1, 0.5, 5.0, 0),
+            SportWindowAnalysis("ride", 3, 3, 5.0, 120.0, 0),
+        ),
+        total_duration_hours=5.5,
+        total_active_days=4,
+        feedback_records=2,
+        reported_rpe_average=6.0,
+        recovery_coverage=(("hrv", 28, 28),),
+        limitations=("no_proprietary_training_load_score",),
+    )
+    services = WebServices(
+        plan_service=plan_service,
+        checkpoint_service=SimpleNamespace(get_checkpoint=lambda **_kwargs: checkpoint),
+        preference_service=SimpleNamespace(
+            get_preference=lambda: SimpleNamespace(
+                sport_role="ride_primary",
+                coaching_ambition="ambitious",
+                available_days=[{"day": "mon", "minutes": None}],
+            )
+        ),
+        zone_service=SimpleNamespace(
+            get_profile=lambda **_kwargs: SimpleNamespace(
+                zones=[{"zone": 2, "lower_bpm": 119, "upper_bpm": 138}]
+            )
+        ),
+        personalization_service=SimpleNamespace(get_evidence=lambda **_kwargs: personalization),
+        race_service=SimpleNamespace(
+            list_upcoming_races=lambda **_kwargs: (
+                SimpleNamespace(
+                    id=3,
+                    name="Testlopp",
+                    race_date=date(2026, 8, 15),
+                    sport_type="run",
+                    priority="A",
+                    taper_override=None,
+                ),
+            )
+        ),
+        analysis_service=SimpleNamespace(get_analysis=lambda **_kwargs: analysis),
+        context_service=context,
+        coach_service_factory=lambda: coach,
+        today=lambda: date(2026, 7, 27),
+    )
+    return TestClient(create_app(services=services)), plan_service, context, coach
+
+
+def _csrf(client: TestClient) -> str:
+    response = client.get("/")
+    match = re.search(r'<meta name="pace-csrf" content="([^"]+)">', response.text)
+    assert match is not None
+    return match.group(1)
+
+
+def test_local_web_home_renders_pace_specific_ui_and_safe_settings():
+    client, _plans, _context, _coach = _web_client()
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "LOCAL COACHING SYSTEM" in response.text
+    assert "COACHKANAL" in response.text
+    assert '"taper": "full"' in response.text
+    assert "Offensiv" not in response.text
+    assert "Noir" not in response.text
+
+
+def test_chat_keeps_conversation_in_server_memory_and_returns_confirmation_drafts():
+    client, _plans, _context, coach = _web_client()
+    csrf = _csrf(client)
+
+    response = client.post(
+        "/api/chat",
+        headers={"X-Pace-CSRF": csrf},
+        json={"question": "Jag var ovanligt trött i dag."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["context_event_draft"]["event_type"] == "work_stress"
+    assert response.json()["feedback_draft"]["perceived_exertion"] == 8
+    assert coach.calls[0]["conversation"] == ()
+
+
+def test_confirmation_endpoints_require_csrf_and_reuse_existing_services():
+    client, plans, context, _coach = _web_client()
+    csrf = _csrf(client)
+
+    denied = client.post("/api/plans/7/accept")
+    assert denied.status_code == 403
+
+    context_response = client.post(
+        "/api/context/confirm",
+        headers={"X-Pace-CSRF": csrf},
+        json={
+            "event_type": "work_stress",
+            "start_date": "2026-07-27",
+            "end_date": None,
+            "ongoing": True,
+            "note": "Hög arbetsstress.",
+        },
+    )
+    feedback_response = client.post(
+        "/api/feedback/confirm",
+        headers={"X-Pace-CSRF": csrf},
+        json={
+            "session_id": 12,
+            "outcome": "completed_limited",
+            "perceived_exertion": 8,
+            "reason_code": "fatigue",
+            "note": "Ovanligt trött.",
+        },
+    )
+    accept_response = client.post("/api/plans/7/accept", headers={"X-Pace-CSRF": csrf})
+
+    assert context_response.json() == {"status": "saved", "event_id": 44}
+    assert feedback_response.json() == {"status": "saved", "session_id": 12}
+    assert accept_response.json() == {"status": "accepted", "plan_id": 7}
+    assert context.inputs[0].event_type == "work_stress"
+    assert plans.feedback_calls[0]["outcome"] == "completed_limited"
+    assert plans.accepted_ids == [7]

@@ -6,6 +6,8 @@ from datetime import date, timedelta
 from getpass import getpass
 import json
 import shlex
+from threading import Timer
+import webbrowser
 
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
@@ -128,6 +130,16 @@ def feedback_rpe(value: str) -> int:
     if not 1 <= parsed <= 10:
         raise ArgumentTypeError("--rpe måste vara mellan 1 och 10.")
     return parsed
+
+
+def local_port(value: str) -> int:
+    try:
+        port = int(value)
+    except ValueError as error:
+        raise ArgumentTypeError("--port måste vara ett heltal mellan 1024 och 65535.") from error
+    if not 1024 <= port <= 65_535:
+        raise ArgumentTypeError("--port måste vara mellan 1024 och 65535.")
+    return port
 
 
 def iso_date(value: str) -> date:
@@ -669,6 +681,23 @@ def build_parser() -> ArgumentParser:
         "--end-date", type=iso_date, help="datum YYYY-MM-DD (standard: idag)"
     )
     home_parser.set_defaults(handler=run_home)
+
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="starta Pace Home som en privat lokal browser-app",
+    )
+    serve_parser.add_argument(
+        "--port",
+        type=local_port,
+        default=8765,
+        help="lokal port på 127.0.0.1 (standard: 8765)",
+    )
+    serve_parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="öppna inte webbläsaren automatiskt",
+    )
+    serve_parser.set_defaults(handler=run_serve)
 
     eval_parser = subparsers.add_parser(
         "eval", help="granska Paces coachkontrakt med syntetiska scenarier"
@@ -1550,6 +1579,22 @@ def run_home(args: Namespace, *, today: date | None = None) -> int:
         return 2
     print(f"Pace Home sparad: {output_path}")
     print("Öppna reports/home.html. Sidan synkar inte Garmin och ändrar ingen plan.")
+    return 0
+
+
+def run_serve(args: Namespace) -> int:
+    """Run Pace only on loopback; no cloud hosting or external access exists."""
+
+    import uvicorn
+
+    from pace.web.app import create_app
+
+    url = f"http://127.0.0.1:{args.port}"
+    print(f"Pace Home kör lokalt på {url}")
+    print("Stäng med Ctrl+C. Inga data publiceras på nätet.")
+    if not args.no_browser:
+        Timer(0.5, lambda: webbrowser.open(url)).start()
+    uvicorn.run(create_app(), host="127.0.0.1", port=args.port, log_level="warning")
     return 0
 
 

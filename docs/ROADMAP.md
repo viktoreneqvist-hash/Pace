@@ -482,6 +482,16 @@ until the library is large enough to need them.
 - [x] Do not invent a proprietary training-load score or convert missing
   distance into zero
 
+### Batch UI1–UI3 — Local coach interface
+
+- [x] Add a loopback-only local browser interface via `pace serve`; it binds
+  only to `127.0.0.1` and opens no cloud service or remote account
+- [x] Present plan, current factual state, preferences, zones, races and a
+  bounded in-memory coach dialogue in a light editorial interface
+- [x] Let the athlete explicitly confirm coach-proposed context, feedback, or
+  an already-created plan draft in the browser; the model still never writes
+  data directly and plan revision creation remains a later UI slice
+
 ### Batch N1 — Synthetic coach evaluation
 
 - [x] Add six reviewed synthetic coaching scenarios with no real athlete data,
@@ -494,7 +504,7 @@ until the library is large enough to need them.
 
 - Multi-user accounts
 - Cloud deployment
-- Web or mobile UI
+- Mobile-specific UI and hosted web access
 - Background sync scheduling
 - Automatic unbounded Garmin backfill
 - Automatic Garmin deletion reconciliation

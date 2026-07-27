@@ -55,6 +55,25 @@ uv run pace state show
 Garmin frågar efter e-post, lösenord och eventuellt MFA direkt i terminalen.
 Pace sparar bara en återanvändbar Garmin-session lokalt på din dator.
 
+## Öppna den lokala coachen
+
+Till vardags räcker det att starta Pace så här:
+
+```bash
+uv run pace serve
+```
+
+Webbläsaren öppnas automatiskt på `http://127.0.0.1:8765`. Sidan kör bara på
+din egen dator och är inte publicerad på internet. Låt terminalfönstret vara
+öppet medan du använder Pace; stoppa den lokala sidan med `Ctrl+C` när du är
+klar.
+
+I sidan kan du läsa din aktiva plan, inställningar, kommande lopp och aktuella
+Pace-fakta samt prata med coachen. Chatten kan förbereda context och
+passfeedback, men varje sparning visas som ett eget bekräftelsekort. Ett
+planutkast kan också accepteras där. Pace ändrar aldrig en plan automatiskt och
+chattens korta historik försvinner när den lokala servern stoppas.
+
 ## Uppdatera Pace
 
 När du hämtar en ny version, kör detta en gång innan du använder Pace. Det
@@ -142,6 +161,10 @@ open reports/home.html
 uv run pace review weekly
 open reports/weekly-review.html
 ```
+
+Du kan använda `uv run pace serve` i stället för merparten av de här
+vardagskommandona. Terminalkommandona finns kvar för import, felsökning och
+fullt reproducerbara arbetsflöden.
 
 `pace home` bygger om den lokala dashboarden och den aktiva planrapporten och
 samlar dem på en startsida. Där visas även aktuellt ambitionsläge, sportroll,

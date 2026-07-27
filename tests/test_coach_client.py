@@ -23,6 +23,8 @@ def _replacement_payload(*, knowledge_references=None) -> str:
             "observations": ["Fakta."],
             "uncertainties": ["Begränsning."],
             "knowledge_references": references,
+            "context_event_draft": None,
+            "feedback_draft": None,
             "adjustment_draft": {
                 "action": "replace",
                 "replaces_session_id": 4,

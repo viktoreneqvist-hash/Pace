@@ -2184,6 +2184,58 @@ or making routine tests depend on a paid external service.
 
 ---
 
+# Decision #50
+
+## Problem
+
+Pace had useful local reports and terminal commands, but day-to-day coaching
+required switching between JSON, generated HTML, and several commands. The
+product needs a usable local conversation and confirmation flow without
+creating hosted accounts, retaining a private chat log, or allowing a model to
+write training data.
+
+## Options
+
+- Keep the terminal as the only interactive interface
+- Build a hosted single-page application with accounts and persistent chat
+- Run a small loopback-only server with server-rendered HTML, small browser
+  JavaScript, bounded in-memory dialogue, and explicit confirmation cards
+
+## Chosen
+
+`pace serve` starts a FastAPI application bound only to `127.0.0.1`. It uses a
+light, information-dense editorial interface rather than a dark, rounded
+generic dashboard. The browser receives normalized presentation data only;
+API keys, tokens, raw Garmin payloads, and private note text are never put in
+the HTML or JavaScript.
+
+The coach dialogue is held only in process memory and retains at most four
+turns. A model can propose context or session feedback, but the browser must
+show a separate confirmation card and call the existing service layer only
+after the athlete clicks save. Existing plan drafts can be accepted the same
+way. Coach-proposed plan adjustments remain read-only until a later explicit
+revision workflow.
+
+## Reason
+
+This removes unnecessary terminal friction while preserving Pace's local-first
+privacy and the core boundary between model judgment, deterministic validation,
+and athlete-controlled persistence. Server-rendered HTML and small JavaScript
+add less product and maintenance complexity than a separate front-end
+application at this stage.
+
+## Consequences
+
+- Pace must remain running locally while the browser interface is open.
+- The browser interface is unavailable to other devices and is not a cloud
+  deployment.
+- Browser POST requests require the local session's CSRF confirmation token;
+  they reuse the same validation services as CLI commands.
+- Persistent chat memory, direct settings edits, automatically generated
+  revisions, authentication, and mobile/hosted access require new decisions.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |
@@ -2192,7 +2244,7 @@ or making routine tests depend on a paid external service.
 | Package management | uv |
 | Data source | Garmin only |
 | Database | SQLite |
-| Interface | CLI plus owner-only local static HTML |
+| Interface | CLI plus owner-only local HTML and loopback coach UI |
 | Architecture style | Layered application |
 | Metrics | Deterministic Python |
 | Memory | Structured context events |

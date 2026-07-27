@@ -126,7 +126,13 @@ class CoachDialogueService:
                 end_date=end_date,
                 adjustment=answer.adjustment_draft,
             )
+        if answer.feedback_draft is not None:
+            self._validate_feedback_draft(plan=plan, feedback=answer.feedback_draft)
         return answer
+
+    def _validate_feedback_draft(self, *, plan, feedback) -> None:
+        if not any(session.id == feedback.planned_session_id for session in plan.sessions):
+            raise ValueError("Coach feedback draft referenced a session outside the active plan.")
 
     def _validate_adjustment(self, *, plan, end_date, adjustment) -> None:
         if adjustment.action == "keep_plan":

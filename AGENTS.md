@@ -182,6 +182,14 @@ Garmin provider
   explicit live command and must never use real athlete data or run in CI.
 - Garmin workout export is deferred. Do not add calendar/device writes or other
   externally mutating plan delivery without a new product and safety decision.
+- `pace serve` is a loopback-only local presentation layer. Bind it only to
+  `127.0.0.1`; do not add hosted access, accounts, remote listeners, or API
+  keys/tokens in browser-delivered HTML or JavaScript without a new decision.
+  Browser coach dialogue is bounded in process memory only. Every durable UI
+  write requires same-origin CSRF confirmation and must call the existing
+  validated service; an LLM may prepare a card but must never write context,
+  feedback, preferences, races, or plans directly. Plan adjustments remain
+  review-only until an explicit revision workflow is designed.
 
 ## Safety and privacy
 

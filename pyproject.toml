@@ -7,9 +7,12 @@ license = "MIT"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.18.5",
+    "fastapi>=0.115.0",
     "garminconnect==0.3.6",
+    "itsdangerous>=2.2.0",
     "openai>=2.0.0",
     "sqlalchemy>=2.0.50",
+    "uvicorn>=0.34.0",
 ]
 
 [dependency-groups]

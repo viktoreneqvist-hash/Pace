@@ -1,16 +1,24 @@
 """Stateless OpenAI boundary for Pace's plan-aware coach dialogue."""
 
 import json
+from datetime import date
 from typing import Any
 
 from openai import OpenAI
 
 from pace.ai.client import PaceAIResponseError, PaceAIUnavailableError
+from pace.ai.models import ContextEventDraft
 from pace.ai.plan_client import _WORKOUT_STEP_SCHEMA, _parse_session
 from pace.coach.models import (
     CoachDialogueAnswer,
     CoachDialogueRequest,
     PlanAdjustmentDraft,
+    SessionFeedbackDraft,
+)
+from pace.services.context_service import SUPPORTED_CONTEXT_EVENT_TYPES
+from pace.services.training_plan_service import (
+    SUPPORTED_FEEDBACK_OUTCOMES,
+    SUPPORTED_FEEDBACK_REASON_CODES,
 )
 
 
@@ -56,7 +64,14 @@ cycling heart-rate zone only when it is present in the supplied allowed facts.
 For pace or power, use only an eligible evidence_reference_id supplied in the
 facts. Curated knowledge briefs are optional local support: cite only supplied
 brief IDs when one actually supports the answer, otherwise return an empty
-knowledge_references list. Return Swedish JSON matching the schema."""
+knowledge_references list.
+
+When the athlete explicitly reports the outcome of a planned session, you may
+return one feedback_draft. It must describe only the stated outcome, never infer
+that a session happened from Garmin. When the athlete volunteers relevant life
+context, you may return one context_event_draft. Both drafts are unsaved and
+require a visible athlete confirmation in the interface. Otherwise return null.
+Return Swedish JSON matching the schema."""
 
 
 _SESSION_SCHEMA: dict[str, object] = {
@@ -116,6 +131,10 @@ COACH_DIALOGUE_SCHEMA: dict[str, object] = {
         "uncertainties",
         "knowledge_references",
         "adjustment_draft",
+        "context_event_draft",
+        "feedback_draft",
+        "context_event_draft",
+        "feedback_draft",
     ],
     "properties": {
         "answer": {"type": "string", "minLength": 1},
@@ -139,6 +158,40 @@ COACH_DIALOGUE_SCHEMA: dict[str, object] = {
                         "replaces_session_id": {"type": ["integer", "null"]},
                         "rationale": {"type": "string", "minLength": 1},
                         "proposed_session": {"anyOf": [{"type": "null"}, _SESSION_SCHEMA]},
+                    },
+                },
+            ]
+        },
+        "context_event_draft": {
+            "anyOf": [
+                {"type": "null"},
+                {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["event_type", "start_date", "end_date", "ongoing", "note"],
+                    "properties": {
+                        "event_type": {"type": "string", "enum": sorted(SUPPORTED_CONTEXT_EVENT_TYPES)},
+                        "start_date": {"type": "string"},
+                        "end_date": {"type": ["string", "null"]},
+                        "ongoing": {"type": "boolean"},
+                        "note": {"type": "string", "minLength": 1},
+                    },
+                },
+            ]
+        },
+        "feedback_draft": {
+            "anyOf": [
+                {"type": "null"},
+                {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["planned_session_id", "outcome", "perceived_exertion", "reason_code", "note"],
+                    "properties": {
+                        "planned_session_id": {"type": "integer"},
+                        "outcome": {"type": "string", "enum": sorted(SUPPORTED_FEEDBACK_OUTCOMES)},
+                        "perceived_exertion": {"type": ["integer", "null"], "minimum": 1, "maximum": 10},
+                        "reason_code": {"type": ["string", "null"], "enum": [*sorted(SUPPORTED_FEEDBACK_REASON_CODES), None]},
+                        "note": {"type": ["string", "null"]},
                     },
                 },
             ]
@@ -206,6 +259,8 @@ def _parse_answer(payload: object, *, context: dict[str, object]) -> CoachDialog
         "uncertainties",
         "knowledge_references",
         "adjustment_draft",
+        "context_event_draft",
+        "feedback_draft",
     }:
         raise PaceAIResponseError("AI-coachen hade fel svarsfält.")
     answer = payload["answer"]
@@ -222,6 +277,8 @@ def _parse_answer(payload: object, *, context: dict[str, object]) -> CoachDialog
         uncertainties=uncertainties,
         knowledge_references=references,
         adjustment_draft=_parse_adjustment(payload["adjustment_draft"]),
+        context_event_draft=_parse_context_draft(payload["context_event_draft"]),
+        feedback_draft=_parse_feedback_draft(payload["feedback_draft"]),
     )
 
 
@@ -256,6 +313,67 @@ def _parse_adjustment(value: object) -> PlanAdjustmentDraft | None:
     except (KeyError, TypeError, ValueError, PaceAIResponseError) as error:
         raise PaceAIResponseError("Planjusteringsutkastet hade ogiltigt ersättningspass.") from error
     return PlanAdjustmentDraft(action, session_id, rationale.strip(), planned_session)
+
+
+def _parse_context_draft(value: object) -> ContextEventDraft | None:
+    if value is None:
+        return None
+    expected = {"event_type", "start_date", "end_date", "ongoing", "note"}
+    if not isinstance(value, dict) or set(value) != expected:
+        raise PaceAIResponseError("Context-utkastet hade fel fält.")
+    event_type = value["event_type"]
+    start_date = value["start_date"]
+    end_date = value["end_date"]
+    ongoing = value["ongoing"]
+    note = value["note"]
+    if (
+        event_type not in SUPPORTED_CONTEXT_EVENT_TYPES
+        or not isinstance(start_date, str)
+        or not (isinstance(end_date, str) or end_date is None)
+        or not isinstance(ongoing, bool)
+        or not isinstance(note, str)
+        or not note.strip()
+    ):
+        raise PaceAIResponseError("Context-utkastet hade ogiltigt innehåll.")
+    try:
+        parsed_start = date.fromisoformat(start_date)
+        parsed_end = None if end_date is None else date.fromisoformat(end_date)
+    except ValueError as error:
+        raise PaceAIResponseError("Context-utkastet hade ogiltiga datum.") from error
+    if ongoing and parsed_end is not None:
+        raise PaceAIResponseError("Ett pågående context-utkast kan inte ha slutdatum.")
+    if not ongoing and parsed_end is not None and parsed_end < parsed_start:
+        raise PaceAIResponseError("Context-utkastets slutdatum är före startdatumet.")
+    return ContextEventDraft(event_type, parsed_start, parsed_end, ongoing, note.strip())
+
+
+def _parse_feedback_draft(value: object) -> SessionFeedbackDraft | None:
+    if value is None:
+        return None
+    expected = {"planned_session_id", "outcome", "perceived_exertion", "reason_code", "note"}
+    if not isinstance(value, dict) or set(value) != expected:
+        raise PaceAIResponseError("Feedback-utkastet hade fel fält.")
+    session_id = value["planned_session_id"]
+    outcome = value["outcome"]
+    rpe = value["perceived_exertion"]
+    reason = value["reason_code"]
+    note = value["note"]
+    valid_rpe = isinstance(rpe, int) and not isinstance(rpe, bool) and 1 <= rpe <= 10
+    if (
+        not isinstance(session_id, int)
+        or isinstance(session_id, bool)
+        or outcome not in SUPPORTED_FEEDBACK_OUTCOMES
+        or not (rpe is None or valid_rpe)
+        or not (reason is None or reason in SUPPORTED_FEEDBACK_REASON_CODES)
+        or not (note is None or isinstance(note, str))
+    ):
+        raise PaceAIResponseError("Feedback-utkastet hade ogiltigt innehåll.")
+    if outcome not in {"completed", "completed_limited"} and rpe is not None:
+        raise PaceAIResponseError("Feedback-utkastet har RPE för fel utfall.")
+    if outcome not in {"completed_limited", "skipped"} and reason is not None:
+        raise PaceAIResponseError("Feedback-utkastet har orsak för fel utfall.")
+    clean_note = note.strip() if isinstance(note, str) and note.strip() else None
+    return SessionFeedbackDraft(session_id, outcome, rpe, reason, clean_note)
 
 
 def _selected_knowledge_ids(context: dict[str, object]) -> frozenset[str]:
