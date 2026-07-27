@@ -28,15 +28,72 @@ def test_home_is_a_read_only_entry_point_with_report_links():
         limitations=("explicit_feedback_only",),
     )
     plan = SimpleNamespace(id=5, sessions=())
+    preference = SimpleNamespace(
+        coaching_ambition="ambitious",
+        sport_role="ride_primary",
+        available_days=[
+            {"day": "mon", "minutes": None},
+            {"day": "wed", "minutes": 90},
+        ],
+    )
+    ride_zone_profile = SimpleNamespace(
+        zones=[
+            {"zone": 1, "lower_bpm": 99, "upper_bpm": 118},
+            {"zone": 2, "lower_bpm": 119, "upper_bpm": 138},
+        ]
+    )
 
     html = render_home_html(
         checkpoint=checkpoint,
         plan=plan,
         personalization=personalization,
         races=(),
+        preference=preference,
+        ride_zone_profile=ride_zone_profile,
     )
 
     assert "uv run pace plan revise --id 5 --days 14" in html
     assert 'href="dashboard.html"' in html
     assert 'href="plan-5.html"' in html
+    assert "Offensiv" in html
+    assert "Cykling primär" in html
+    assert "Mån</b> · ingen tidsgräns" in html
+    assert "Ons</b> · 90 min" in html
+    assert "Z2</b> · 119–138 bpm" in html
     assert "synkar inte Garmin" in html
+
+
+def test_home_handles_missing_optional_settings():
+    checkpoint = PlanCheckpoint(
+        as_of_date=date(2026, 7, 27),
+        status="no_active_plan",
+        active_plan_id=None,
+        detailed_end_date=None,
+        detailed_days_remaining=None,
+        upcoming_races=(),
+        reasons=("no_active_accepted_plan",),
+        recommended_command="uv run pace plan draft --days 14",
+    )
+    personalization = PersonalizationEvidence(
+        as_of_date=date(2026, 7, 27),
+        start_date=date(2026, 6, 2),
+        feedback_records=0,
+        required_feedback_records=12,
+        sport_feedback_records=(),
+        sport_required_feedback_records=4,
+        status="insufficient_data",
+        limitations=("explicit_feedback_only",),
+    )
+
+    html = render_home_html(
+        checkpoint=checkpoint,
+        plan=None,
+        personalization=personalization,
+        races=(),
+        preference=None,
+        ride_zone_profile=None,
+    )
+
+    assert "Planpreferenser" in html
+    assert "Inte konfigurerade" in html
+    assert "Inga cykelzoner sparade" in html

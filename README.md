@@ -144,10 +144,11 @@ open reports/weekly-review.html
 ```
 
 `pace home` bygger om den lokala dashboarden och den aktiva planrapporten och
-samlar dem på en startsida. Den synkar inte Garmin, anropar inte AI och ändrar
-inte planen. `pace plan checkpoint` säger när detaljfönstret håller på att ta
-slut eller ett lopp närmar sig. Den visar bara vilket utkast du bör skapa; den
-skapar eller accepterar aldrig revisionen åt dig.
+samlar dem på en startsida. Där visas även aktuellt ambitionsläge, sportroll,
+veckotillgänglighet och sparade cykelpulszoner. Den synkar inte Garmin, anropar
+inte AI och ändrar inte planen. `pace plan checkpoint` säger när detaljfönstret
+håller på att ta slut eller ett lopp närmar sig. Den visar bara vilket utkast du
+bör skapa; den skapar eller accepterar aldrig revisionen åt dig.
 
 Om ett pass missas eller blir begränsat registrerar du utfallet och skapar ett
 kort revisionsutkast. Pace skriver aldrig över ett accepterat plan automatiskt.
