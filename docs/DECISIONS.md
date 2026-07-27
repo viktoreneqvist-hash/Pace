@@ -2138,11 +2138,11 @@ hide its reasoning inside a proprietary score.
 ## Chosen
 
 Pace adds a read-only rolling checkpoint. It recommends a new draft or bounded
-revision when the detailed window ends or a race approaches, but never creates
-or accepts one. The coach model owns workout form from the selected facts and
-block purpose; Python does not rotate templates. An active race inside the
-detailed window must appear as a same-date, same-sport session and retains its
-stored A/B/C role.
+14-day revision when the detailed window ends or that revision can include an
+approaching race, but never creates or accepts one. The coach model owns workout
+form from the selected facts and block purpose; Python does not rotate
+templates. An active race inside the detailed window must appear as a same-date,
+same-sport session and retains its stored A/B/C role.
 
 Workout evaluation includes privacy-minimized Garmin detail and splits plus
 planned-versus-observed duration and distance. These are comparison facts only:

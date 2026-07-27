@@ -445,8 +445,9 @@ until the library is large enough to need them.
 
 - [x] Add a read-only checkpoint over the active accepted plan, its detailed
   window, and races in the next 21 days
-- [x] Recommend a new draft or bounded revision when needed, but never create,
-  accept, or overwrite one automatically
+- [x] Recommend a new draft or bounded 14-day revision only when it can cover
+  the approaching race or the current window is ending; never create, accept,
+  or overwrite one automatically
 
 ### Batch J6 — Fact-led workout composition
 

@@ -9,6 +9,7 @@ from pace.services.training_plan_service import TrainingPlanService
 
 REVISION_NOTICE_DAYS = 3
 RACE_LOOKAHEAD_DAYS = 21
+RECOMMENDED_REVISION_DAYS = 14
 
 
 class PlanCheckpointService:
@@ -55,7 +56,7 @@ class PlanCheckpointService:
         if any(item.inside_detailed_window for item in race_facts):
             reasons.append("race_inside_detailed_window")
         if any(
-            0 <= item.days_until_race <= RACE_LOOKAHEAD_DAYS
+            0 <= item.days_until_race <= RECOMMENDED_REVISION_DAYS
             and not item.inside_detailed_window
             for item in race_facts
         ):
