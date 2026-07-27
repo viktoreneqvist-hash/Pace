@@ -36,6 +36,9 @@ def test_dashboard_is_self_contained_and_owner_only(tmp_path, monkeypatch):
     assert output.name == "dashboard.html"
     assert output.stat().st_mode & 0o777 == 0o600
     assert "Träning · 28 dagar" in html
+    assert "Cykling" in html
+    assert "Löpning" in html
+    assert "0 h" in html
     assert "https://" not in html
     assert "Ingen accepterad aktiv plan" in html
 

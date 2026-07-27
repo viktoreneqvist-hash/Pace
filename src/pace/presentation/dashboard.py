@@ -35,23 +35,41 @@ def render_dashboard_html(*, state: AthleteState, trends: TrainingResponseTrends
     for activity in activities:
         if activity.sport_type in {"run", "ride"}:
             local_day = athlete_local_date(activity.start_time)
-            activity_seconds[local_day] += activity.duration_seconds or 0
+            activity_seconds[local_day, activity.sport_type] += activity.duration_seconds or 0
             activity_count[local_day] += 1
     recovery = {item.date: item for item in state.recent_recovery_observations}
     next_session = _next_session(plan, state.as_of_date)
     return f"""<!doctype html><html lang=\"sv\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Pace dashboard</title><style>{_STYLE}</style></head><body><main>
 <header><p class=\"eyebrow\">PACE · LOKAL DASHBOARD</p><h1>{escape(state.as_of_date.isoformat())}</h1><p>Aktuell ögonblicksbild. Grafer visar lokalt lagrade fakta, inte en readiness score.</p></header>
 <section class=\"cards\"><article><small>Nästa pass</small><strong>{escape(next_session)}</strong></article><article><small>Feedback, 28 dagar</small><strong>{trends.recent.outcomes.feedback_records} / {trends.recent_required_feedback_records}</strong></article><article><small>HRV-baslinje</small><strong>{_coverage(state, 'hrv')}</strong></article><article><small>Senaste Garmin-synk</small><strong>{escape(_sync_label(state))}</strong></article></section>
-<section><h2>Träning · 28 dagar</h2>{_bar_chart(days, [activity_seconds[day] / 3600 for day in days], 'timmar per dag')}<p class=\"muted\">{sum(activity_count.values())} registrerade run/ride-pass i fönstret.</p></section>
+<section><h2>Träning · 28 dagar</h2>{_training_chart(days, activity_seconds, activity_count)}<p class=\"muted\">Y-axel: timmar per dag. X-axel: Stockholm-datum. Hovra över staplarna för råa dagsvärden.</p></section>
 <section class=\"grid\"><article><h2>HRV</h2>{_line_chart(days, [recovery.get(day).hrv_value if day in recovery else None for day in days], 'ms')}</article><article><h2>Vilopuls</h2>{_line_chart(days, [recovery.get(day).resting_heart_rate if day in recovery else None for day in days], 'bpm')}</article><article><h2>Sömn</h2>{_line_chart(days, [recovery.get(day).sleep_duration_hours if day in recovery else None for day in days], 'timmar')}</article><article><h2>Feedback & RPE</h2>{_feedback_panel(trends)}</article></section>
 <section class=\"grid\"><article><h2>Aktiv kontext</h2>{_context_panel(state)}</article><article><h2>Datakvalitet</h2>{_quality_panel(state, trends)}</article></section>
 <footer>Skapad lokalt av Pace. Dashboarden är läsande och ändrar aldrig plan, feedback eller kontext.</footer></main></body></html>"""
 
 
-def _bar_chart(days, values, label):
-    maximum = max(values, default=0) or 1
-    bars = ''.join(f'<rect x="{index * 12}" y="{100 - value / maximum * 90:.1f}" width="8" height="{value / maximum * 90:.1f}"><title>{day}: {value:.1f} {label}</title></rect>' for index, (day, value) in enumerate(zip(days, values, strict=True)))
-    return f'<svg viewBox="0 0 340 115" role="img" aria-label="{label}"><line x1="0" y1="101" x2="340" y2="101"/>{bars}</svg>'
+def _training_chart(days, activity_seconds, activity_count):
+    ride_hours = [activity_seconds[day, "ride"] / 3600 for day in days]
+    run_hours = [activity_seconds[day, "run"] / 3600 for day in days]
+    maximum = max((*ride_hours, *run_hours), default=0) or 1
+    width, height, left, bottom = 760, 260, 48, 32
+    chart_height, chart_width = height - bottom - 18, width - left - 8
+    step = chart_width / len(days)
+    ticks = tuple(round(maximum * fraction / 4, 1) for fraction in range(5))
+    grid = "".join(
+        f'<line class="gridline" x1="{left}" y1="{bottom + chart_height - value / maximum * chart_height:.1f}" x2="{width - 8}" y2="{bottom + chart_height - value / maximum * chart_height:.1f}"/><text x="2" y="{bottom + chart_height - value / maximum * chart_height + 4:.1f}">{value:g} h</text>'
+        for value in ticks
+    )
+    bars = ""
+    for index, day in enumerate(days):
+        x = left + index * step
+        for offset, hours, css in ((0.12, ride_hours[index], "ride-bar"), (0.52, run_hours[index], "run-bar")):
+            bar_height = hours / maximum * chart_height
+            tooltip = f"{day.isoformat()} · Cykling: {ride_hours[index]:.2f} h · Löpning: {run_hours[index]:.2f} h · Pass: {activity_count[day]}"
+            bars += f'<rect class="{css}" x="{x + step * offset:.1f}" y="{bottom + chart_height - bar_height:.1f}" width="{max(step * .3, 2):.1f}" height="{bar_height:.1f}"><title>{tooltip}</title></rect>'
+        if index % 4 == 0 or index == len(days) - 1:
+            bars += f'<text class="x-label" x="{x + step / 2:.1f}" y="{height - 6}">{day.strftime("%-d/%-m")}</text>'
+    return f'<p class="legend"><span class="ride-key">■</span> Cykling <span class="run-key">■</span> Löpning</p><svg class="training-chart" viewBox="0 0 {width} {height}" role="img" aria-label="Träningstimmar per dag, separerat för cykling och löpning">{grid}<line x1="{left}" y1="{bottom + chart_height}" x2="{width - 8}" y2="{bottom + chart_height}"/>{bars}</svg>'
 
 
 def _line_chart(days, values, label):
@@ -60,8 +78,9 @@ def _line_chart(days, values, label):
         return '<p class="muted">Ingen lagrad data i perioden.</p>'
     low, high = min(present), max(present)
     spread = high - low or 1
-    points = ' '.join(f'{index * 12},{100 - (value - low) / spread * 80:.1f}' for index, value in enumerate(values) if value is not None)
-    return f'<svg viewBox="0 0 340 115" role="img" aria-label="{label}"><polyline points="{points}"/><text x="0" y="112">{low:.1f}–{high:.1f} {label}</text></svg>'
+    points = ' '.join(f'{16 + index * 11},{92 - (value - low) / spread * 70:.1f}' for index, value in enumerate(values) if value is not None)
+    circles = ''.join(f'<circle cx="{16 + index * 11}" cy="{92 - (value - low) / spread * 70:.1f}" r="3"><title>{day.isoformat()}: {value:.2f} {label}</title></circle>' for index, (day, value) in enumerate(zip(days, values, strict=True)) if value is not None)
+    return f'<svg viewBox="0 0 340 115" role="img" aria-label="{label}"><polyline points="{points}"/>{circles}<text x="0" y="112">{low:.1f}–{high:.1f} {label}</text></svg>'
 
 
 def _feedback_panel(trends):
@@ -99,4 +118,4 @@ def _next_session(plan, as_of_date):
     return 'Inga detaljerade pass kvar' if session is None else f'{session.scheduled_date}: {session.purpose}'
 
 
-_STYLE = """body{margin:0;background:#101416;color:#ebf0ed;font:15px ui-monospace,Menlo,monospace}main{max-width:1180px;margin:auto;padding:32px}header{border-bottom:1px solid #3d5049}.eyebrow{color:#67d6ae;letter-spacing:.12em}.cards,.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:18px 0}article,section{background:#18201d;border:1px solid #30433b;border-radius:10px;padding:16px;margin:18px 0}.grid article{margin:0}small,.muted{color:#a8b8b0}strong{display:block;font-size:20px;margin-top:6px;color:#fff}svg{width:100%;height:auto;background:#111815}svg rect{fill:#67d6ae}svg line{stroke:#50655b}svg polyline{fill:none;stroke:#ffc857;stroke-width:3}svg text{fill:#a8b8b0;font-size:10px}footer{color:#a8b8b0;margin:30px 0}ul{padding-left:20px}b{color:#67d6ae}"""
+_STYLE = """body{margin:0;background:#101416;color:#ebf0ed;font:15px ui-monospace,Menlo,monospace}main{max-width:1180px;margin:auto;padding:32px}header{border-bottom:1px solid #3d5049}.eyebrow{color:#67d6ae;letter-spacing:.12em}.cards,.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:18px 0}article,section{background:#18201d;border:1px solid #30433b;border-radius:10px;padding:16px;margin:18px 0}.grid article{margin:0}small,.muted{color:#a8b8b0}strong{display:block;font-size:20px;margin-top:6px;color:#fff}svg{width:100%;height:auto;background:#111815}svg line{stroke:#50655b}svg .gridline{stroke:#26362f;stroke-dasharray:3 4}svg polyline{fill:none;stroke:#ffc857;stroke-width:3}svg circle{fill:#ffc857}svg text{fill:#a8b8b0;font-size:10px}.ride-bar{fill:#67d6ae}.run-bar{fill:#7aa7ff}.ride-key{color:#67d6ae}.run-key{color:#7aa7ff}.legend{font-size:13px}.x-label{text-anchor:middle}footer{color:#a8b8b0;margin:30px 0}ul{padding-left:20px}b{color:#67d6ae}"""
