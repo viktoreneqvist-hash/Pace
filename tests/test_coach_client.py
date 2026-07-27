@@ -1,7 +1,13 @@
 from types import SimpleNamespace
+from datetime import date
 import json
+from unittest.mock import Mock
 
-from pace.coach.client import COACH_DIALOGUE_SCHEMA, OpenAICoachDialogueClient
+from pace.coach.client import (
+    COACH_DIALOGUE_SCHEMA,
+    OpenAICoachDialogueClient,
+    _provider_error_message,
+)
 from pace.coach.models import CoachDialogueRequest
 
 
@@ -78,6 +84,17 @@ def _request() -> CoachDialogueRequest:
     )
 
 
+def _request_with_dates() -> CoachDialogueRequest:
+    return CoachDialogueRequest(
+        question="Kan jag byta?",
+        context={
+            "as_of_date": date(2026, 7, 27),
+            "knowledge_briefs": {"briefs": [{"id": "progression_continuity"}]},
+        },
+        conversation=({"role": "athlete", "text": "Tidigare fråga."},),
+    )
+
+
 def test_coach_client_uses_a_stateless_structured_request_and_parses_replacement():
     responses = FakeResponses(SimpleNamespace(output_text=_replacement_payload()))
     client = OpenAICoachDialogueClient(
@@ -113,3 +130,26 @@ def test_coach_client_discards_an_unselected_knowledge_reference():
     answer = client.answer(_request())
 
     assert answer.knowledge_references == ()
+
+
+def test_coach_client_serializes_pace_dates_for_the_provider():
+    responses = FakeResponses(SimpleNamespace(output_text=_replacement_payload()))
+    client = OpenAICoachDialogueClient(
+        api_key="test-key",
+        model="test-model",
+        client=SimpleNamespace(responses=responses),
+    )
+
+    client.answer(_request_with_dates())
+
+    assert '"as_of_date": "2026-07-27"' in responses.kwargs["input"]
+
+
+def test_coach_client_explains_provider_status_without_request_data():
+    error = Mock(status_code=429)
+
+    message = _provider_error_message(error)
+
+    assert "HTTP 429" in message
+    assert "Din plan har inte ändrats" in message
+    assert "test-key" not in message

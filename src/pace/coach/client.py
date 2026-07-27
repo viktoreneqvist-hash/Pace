@@ -224,9 +224,7 @@ class OpenAICoachDialogueClient:
                 },
             )
         except Exception as error:
-            raise PaceAIUnavailableError(
-                "AI-coachen kunde inte svara. Din plan har inte ändrats."
-            ) from error
+            raise PaceAIUnavailableError(_provider_error_message(error)) from error
         response_text = getattr(response, "output_text", "")
         if not response_text:
             raise PaceAIResponseError(
@@ -244,10 +242,35 @@ def _render_input(request: CoachDialogueRequest) -> str:
         "Athlete question:\n"
         f"{request.question}\n\n"
         "In-memory dialogue history (not stored by Pace):\n"
-        f"{json.dumps(request.conversation, ensure_ascii=False)}\n\n"
+        f"{json.dumps(request.conversation, ensure_ascii=False, default=_json_default)}\n\n"
         "Selected Pace facts and active plan (JSON):\n"
-        f"{json.dumps(request.context, ensure_ascii=False, sort_keys=True)}"
+        f"{json.dumps(request.context, ensure_ascii=False, sort_keys=True, default=_json_default)}"
     )
+
+
+def _json_default(value: object) -> str:
+    if isinstance(value, date):
+        return value.isoformat()
+    raise TypeError(f"{type(value).__name__} is not JSON serializable")
+
+
+def _provider_error_message(error: Exception) -> str:
+    """Explain provider failure without exposing credentials or Pace facts."""
+
+    status_code = getattr(error, "status_code", None)
+    if status_code == 401:
+        reason = "OpenAI avvisade API-nyckeln (HTTP 401)."
+    elif status_code == 403:
+        reason = "OpenAI-nyckeln saknar behörighet för den valda modellen (HTTP 403)."
+    elif status_code == 429:
+        reason = "OpenAI begränsade begäran (HTTP 429): kontrollera saldo eller rate limit."
+    elif isinstance(status_code, int) and 400 <= status_code < 500:
+        reason = f"OpenAI avvisade coachens begäran (HTTP {status_code})."
+    elif isinstance(status_code, int) and status_code >= 500:
+        reason = f"OpenAI-tjänsten hade ett tillfälligt fel (HTTP {status_code})."
+    else:
+        reason = f"AI-tjänsten kunde inte nås ({type(error).__name__})."
+    return f"{reason} Din plan har inte ändrats."
 
 
 def _parse_answer(payload: object, *, context: dict[str, object]) -> CoachDialogueAnswer:
