@@ -2212,9 +2212,10 @@ the HTML or JavaScript.
 The coach dialogue is held only in process memory and retains at most four
 turns. A model can propose context or session feedback, but the browser must
 show a separate confirmation card and call the existing service layer only
-after the athlete clicks save. Existing plan drafts can be accepted the same
-way. Coach-proposed plan adjustments remain read-only until a later explicit
-revision workflow.
+after the athlete clicks save. The coach view shows only the accepted active
+plan; plan drafting and acceptance remain separate explicit workflows.
+Dashboard, accepted-plan, and weekly-review reports can be opened through a
+strict local report catalog, never arbitrary files.
 
 ## Reason
 

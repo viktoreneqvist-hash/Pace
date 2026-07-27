@@ -133,8 +133,6 @@ COACH_DIALOGUE_SCHEMA: dict[str, object] = {
         "adjustment_draft",
         "context_event_draft",
         "feedback_draft",
-        "context_event_draft",
-        "feedback_draft",
     ],
     "properties": {
         "answer": {"type": "string", "minLength": 1},

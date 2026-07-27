@@ -21,6 +21,12 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
 <body>
   <header class="masthead">
     <a class="wordmark" href="/">PACE<span>LOCAL COACHING SYSTEM</span></a>
+    <nav class="masthead-nav" aria-label="Pace-vyer">
+      <a class="nav-link is-current" href="/">Coach</a>
+      <a class="nav-link" data-report-link="dashboard">Dashboard</a>
+      <a class="nav-link" data-report-link="plan">Plan</a>
+      <a class="nav-link" data-report-link="weekly_review">Veckoreview</a>
+    </nav>
     <div class="masthead-meta"><span id="today-label"></span><span>LOCAL ONLY</span></div>
   </header>
   <main class="page-grid">
@@ -45,7 +51,7 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
     </section>
     <aside class="right-rail" aria-label="Plan och inställningar">
       <section class="data-panel"><p class="kicker">AKTIV PLAN</p><div id="active-plan"></div></section>
-      <section class="data-panel"><p class="kicker">UTKAST ATT GRANSKA</p><div id="draft-plans"></div></section>
+      <section class="data-panel"><p class="kicker">RAPPORTER</p><div id="reports"></div></section>
       <section class="data-panel"><p class="kicker">INSTÄLLNINGAR</p><div id="settings"></div></section>
       <section class="data-panel"><p class="kicker">KOMMANDE LOPP</p><div id="races"></div></section>
     </aside>

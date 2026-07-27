@@ -488,9 +488,9 @@ until the library is large enough to need them.
   only to `127.0.0.1` and opens no cloud service or remote account
 - [x] Present plan, current factual state, preferences, zones, races and a
   bounded in-memory coach dialogue in a light editorial interface
-- [x] Let the athlete explicitly confirm coach-proposed context, feedback, or
-  an already-created plan draft in the browser; the model still never writes
-  data directly and plan revision creation remains a later UI slice
+- [x] Let the athlete explicitly confirm coach-proposed context or feedback in
+  the browser, show only the accepted active plan, and link safely to existing
+  local dashboard, plan, and weekly-review HTML reports
 
 ### Batch N1 — Synthetic coach evaluation
 

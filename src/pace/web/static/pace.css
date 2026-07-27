@@ -5,6 +5,11 @@ button,textarea{font:inherit}
 .masthead{border-bottom:1px solid var(--ink);display:flex;justify-content:space-between;align-items:flex-start;padding:20px 30px}
 .wordmark{color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:2rem;font-weight:900;letter-spacing:-.11em;text-decoration:none}
 .wordmark span{border-left:1px solid var(--ink);font-size:.62rem;font-weight:700;letter-spacing:.06em;margin-left:14px;padding-left:14px;vertical-align:middle}
+.masthead-nav{display:flex;gap:0;margin-left:auto;margin-right:28px}
+.nav-link{border-left:1px solid var(--line);color:var(--ink);font:800 .7rem ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.07em;padding:7px 11px;text-decoration:none}
+.nav-link:last-child{border-right:1px solid var(--line)}
+.nav-link:hover,.nav-link.is-current{background:var(--acid)}
+.nav-link.is-unavailable{color:var(--muted);cursor:not-allowed;text-decoration:line-through}
 .masthead-meta{display:flex;gap:20px;font:700 .68rem ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em}
 .page-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(290px,.7fr);gap:0;max-width:1480px;margin:auto}
 .overview{grid-column:1/-1;border-bottom:1px solid var(--ink);padding:62px 30px 32px;display:flex;align-items:end;justify-content:space-between;gap:30px}
@@ -53,9 +58,13 @@ h1 em{font-family:Georgia,serif;font-weight:400;letter-spacing:-.07em}
 .plan-session b{font-size:.92rem}
 .plan-session span{color:var(--muted);font-size:.8rem;line-height:1.4;margin-top:3px}
 .plan-date{font:700 .68rem ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--green)!important}
-.draft-card{border:1px solid var(--ink);background:var(--white);padding:12px}
-.draft-card+.draft-card{margin-top:10px}
-.draft-card p{font-size:.82rem;line-height:1.4;margin:6px 0 10px}
+.report-link{border-top:1px solid var(--line);padding:10px 0}
+.report-link:first-child{border-top:0}
+.report-link a,.report-link b{color:var(--ink);display:block;font-size:.9rem;font-weight:800;text-decoration:none}
+.report-link a:hover{color:var(--blue);text-decoration:underline}
+.report-link a span{float:right}
+.report-link p{color:var(--muted);font-size:.77rem;line-height:1.4;margin:4px 0 0}
+.report-link.is-unavailable b{color:var(--muted)}
 .settings-list,.races-list{display:grid;gap:8px}
 .setting-line{border-top:1px solid var(--line);padding-top:9px}
 .setting-line b,.setting-line span{display:block}
@@ -85,6 +94,8 @@ footer{border-top:1px solid var(--ink);font:700 .66rem ui-monospace,SFMono-Regul
 @media(max-width:600px){.masthead{padding:16px}
 .masthead-meta{display:none}
 .wordmark span{display:none}
+.masthead-nav{margin-left:auto;margin-right:0}
+.nav-link{font-size:.62rem;padding:6px 7px}
 .overview,.coach-panel,.facts-panel{padding:28px 18px}
 .status-strip{grid-template-columns:1fr}
 .compose-footer{align-items:start;flex-direction:column}

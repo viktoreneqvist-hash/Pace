@@ -94,6 +94,9 @@ def test_coach_client_uses_a_stateless_structured_request_and_parses_replacement
     assert answer.adjustment_draft.proposed_session.target.rpe_max == 3
     assert responses.kwargs["store"] is False
     assert responses.kwargs["text"]["format"]["schema"] == COACH_DIALOGUE_SCHEMA
+    assert len(COACH_DIALOGUE_SCHEMA["required"]) == len(
+        set(COACH_DIALOGUE_SCHEMA["required"])
+    )
     assert "Tidigare fråga." in responses.kwargs["input"]
 
 

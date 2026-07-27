@@ -5,17 +5,18 @@ from dataclasses import asdict, dataclass, field
 from datetime import date
 import secrets
 from pathlib import Path
+import re
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
 from pace.ai.client import PaceAIError
 from pace.coach.client import OpenAICoachDialogueClient
-from pace.config.settings import resolve_openai_api_key, settings
+from pace.config.settings import PROJECT_ROOT, resolve_openai_api_key, settings
 from pace.services.context_service import ContextEventInput, ContextService
 from pace.services.heart_rate_zone_service import HeartRateZoneService
 from pace.services.personalization_evidence_service import PersonalizationEvidenceService
@@ -31,7 +32,9 @@ from pace.web.presentation import render_web_home
 
 
 STATIC_DIR = Path(__file__).with_name("static")
+REPORTS_DIRECTORY = PROJECT_ROOT / "reports"
 MAX_CONVERSATION_MESSAGES = 8
+SAFE_REPORT_NAME = re.compile(r"(?:dashboard|home|weekly-review|plan-[1-9][0-9]*)\.html")
 
 
 class ChatRequest(BaseModel):
@@ -67,6 +70,7 @@ class WebServices:
     race_service: Any = field(default_factory=RaceService)
     analysis_service: Any = field(default_factory=TransparentTrainingAnalysisService)
     context_service: Any = field(default_factory=ContextService)
+    reports_directory: Path = REPORTS_DIRECTORY
     coach_service_factory: Callable[[], CoachDialogueService] | None = None
     today: Callable[[], date] = date.today
 
@@ -108,6 +112,20 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
     def api_home(request: Request) -> dict[str, object]:
         _session_value(request, "csrf_token")
         return _home_state(dependencies)
+
+    @app.get("/reports/{report_name}")
+    def report(report_name: str) -> FileResponse:
+        report_path = _safe_report_path(dependencies.reports_directory, report_name)
+        if report_path is None or not report_path.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail="Rapporten finns inte ännu. Skapa den från Pace-terminalen först.",
+            )
+        return FileResponse(
+            report_path,
+            media_type="text/html",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.post("/api/chat")
     def chat(request: Request, payload: ChatRequest) -> dict[str, object]:
@@ -170,15 +188,6 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail=str(error)) from error
         return {"status": "saved", "session_id": payload.session_id}
 
-    @app.post("/api/plans/{plan_id}/accept")
-    def accept_plan(request: Request, plan_id: int) -> dict[str, object]:
-        _require_csrf(request)
-        try:
-            plan = dependencies.plan_service.accept_plan(plan_id=plan_id)
-        except ValueError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
-        return {"status": "accepted", "plan_id": plan.id}
-
     return app
 
 
@@ -202,7 +211,6 @@ def _home_state(services: WebServices) -> dict[str, object]:
     as_of_date = services.today()
     plans = services.plan_service.list_plans()
     active_plan = _active_plan(plans, as_of_date)
-    drafts = tuple(plan for plan in plans if plan.status == "draft")
     checkpoint = services.checkpoint_service.get_checkpoint(as_of_date=as_of_date)
     preference = services.preference_service.get_preference()
     zones = services.zone_service.get_profile(sport_type="ride")
@@ -213,7 +221,7 @@ def _home_state(services: WebServices) -> dict[str, object]:
         "as_of_date": as_of_date.isoformat(),
         "checkpoint": _jsonable(checkpoint),
         "active_plan": _plan_payload(active_plan),
-        "drafts": [_plan_payload(plan) for plan in drafts],
+        "reports": _reports_payload(services.reports_directory, active_plan),
         "preference": _preference_payload(preference),
         "ride_zones": None if zones is None else _jsonable(zones.zones),
         "personalization": _jsonable(personalization),
@@ -279,6 +287,36 @@ def _race_payload(race) -> dict[str, object]:
         "priority": race.priority,
         "taper": resolved_taper(race),
     }
+
+
+def _safe_report_path(reports_directory: Path, report_name: str) -> Path | None:
+    """Allow only Pace's generated local HTML reports, never arbitrary files."""
+
+    if not SAFE_REPORT_NAME.fullmatch(report_name):
+        return None
+    directory = reports_directory.resolve()
+    candidate = (directory / report_name).resolve()
+    return candidate if candidate.parent == directory else None
+
+
+def _reports_payload(reports_directory: Path, active_plan) -> dict[str, dict[str, object]]:
+    candidates = {
+        "dashboard": ("dashboard.html", "Kör: uv run pace dashboard"),
+        "weekly_review": ("weekly-review.html", "Kör: uv run pace review weekly"),
+        "plan": (
+            None if active_plan is None else f"plan-{active_plan.id}.html",
+            "Skapa eller öppna en accepterad plan först.",
+        ),
+    }
+    result: dict[str, dict[str, object]] = {}
+    for key, (name, unavailable_message) in candidates.items():
+        path = None if name is None else _safe_report_path(reports_directory, name)
+        result[key] = {
+            "path": None if path is None else f"/reports/{path.name}",
+            "available": path is not None and path.is_file(),
+            "unavailable_message": unavailable_message,
+        }
+    return result
 
 
 def _coach_answer_payload(answer) -> dict[str, object]:

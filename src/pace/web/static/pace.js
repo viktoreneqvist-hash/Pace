@@ -34,7 +34,7 @@ function renderState() {
     ["DETALJFÖNSTER", checkpoint.detailed_days_remaining == null ? "—" : `${checkpoint.detailed_days_remaining} dagar`],
     ["PERSONALISERING", `${state.personalization.feedback_records}/${state.personalization.required_feedback_records} feedback`],
   ].map(([name, value]) => `<div class="status-cell"><span>${name}</span><b>${esc(value)}</b></div>`).join("");
-  renderPlan(); renderDrafts(); renderSettings(); renderRaces(); renderFacts();
+  renderPlan(); renderReports(); renderSettings(); renderRaces(); renderFacts(); renderReportLinks();
 }
 
 function renderPlan() {
@@ -44,10 +44,35 @@ function renderPlan() {
   target.innerHTML = `<p class="notice">Plan ${plan.id} · detaljerad till ${plan.detailed_end_date}</p>` + (upcoming.length ? upcoming.map(session => `<article class="plan-session"><span class="plan-date">${esc(session.scheduled_date)} · ${sport(session.sport_type)}</span><b>${esc(session.purpose)}</b><span>${km(session.distance_meters)} · ${hours(session.duration_seconds)} · ${esc(session.target_display)}</span><span>${outcome(session.feedback_outcome)}</span></article>`).join("") : '<p class="empty">Inga detaljerade pass kvar.</p>');
 }
 
-function renderDrafts() {
-  const target = document.getElementById("draft-plans");
-  if (!state.drafts.length) { target.innerHTML = '<p class="empty">Inga planutkast väntar på beslut.</p>'; return; }
-  target.innerHTML = state.drafts.map(plan => `<article class="draft-card"><b>Utkast ${plan.id}</b><p>${plan.sessions.length} detaljerade pass · till ${plan.detailed_end_date}</p><button class="primary" data-plan-accept="${plan.id}">Acceptera plan</button></article>`).join("");
+function renderReports() {
+  const target = document.getElementById("reports");
+  const reports = [
+    ["dashboard", "Dashboard", "Tränings- och återhämtningsgrafer"],
+    ["plan", "Aktiv plan", "Det fullständiga passupplägget"],
+    ["weekly_review", "Veckoreview", "Senaste AI-granskningen"],
+  ];
+  target.innerHTML = reports.map(([key, title, description]) => {
+    const report = state.reports[key];
+    if (report.available) return `<article class="report-link"><a href="${esc(report.path)}">${esc(title)} <span>↗</span></a><p>${esc(description)}</p></article>`;
+    return `<article class="report-link is-unavailable"><b>${esc(title)}</b><p>${esc(report.unavailable_message)}</p></article>`;
+  }).join("");
+}
+
+function renderReportLinks() {
+  document.querySelectorAll("[data-report-link]").forEach(link => {
+    const report = state.reports[link.dataset.reportLink];
+    if (report.available) {
+      link.href = report.path;
+      link.removeAttribute("aria-disabled");
+      link.removeAttribute("title");
+      link.classList.remove("is-unavailable");
+    } else {
+      link.removeAttribute("href");
+      link.setAttribute("aria-disabled", "true");
+      link.title = report.unavailable_message;
+      link.classList.add("is-unavailable");
+    }
+  });
 }
 
 function renderSettings() {
@@ -99,7 +124,6 @@ document.addEventListener("click", async event => {
   try {
     if (button.dataset.action === "context") { const payload = JSON.parse(button.dataset.payload); await api("/api/context/confirm", {method:"POST", body:JSON.stringify(payload)}); button.closest(".decision-card").innerHTML = "<p><b>Context sparad.</b> Pace har inte ändrat planen.</p>"; }
     if (button.dataset.action === "feedback") { const payload = JSON.parse(button.dataset.payload); await api("/api/feedback/confirm", {method:"POST", body:JSON.stringify(payload)}); button.closest(".decision-card").innerHTML = "<p><b>Feedback sparad.</b> Ingen plan har ändrats.</p>"; }
-    if (button.dataset.planAccept) { await api(`/api/plans/${button.dataset.planAccept}/accept`, {method:"POST", body:"{}"}); await refreshHome(); }
   } catch (error) { button.closest(".decision-card, .draft-card").insertAdjacentHTML("beforeend", `<p class="notice">${esc(error.message)}</p>`); }
 });
 async function refreshHome() { try { state = await api("/api/home", {method:"GET"}); renderState(); } catch (error) { addMessage("coach", `Kunde inte uppdatera fakta: ${error.message}`); } }

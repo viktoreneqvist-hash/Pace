@@ -70,9 +70,12 @@ klar.
 
 I sidan kan du läsa din aktiva plan, inställningar, kommande lopp och aktuella
 Pace-fakta samt prata med coachen. Chatten kan förbereda context och
-passfeedback, men varje sparning visas som ett eget bekräftelsekort. Ett
-planutkast kan också accepteras där. Pace ändrar aldrig en plan automatiskt och
-chattens korta historik försvinner när den lokala servern stoppas.
+passfeedback, men varje sparning visas som ett eget bekräftelsekort. Endast den
+accepterade aktuella planen visas i coachvyn; äldre planutkast skapar inte en
+extra arbetskö där. Dashboard, planrapport och veckoreview öppnas från
+navigeringen när respektive lokal HTML-rapport har skapats. Pace ändrar aldrig
+en plan automatiskt och chattens korta historik försvinner när den lokala
+servern stoppas.
 
 ## Uppdatera Pace
 

@@ -17,18 +17,12 @@ from pace.web.app import WebServices, create_app
 class FakePlanService:
     plan: object
     feedback_calls: list[dict]
-    accepted_ids: list[int]
 
     def list_plans(self):
         return (self.plan,)
 
     def add_feedback(self, **kwargs):
         self.feedback_calls.append(kwargs)
-
-    def accept_plan(self, *, plan_id: int):
-        self.accepted_ids.append(plan_id)
-        return self.plan
-
 
 class FakeCoachService:
     def __init__(self):
@@ -68,7 +62,7 @@ class FakeContextService:
         return SimpleNamespace(id=44)
 
 
-def _web_client():
+def _web_client(tmp_path):
     session = SimpleNamespace(
         id=12,
         scheduled_date=date(2026, 7, 27),
@@ -88,7 +82,7 @@ def _web_client():
         detailed_end_date=date(2026, 8, 2),
         sessions=(session,),
     )
-    plan_service = FakePlanService(plan, [], [])
+    plan_service = FakePlanService(plan, [])
     coach = FakeCoachService()
     context = FakeContextService()
     checkpoint = PlanCheckpoint(
@@ -125,6 +119,10 @@ def _web_client():
         recovery_coverage=(("hrv", 28, 28),),
         limitations=("no_proprietary_training_load_score",),
     )
+    reports_directory = tmp_path / "reports"
+    reports_directory.mkdir()
+    (reports_directory / "dashboard.html").write_text("<h1>Dashboard</h1>")
+    (reports_directory / "plan-7.html").write_text("<h1>Plan 7</h1>")
     services = WebServices(
         plan_service=plan_service,
         checkpoint_service=SimpleNamespace(get_checkpoint=lambda **_kwargs: checkpoint),
@@ -155,6 +153,7 @@ def _web_client():
         ),
         analysis_service=SimpleNamespace(get_analysis=lambda **_kwargs: analysis),
         context_service=context,
+        reports_directory=reports_directory,
         coach_service_factory=lambda: coach,
         today=lambda: date(2026, 7, 27),
     )
@@ -168,21 +167,23 @@ def _csrf(client: TestClient) -> str:
     return match.group(1)
 
 
-def test_local_web_home_renders_pace_specific_ui_and_safe_settings():
-    client, _plans, _context, _coach = _web_client()
+def test_local_web_home_renders_current_plan_and_report_navigation(tmp_path):
+    client, _plans, _context, _coach = _web_client(tmp_path)
 
     response = client.get("/")
 
     assert response.status_code == 200
     assert "LOCAL COACHING SYSTEM" in response.text
     assert "COACHKANAL" in response.text
+    assert "UTKAST ATT GRANSKA" not in response.text
+    assert "Dashboard" in response.text
     assert '"taper": "full"' in response.text
     assert "Offensiv" not in response.text
     assert "Noir" not in response.text
 
 
-def test_chat_keeps_conversation_in_server_memory_and_returns_confirmation_drafts():
-    client, _plans, _context, coach = _web_client()
+def test_chat_keeps_conversation_in_server_memory_and_returns_confirmation_drafts(tmp_path):
+    client, _plans, _context, coach = _web_client(tmp_path)
     csrf = _csrf(client)
 
     response = client.post(
@@ -197,11 +198,19 @@ def test_chat_keeps_conversation_in_server_memory_and_returns_confirmation_draft
     assert coach.calls[0]["conversation"] == ()
 
 
-def test_confirmation_endpoints_require_csrf_and_reuse_existing_services():
-    client, plans, context, _coach = _web_client()
+def test_confirmation_endpoints_require_csrf_and_reuse_existing_services(tmp_path):
+    client, plans, context, _coach = _web_client(tmp_path)
     csrf = _csrf(client)
 
-    denied = client.post("/api/plans/7/accept")
+    denied = client.post(
+        "/api/context/confirm",
+        json={
+            "event_type": "work_stress",
+            "start_date": "2026-07-27",
+            "ongoing": True,
+            "note": "Hög arbetsstress.",
+        },
+    )
     assert denied.status_code == 403
 
     context_response = client.post(
@@ -226,11 +235,21 @@ def test_confirmation_endpoints_require_csrf_and_reuse_existing_services():
             "note": "Ovanligt trött.",
         },
     )
-    accept_response = client.post("/api/plans/7/accept", headers={"X-Pace-CSRF": csrf})
 
     assert context_response.json() == {"status": "saved", "event_id": 44}
     assert feedback_response.json() == {"status": "saved", "session_id": 12}
-    assert accept_response.json() == {"status": "accepted", "plan_id": 7}
     assert context.inputs[0].event_type == "work_stress"
     assert plans.feedback_calls[0]["outcome"] == "completed_limited"
-    assert plans.accepted_ids == [7]
+
+
+def test_reports_are_available_only_from_the_safe_local_report_catalog(tmp_path):
+    client, _plans, _context, _coach = _web_client(tmp_path)
+
+    dashboard = client.get("/reports/dashboard.html")
+    missing_review = client.get("/reports/weekly-review.html")
+    invalid = client.get("/reports/pace.env")
+
+    assert dashboard.status_code == 200
+    assert "Dashboard" in dashboard.text
+    assert missing_review.status_code == 404
+    assert invalid.status_code == 404
