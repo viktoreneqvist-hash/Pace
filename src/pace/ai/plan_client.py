@@ -1,5 +1,6 @@
 """Stateless, schema-validated AI boundary for reviewable Pace plan drafts."""
 
+from copy import deepcopy
 from datetime import date
 import json
 from typing import Any
@@ -18,7 +19,8 @@ from pace.planning.draft_models import (
 
 
 REASONING_EFFORT = "medium"
-MAX_OUTPUT_TOKENS = 2200
+MAX_OUTPUT_TOKENS = 4800
+MAX_GENERATION_ATTEMPTS = 2
 TARGET_KINDS = ("rpe", "pace", "power", "none")
 
 SYSTEM_INSTRUCTIONS = """You are Pace's Swedish-language plan-drafting assistant.
@@ -39,7 +41,7 @@ never hide pace or watts in free text. Pace and power targets must cite one
 eligible evidence_reference_id from the fact catalog.
 Availability null means no supplied time ceiling; it is never permission to
 prescribe unlimited training. Return a coach_assessment with fact_references
-selected only from the supplied fact_catalog, then your inferences, rationale,
+as exact ID strings selected only from the supplied fact_catalog, then your inferences, rationale,
 uncertainties, and general coaching_principles. The principles are not source
 citations unless you list selected knowledge brief IDs in knowledge_references.
 You cannot access Garmin, the local database, private context-note text, or
@@ -168,41 +170,92 @@ class OpenAIPlanClient:
         self._model = model
 
     def generate(self, request: PlanGenerationRequest) -> GeneratedPlanDraft:
-        try:
-            response = self._client.responses.create(
-                model=self._model,
-                reasoning={"effort": REASONING_EFFORT},
-                store=False,
-                max_output_tokens=MAX_OUTPUT_TOKENS,
-                instructions=SYSTEM_INSTRUCTIONS,
-                input=(
-                    f"Plan mode: {request.mode}\n\n"
-                    "Selected Pace facts (JSON):\n"
-                    f"{json.dumps(request.context, ensure_ascii=False, sort_keys=True)}"
-                ),
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": "pace_plan_draft",
-                        "strict": True,
-                        "schema": PLAN_SCHEMA,
-                    }
-                },
-            )
-        except Exception as error:
-            raise PaceAIUnavailableError(
-                "AI-tjänsten kunde inte skapa ett planutkast. Dina Pace-data har inte ändrats."
-            ) from error
-        response_text = getattr(response, "output_text", "")
-        if not response_text:
-            raise PaceAIResponseError(
-                "AI-tjänsten gav inget användbart planutkast. Dina Pace-data har inte ändrats."
-            )
-        try:
-            payload = json.loads(response_text)
-        except json.JSONDecodeError as error:
-            raise PaceAIResponseError("AI-planen hade fel format.") from error
-        return _parse_plan(payload)
+        schema = _schema_for_request(request)
+        last_error: PaceAIResponseError | None = None
+        for _attempt in range(MAX_GENERATION_ATTEMPTS):
+            try:
+                response = self._client.responses.create(
+                    model=self._model,
+                    reasoning={"effort": REASONING_EFFORT},
+                    store=False,
+                    max_output_tokens=MAX_OUTPUT_TOKENS,
+                    instructions=SYSTEM_INSTRUCTIONS,
+                    input=(
+                        f"Plan mode: {request.mode}\n\n"
+                        "Selected Pace facts (JSON):\n"
+                        f"{json.dumps(request.context, ensure_ascii=False, sort_keys=True)}"
+                    ),
+                    text={
+                        "format": {
+                            "type": "json_schema",
+                            "name": "pace_plan_draft",
+                            "strict": True,
+                            "schema": schema,
+                        }
+                    },
+                )
+            except Exception as error:
+                raise PaceAIUnavailableError(
+                    "AI-tjänsten kunde inte skapa ett planutkast. Dina Pace-data har inte ändrats."
+                ) from error
+            try:
+                return _parse_response(response)
+            except PaceAIResponseError as error:
+                last_error = error
+
+        raise PaceAIResponseError(
+            "AI-tjänsten kunde inte leverera ett komplett planutkast efter två försök. "
+            "Dina Pace-data har inte ändrats."
+        ) from last_error
+
+
+def _schema_for_request(request: PlanGenerationRequest) -> dict[str, object]:
+    """Bind citations to the identifiers selected for this local request."""
+
+    fact_catalog = request.context.get("fact_catalog")
+    if not isinstance(fact_catalog, dict) or not fact_catalog:
+        raise PaceAIResponseError("Planutkastet saknar en giltig Pace-faktakatalog.")
+    knowledge_briefs = request.context.get("knowledge_briefs")
+    briefs = knowledge_briefs.get("briefs") if isinstance(knowledge_briefs, dict) else None
+    knowledge_ids = (
+        sorted(
+            item["id"]
+            for item in briefs
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        )
+        if isinstance(briefs, list)
+        else []
+    )
+    if not knowledge_ids:
+        raise PaceAIResponseError("Planutkastet saknar valda kunskapsbriefar.")
+
+    schema = deepcopy(PLAN_SCHEMA)
+    assessment = schema["properties"]["coach_assessment"]
+    assert isinstance(assessment, dict)
+    properties = assessment["properties"]
+    assert isinstance(properties, dict)
+    properties["fact_references"] = {
+        "type": "array",
+        "minItems": 1,
+        "items": {"type": "string", "enum": sorted(fact_catalog)},
+    }
+    properties["knowledge_references"] = {
+        "type": "array",
+        "minItems": 1,
+        "items": {"type": "string", "enum": knowledge_ids},
+    }
+    return schema
+
+
+def _parse_response(response: object) -> GeneratedPlanDraft:
+    response_text = getattr(response, "output_text", "")
+    if not response_text:
+        raise PaceAIResponseError("AI-tjänsten gav inget användbart planutkast.")
+    try:
+        payload = json.loads(response_text)
+    except json.JSONDecodeError as error:
+        raise PaceAIResponseError("AI-planen hade fel format.") from error
+    return _parse_plan(payload)
 
 
 def _parse_plan(payload: object) -> GeneratedPlanDraft:
