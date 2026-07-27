@@ -318,8 +318,9 @@ def _parse_adjustment(value: object) -> PlanAdjustmentDraft | None:
     if not isinstance(rationale, str) or not rationale.strip():
         raise PaceAIResponseError("Planjusteringsutkastet saknar motivering.")
     if action == "keep_plan":
-        if session_id is not None or proposed is not None:
-            raise PaceAIResponseError("Behåll-plan-utkastet får inte ändra ett pass.")
+        # The model occasionally echoes a current session identifier despite
+        # choosing keep_plan. Those fields have no authority and are discarded;
+        # keeping the plan can never mutate or target a session in Pace.
         return PlanAdjustmentDraft(action, None, rationale.strip(), None)
     if not isinstance(session_id, int) or isinstance(session_id, bool):
         raise PaceAIResponseError("Planjusteringsutkastet saknar ett giltigt pass-id.")

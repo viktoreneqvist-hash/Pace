@@ -132,6 +132,24 @@ def test_coach_client_discards_an_unselected_knowledge_reference():
     assert answer.knowledge_references == ()
 
 
+def test_coach_client_discards_unused_session_fields_for_keep_plan():
+    payload = json.loads(_replacement_payload())
+    payload["adjustment_draft"]["action"] = "keep_plan"
+    payload["adjustment_draft"]["proposed_session"] = None
+    responses = FakeResponses(SimpleNamespace(output_text=json.dumps(payload)))
+    client = OpenAICoachDialogueClient(
+        api_key="test-key",
+        model="test-model",
+        client=SimpleNamespace(responses=responses),
+    )
+
+    answer = client.answer(_request())
+
+    assert answer.adjustment_draft is not None
+    assert answer.adjustment_draft.action == "keep_plan"
+    assert answer.adjustment_draft.replaces_session_id is None
+
+
 def test_coach_client_serializes_pace_dates_for_the_provider():
     responses = FakeResponses(SimpleNamespace(output_text=_replacement_payload()))
     client = OpenAICoachDialogueClient(
