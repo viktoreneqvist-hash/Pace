@@ -93,9 +93,28 @@ function responseExtras(answer) {
   return html;
 }
 
+function commandExtras(command) {
+  if (!command.confirmation) return "";
+  const confirmation = command.confirmation;
+  return decisionCard(
+    confirmation.title,
+    confirmation.body,
+    confirmation.values,
+    confirmation.label,
+    "command",
+    {action: confirmation.action},
+  );
+}
+
 async function submitQuestion(question) {
   addMessage("athlete", question); document.getElementById("chat-question").value = "";
-  try { const answer = await api("/api/chat", {method:"POST", body:JSON.stringify({question})}); addMessage("coach", answer.answer, responseExtras(answer)); }
+  const isCommand = question.trim().startsWith("/");
+  const path = isCommand ? "/api/command" : "/api/chat";
+  const payload = isCommand ? {command:question} : {question};
+  try {
+    const answer = await api(path, {method:"POST", body:JSON.stringify(payload)});
+    addMessage("coach", answer.answer, isCommand ? commandExtras(answer) : responseExtras(answer));
+  }
   catch (error) { addMessage("coach", `Kunde inte svara: ${error.message}`); }
 }
 
@@ -107,14 +126,20 @@ document.addEventListener("click", async event => {
   const card = button.closest(".decision-card");
   const originalLabel = button.textContent;
   try {
-    if (button.dataset.action === "context" || button.dataset.action === "feedback") {
+    if (button.dataset.action === "context" || button.dataset.action === "feedback" || button.dataset.action === "command") {
       button.disabled = true; button.textContent = "Sparar…";
       const payload = JSON.parse(button.dataset.payload);
-      const path = button.dataset.action === "context" ? "/api/context/confirm" : "/api/feedback/confirm";
-      await api(path, {method:"POST", body:JSON.stringify(payload)});
+      const path = button.dataset.action === "context"
+        ? "/api/context/confirm"
+        : button.dataset.action === "feedback"
+          ? "/api/feedback/confirm"
+          : "/api/command/confirm";
+      const result = await api(path, {method:"POST", body:JSON.stringify(payload)});
       card.innerHTML = button.dataset.action === "context"
         ? "<p><b>Context sparad.</b> Pace har inte ändrat planen.</p>"
-        : "<p><b>Feedback sparad.</b> Utfallet är registrerat och knappen är borta.</p>";
+        : button.dataset.action === "feedback"
+          ? "<p><b>Feedback sparad.</b> Utfallet är registrerat och knappen är borta.</p>"
+          : `<p><b>Klart.</b> ${esc(result.message)}</p>`;
       await refreshHome();
     }
   } catch (error) {

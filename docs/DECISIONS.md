@@ -2334,6 +2334,46 @@ different AI assessments of the same past week.
 
 ---
 
+# Decision #53
+
+## Problem
+
+The browser coach conversation was useful for questions and confirmation cards,
+but ordinary read-only Pace actions still required switching to a terminal.
+Allowing the chatbox to run arbitrary shell text would make a local browser a
+confusing and unsafe command runner.
+
+## Options
+
+- Keep every command in the terminal
+- Let the browser execute arbitrary `uv run pace` or shell commands
+- Add a small explicit command palette that calls reviewed services directly
+
+## Chosen
+
+The Coach chatbox recognises only `/help`, `/today`, `/state`, `/analysis`,
+`/sync`, and `/review weekly`. The first four are read-only and never call an
+AI model. `/sync` and `/review weekly` first render a confirmation card.
+Only the confirmation card can call the existing Garmin sync or weekly-review
+service. The browser never parses or executes terminal commands.
+
+## Reason
+
+This removes routine terminal friction without weakening the existing boundary:
+services do the work, CSRF protects browser writes, and actions with Garmin or
+OpenAI consequences are deliberate and visible.
+
+## Consequences
+
+- Adding a command is a product/API decision and requires an explicit route,
+  a service boundary, tests, and documentation; there is no generic command
+  runner.
+- Sync remains limited to the normal seven-day window.
+- A weekly review remains an explicit dated AI snapshot, even when triggered
+  from the browser.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

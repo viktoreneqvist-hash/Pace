@@ -62,6 +62,32 @@ class FakeContextService:
         return SimpleNamespace(id=44)
 
 
+class FakeSyncService:
+    def __init__(self):
+        self.calls = []
+
+    def sync(self, **kwargs):
+        self.calls.append(kwargs)
+        return SimpleNamespace(
+            start_date=kwargs["start_date"],
+            end_date=kwargs["end_date"],
+            activities_fetched=3,
+            activities_inserted=1,
+            activities_updated=2,
+            daily_metrics_fetched=7,
+        )
+
+
+class FakeWeeklyReviewService:
+    def __init__(self, output_path):
+        self.calls = []
+        self.output_path = output_path
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.output_path
+
+
 def _web_client(tmp_path):
     session = SimpleNamespace(
         id=12,
@@ -98,6 +124,7 @@ def _web_client(tmp_path):
     plan_service = FakePlanService(plan, [])
     coach = FakeCoachService()
     context = FakeContextService()
+    sync = FakeSyncService()
     checkpoint = PlanCheckpoint(
         as_of_date=date(2026, 7, 27),
         status="current",
@@ -143,6 +170,7 @@ def _web_client(tmp_path):
         '"recommendations":["En rekommendation."],'
         '"uncertainties":["En osäkerhet."]}'
     )
+    weekly_review = FakeWeeklyReviewService(reports_directory / "weekly-review.html")
     dashboard_state = SimpleNamespace(
         as_of_date=date(2026, 7, 27),
         recent_recovery_observations=(),
@@ -201,9 +229,18 @@ def _web_client(tmp_path):
         context_service=context,
         reports_directory=reports_directory,
         coach_service_factory=lambda: coach,
+        sync_service_factory=lambda: sync,
+        weekly_review_service_factory=lambda: weekly_review,
         today=lambda: date(2026, 7, 27),
     )
-    return TestClient(create_app(services=services)), plan_service, context, coach
+    return (
+        TestClient(create_app(services=services)),
+        plan_service,
+        context,
+        coach,
+        sync,
+        weekly_review,
+    )
 
 
 def _csrf(client: TestClient) -> str:
@@ -214,7 +251,7 @@ def _csrf(client: TestClient) -> str:
 
 
 def test_local_web_home_renders_current_plan_and_report_navigation(tmp_path):
-    client, _plans, _context, _coach = _web_client(tmp_path)
+    client, _plans, _context, _coach, _sync, _review = _web_client(tmp_path)
 
     response = client.get("/")
 
@@ -229,7 +266,7 @@ def test_local_web_home_renders_current_plan_and_report_navigation(tmp_path):
 
 
 def test_chat_keeps_conversation_in_server_memory_and_returns_confirmation_drafts(tmp_path):
-    client, _plans, _context, coach = _web_client(tmp_path)
+    client, _plans, _context, coach, _sync, _review = _web_client(tmp_path)
     csrf = _csrf(client)
 
     response = client.post(
@@ -245,7 +282,7 @@ def test_chat_keeps_conversation_in_server_memory_and_returns_confirmation_draft
 
 
 def test_confirmation_endpoints_require_csrf_and_reuse_existing_services(tmp_path):
-    client, plans, context, _coach = _web_client(tmp_path)
+    client, plans, context, _coach, _sync, _review = _web_client(tmp_path)
     csrf = _csrf(client)
 
     denied = client.post(
@@ -289,7 +326,7 @@ def test_confirmation_endpoints_require_csrf_and_reuse_existing_services(tmp_pat
 
 
 def test_reports_are_available_only_from_the_safe_local_report_catalog(tmp_path):
-    client, _plans, _context, _coach = _web_client(tmp_path)
+    client, _plans, _context, _coach, _sync, _review = _web_client(tmp_path)
 
     dashboard = client.get("/reports/dashboard.html")
     missing_review = client.get("/reports/weekly-review.html")
@@ -302,7 +339,7 @@ def test_reports_are_available_only_from_the_safe_local_report_catalog(tmp_path)
 
 
 def test_in_app_reports_keep_navigation_and_use_current_local_views(tmp_path):
-    client, _plans, _context, _coach = _web_client(tmp_path)
+    client, _plans, _context, _coach, _sync, _review = _web_client(tmp_path)
 
     dashboard = client.get("/dashboard")
     plan = client.get("/plan")
@@ -318,3 +355,44 @@ def test_in_app_reports_keep_navigation_and_use_current_local_views(tmp_path):
     assert "Träning · 28 dagar" in dashboard.text
     assert "Detaljerade pass" in plan.text
     assert "Veckan är sammanfattad." in review.text
+
+
+def test_web_commands_are_allowlisted_and_external_actions_need_confirmation(tmp_path):
+    client, _plans, _context, coach, sync, weekly_review = _web_client(tmp_path)
+    csrf = _csrf(client)
+
+    help_response = client.post(
+        "/api/command", headers={"X-Pace-CSRF": csrf}, json={"command": "/help"}
+    )
+    sync_draft = client.post(
+        "/api/command", headers={"X-Pace-CSRF": csrf}, json={"command": "/sync"}
+    )
+    sync_result = client.post(
+        "/api/command/confirm",
+        headers={"X-Pace-CSRF": csrf},
+        json={"action": "sync"},
+    )
+    review_draft = client.post(
+        "/api/command",
+        headers={"X-Pace-CSRF": csrf},
+        json={"command": "/review weekly"},
+    )
+    review_result = client.post(
+        "/api/command/confirm",
+        headers={"X-Pace-CSRF": csrf},
+        json={"action": "weekly_review"},
+    )
+    unknown = client.post(
+        "/api/command", headers={"X-Pace-CSRF": csrf}, json={"command": "/rm"}
+    )
+
+    assert help_response.status_code == 200
+    assert "/analysis" in help_response.json()["answer"]
+    assert sync_draft.json()["confirmation"]["action"] == "sync"
+    assert sync.calls[0]["start_date"] == date(2026, 7, 21)
+    assert sync_result.json()["status"] == "completed"
+    assert review_draft.json()["confirmation"]["action"] == "weekly_review"
+    assert weekly_review.calls == [{"end_date": date(2026, 7, 27)}]
+    assert review_result.json()["status"] == "completed"
+    assert unknown.status_code == 422
+    assert coach.calls == []

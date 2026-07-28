@@ -8,6 +8,23 @@ Detta är en tidig privat alpha för inbjudna vänner. Du behöver ett eget
 Garmin-konto och, för AI-planer eller AI-frågor, en egen OpenAI API-nyckel.
 Pace är inte medicinsk rådgivning och diagnostiserar inte skador eller sjukdom.
 
+## Så fungerar Pace
+
+Pace delar upp jobbet mellan kod och AI så att träningsfakta inte blir en
+gissning:
+
+```text
+Garmin-data → lokal databas → Python räknar fakta → du lägger till context
+→ AI-coachen förklarar eller föreslår → du bekräftar varje sparad ändring
+```
+
+- **Python** räknar tid, distans, frekvens, HRV-baslinjer och datakvalitet.
+- **Du** styr mål, lopp, tillgänglighet och vad som faktiskt hände på ett pass.
+- **AI-coachen** diskuterar och skapar endast utkast. Den får aldrig acceptera
+  en plan, spara feedback eller ändra en plan utan ditt klick.
+- **Allt kör lokalt.** Garmin-token, databas, rapporter och API-nyckel lämnar
+  inte datorn via Git.
+
 ## Du behöver
 
 - macOS eller annan dator med Python 3.14 och [`uv`](https://docs.astral.sh/uv/)
@@ -68,14 +85,55 @@ din egen dator och är inte publicerad på internet. Låt terminalfönstret vara
 öppet medan du använder Pace; stoppa den lokala sidan med `Ctrl+C` när du är
 klar.
 
-I sidan kan du läsa din aktiva plan, inställningar, kommande lopp och aktuella
-Pace-fakta samt prata med coachen. Chatten kan förbereda context och
-passfeedback, men varje sparning visas som ett eget bekräftelsekort. Endast den
-accepterade aktuella planen visas i coachvyn; äldre planutkast skapar inte en
-extra arbetskö där. Dashboard, planrapport och veckoreview öppnas från
-navigeringen när respektive lokal HTML-rapport har skapats. Pace ändrar aldrig
-en plan automatiskt och chattens korta historik försvinner när den lokala
-servern stoppas.
+I sidan kan du läsa den aktiva planen, inställningar, kommande lopp och aktuella
+Pace-fakta samt prata med coachen. Den övre navigeringen håller dig i samma
+lokala app:
+
+- **Coach** är samtalet och platsen där du kan bekräfta context och passutfall.
+- **Dashboard** visar aktuella tränings- och recovery-fakta. Den räknas om från
+  dina lokala data varje gång du öppnar den.
+- **Plan** visar den accepterade plan som gäller i dag och uppdateras när du
+  har sparat feedback.
+- **Veckoreview** visar den senaste uttryckliga AI-snapshoten. Den skrivs inte
+  om automatiskt när ny feedback tillkommer, så en gammal vecka får samma
+  bedömning när du läser den igen.
+
+Pace ändrar aldrig en accepterad plan automatiskt och chattens korta historik
+försvinner när den lokala servern stoppas.
+
+### Kommandon direkt i chatten
+
+Skriv ett snedstreck i coachens chattruta för att använda ett säkert Pace-
+kommando. De här kommandona kör **inte** AI:
+
+```text
+/help
+/today
+/state
+/analysis
+```
+
+- `/help` visar kommandolistan.
+- `/today` visar dagens, eller nästa, planerade pass.
+- `/state` visar kort Pace-status: aktiv plan och detaljfönster.
+- `/analysis` visar träningsfakta för de senaste 28 dagarna.
+
+Två kommandon kan göra ett externt anrop. De startar därför aldrig direkt, utan
+visar först ett tydligt bekräftelsekort:
+
+```text
+/sync
+/review weekly
+```
+
+- `/sync` förbereder en Garmin-synk av de senaste sju kalenderdagarna. Klicka
+  **Starta synk** för att faktiskt hämta data.
+- `/review weekly` förbereder en ny AI-veckoreview. Klicka **Skapa
+  veckoreview** först när du vill göra OpenAI-anropet.
+
+Chatten kan inte köra fria terminalkommandon. Det betyder att text som
+`uv run pace ...`, filer och andra systemkommandon aldrig kan köras av misstag
+från webbläsaren.
 
 ## Uppdatera Pace
 
@@ -147,6 +205,11 @@ verifierad löpevidens; annars använder planen RPE. Cykling använder aldrig
 fartmål.
 
 ## Till vardags
+
+Det enklaste vardagsflödet är att starta den lokala appen, synka genom
+`/sync`, läsa Dashboard och rapportera passutfall med vanlig svenska i Coach.
+Terminalkommandona nedan finns kvar när du vill ha full kontroll, importera
+historik eller felsöka.
 
 ```bash
 uv run pace sync --days 7

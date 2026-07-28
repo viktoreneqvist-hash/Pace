@@ -45,8 +45,8 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
       </div>
       <form id="chat-form" class="chat-compose">
         <label for="chat-question">Prata med coachen</label>
-        <textarea id="chat-question" rows="3" placeholder="Exempel: Jag genomförde passet, men RPE blev 8. Vad gör vi nu?" required></textarea>
-        <div class="compose-footer"><span>Coachen skapar bara utkast. Du bekräftar varje sparad ändring.</span><button class="primary" type="submit">Skicka fråga →</button></div>
+        <textarea id="chat-question" rows="3" placeholder="Fråga coachen — eller skriv /help för säkra Pace-kommandon." required></textarea>
+        <div class="compose-footer"><span>Coachen skapar bara utkast. /sync och /review weekly kräver alltid bekräftelse.</span><button class="primary" type="submit">Skicka fråga →</button></div>
       </form>
     </section>
     <aside class="right-rail" aria-label="Plan och inställningar">
@@ -62,7 +62,7 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
   </main>
   <footer>PACE KÖRS PÅ DIN DATOR · GARMIN OCH OPENAI ANROPAS ENDAST NÄR DU UTTRYCKLIGEN BER OM DET</footer>
   <script id="pace-state" type="application/json">{safe_state}</script>
-  <script src="/static/pace.js" defer></script>
+  <script src="/static/pace.js?v=20260728-3" defer></script>
 </body>
 </html>"""
 

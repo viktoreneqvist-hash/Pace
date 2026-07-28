@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from datetime import date
+from datetime import date, timedelta
 import secrets
 from pathlib import Path
 import re
@@ -17,6 +17,12 @@ from starlette.middleware.sessions import SessionMiddleware
 from pace.ai.client import PaceAIError
 from pace.coach.client import OpenAICoachDialogueClient
 from pace.config.settings import PROJECT_ROOT, resolve_openai_api_key, settings
+from pace.integrations.garmin.client import (
+    GarminAuthenticationRequiredError,
+    GarminConnectClient,
+    GarminIntegrationError,
+    GarminRateLimitError,
+)
 from pace.presentation.dashboard import render_dashboard_fragment
 from pace.presentation.plan_views import render_plan_fragment
 from pace.presentation.weekly_review import (
@@ -35,7 +41,10 @@ from pace.services.transparent_training_analysis_service import (
 )
 from pace.services.coach_dialogue_service import CoachDialogueService
 from pace.services.dashboard_service import DashboardService
+from pace.services.garmin_sync_service import GarminSyncService
+from pace.services.weekly_review_service import WeeklyReviewService
 from pace.web.presentation import render_web_home, render_web_report_page
+from pace.weekly_review.client import WeeklyReviewClient
 
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -46,6 +55,14 @@ SAFE_REPORT_NAME = re.compile(r"(?:dashboard|home|weekly-review|plan-[1-9][0-9]*
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2_000)
+
+
+class CommandRequest(BaseModel):
+    command: str = Field(min_length=1, max_length=100)
+
+
+class CommandConfirmation(BaseModel):
+    action: str = Field(min_length=1, max_length=30)
 
 
 class ContextConfirmation(BaseModel):
@@ -82,6 +99,8 @@ class WebServices:
     context_service: Any = field(default_factory=ContextService)
     reports_directory: Path = REPORTS_DIRECTORY
     coach_service_factory: Callable[[], CoachDialogueService] | None = None
+    sync_service_factory: Callable[[], GarminSyncService] | None = None
+    weekly_review_service_factory: Callable[[], WeeklyReviewService] | None = None
     today: Callable[[], date] = date.today
 
     def coach_service(self) -> CoachDialogueService:
@@ -95,6 +114,22 @@ class WebServices:
                 api_key=api_key,
                 model=settings.openai_model,
             )
+        )
+
+    def sync_service(self) -> GarminSyncService:
+        if self.sync_service_factory is not None:
+            return self.sync_service_factory()
+        client = GarminConnectClient.from_saved_tokens(settings.garmin_token_dir)
+        return GarminSyncService(client)
+
+    def weekly_review_service(self) -> WeeklyReviewService:
+        if self.weekly_review_service_factory is not None:
+            return self.weekly_review_service_factory()
+        api_key = resolve_openai_api_key(settings)
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY saknas; veckoreview kan inte startas.")
+        return WeeklyReviewService(
+            client=WeeklyReviewClient(api_key=api_key, model=settings.openai_model)
         )
 
 
@@ -220,6 +255,101 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
             media_type="text/html",
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.post("/api/command")
+    def command(request: Request, payload: CommandRequest) -> dict[str, object]:
+        """Handle the small, explicit web command palette without an AI call."""
+
+        _require_csrf(request)
+        state = _home_state(dependencies)
+        normalized = " ".join(payload.command.casefold().split())
+        if normalized == "/help":
+            return {
+                "answer": (
+                    "Kommandon: /today visar nästa planerade pass, /state visar "
+                    "aktuell Pace-status, /analysis visar 28-dagarsfakta, /sync "
+                    "förbereder Garmin-synk och /review weekly förbereder en AI-review."
+                )
+            }
+        if normalized == "/today":
+            return {"answer": _today_command_answer(state)}
+        if normalized == "/state":
+            return {"answer": _state_command_answer(state)}
+        if normalized == "/analysis":
+            return {"answer": _analysis_command_answer(state)}
+        if normalized == "/sync":
+            return {
+                "answer": "Garmin-synk är förberedd men har inte startat.",
+                "confirmation": {
+                    "action": "sync",
+                    "title": "Synka Garmin",
+                    "body": "Hämtar de senaste sju kalenderdagarna till din lokala Pace-databas.",
+                    "label": "Starta synk",
+                    "values": [["Period", _sync_window_label(dependencies.today())]],
+                },
+            }
+        if normalized == "/review weekly":
+            return {
+                "answer": "Veckoreview är förberedd men AI-anropet har inte startat.",
+                "confirmation": {
+                    "action": "weekly_review",
+                    "title": "Skapa veckoreview",
+                    "body": "Skapar en ny daterad AI-review av lokala Pace-fakta. Det använder din OpenAI-nyckel och kan kosta pengar.",
+                    "label": "Skapa veckoreview",
+                    "values": [["Vecka slutar", dependencies.today().isoformat()]],
+                },
+            }
+        raise HTTPException(
+            status_code=422,
+            detail="Okänt kommando. Skriv /help för tillgängliga kommandon.",
+        )
+
+    @app.post("/api/command/confirm")
+    def confirm_command(
+        request: Request, payload: CommandConfirmation
+    ) -> dict[str, object]:
+        """Run only a reviewed, user-confirmed command; never a shell command."""
+
+        _require_csrf(request)
+        if payload.action == "sync":
+            end_date = dependencies.today()
+            try:
+                result = dependencies.sync_service().sync(
+                    start_date=end_date - timedelta(days=6), end_date=end_date
+                )
+            except GarminAuthenticationRequiredError as error:
+                raise HTTPException(
+                    status_code=422, detail=f"Synken kan inte starta: {error}"
+                ) from error
+            except GarminRateLimitError as error:
+                raise HTTPException(
+                    status_code=429, detail=f"Garmin begränsade synken: {error}"
+                ) from error
+            except (GarminIntegrationError, ValueError) as error:
+                raise HTTPException(
+                    status_code=422, detail=f"Synken misslyckades: {error}"
+                ) from error
+            return {
+                "status": "completed",
+                "action": "sync",
+                "message": _sync_command_result(result),
+            }
+        if payload.action == "weekly_review":
+            try:
+                path = dependencies.weekly_review_service().create(
+                    end_date=dependencies.today()
+                )
+            except (PaceAIError, ValueError) as error:
+                raise HTTPException(
+                    status_code=422, detail=str(error)
+                ) from error
+            return {
+                "status": "completed",
+                "action": "weekly_review",
+                "message": "Veckoreview skapad. Öppna fliken Veckoreview för att läsa den.",
+                "path": str(path.name),
+            }
+        raise HTTPException(status_code=422, detail="Otillåtet Pace-kommando.")
 
     @app.post("/api/chat")
     def chat(request: Request, payload: ChatRequest) -> dict[str, object]:
@@ -419,6 +549,61 @@ def _reports_payload(reports_directory: Path, active_plan) -> dict[str, dict[str
             "unavailable_message": unavailable_message,
         }
     return result
+
+
+def _today_command_answer(state: dict[str, object]) -> str:
+    plan = state["active_plan"]
+    if not isinstance(plan, dict):
+        return "Ingen accepterad aktiv plan finns för i dag."
+    as_of_date = str(state["as_of_date"])
+    sessions = plan["sessions"]
+    upcoming = [item for item in sessions if item["scheduled_date"] >= as_of_date]
+    if not upcoming:
+        return "Inga detaljerade pass återstår i den accepterade planen."
+    session = upcoming[0]
+    when = "I dag" if session["scheduled_date"] == as_of_date else session["scheduled_date"]
+    return (
+        f"{when}: {session['sport_type']} · {session['purpose']} · "
+        f"{session['target_display']}."
+    )
+
+
+def _state_command_answer(state: dict[str, object]) -> str:
+    checkpoint = state["checkpoint"]
+    plan = state["active_plan"]
+    plan_label = "ingen accepterad aktiv plan" if plan is None else f"plan {plan['id']}"
+    return (
+        f"Pace-status {state['as_of_date']}: {plan_label}; "
+        f"planstatus {checkpoint['status']}; "
+        f"{checkpoint['detailed_days_remaining']} dagar kvar i detaljfönstret."
+    )
+
+
+def _analysis_command_answer(state: dict[str, object]) -> str:
+    analysis = state["analysis"]
+    sports = {item["sport_type"]: item for item in analysis["sports"]}
+    run = sports.get("run", {})
+    ride = sports.get("ride", {})
+    return (
+        f"Senaste 28 dagarna: {analysis['total_duration_hours']:.1f} h totalt · "
+        f"löpning {run.get('activity_count', 0)} pass / "
+        f"{run.get('duration_hours', 0):.1f} h · cykel "
+        f"{ride.get('activity_count', 0)} pass / "
+        f"{ride.get('duration_hours', 0):.1f} h."
+    )
+
+
+def _sync_window_label(end_date: date) -> str:
+    return f"{end_date - timedelta(days=6)} till {end_date}"
+
+
+def _sync_command_result(result) -> str:
+    return (
+        f"Garmin-synk klar ({result.start_date} till {result.end_date}): "
+        f"{result.activities_fetched} hämtade, {result.activities_inserted} nya och "
+        f"{result.activities_updated} uppdaterade aktiviteter; "
+        f"{result.daily_metrics_fetched} recovery-dagar."
+    )
 
 
 def _coach_answer_payload(answer) -> dict[str, object]:

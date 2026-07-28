@@ -201,6 +201,10 @@ Garmin provider
   server-rendered facts and may be refreshed by normal navigation. Weekly
   reviews are explicitly generated AI snapshots and must never be silently
   regenerated when local feedback or context changes.
+- Browser chat commands are a closed Pace-owned allowlist, not a terminal or
+  shell runner. Read-only commands must avoid AI calls. Garmin sync and weekly
+  review commands require a separate CSRF-protected confirmation card before
+  calling their existing services.
 
 ## Safety and privacy
 

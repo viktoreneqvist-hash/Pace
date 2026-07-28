@@ -499,6 +499,13 @@ until the library is large enough to need them.
 - [x] Render dashboard and plan from current local facts whenever their app
   routes open; preserve weekly reviews as explicit dated AI snapshots
 
+### Batch UI5 — Safe chat commands
+
+- [x] Add read-only `/help`, `/today`, `/state`, and `/analysis` commands to
+  the local Coach chatbox without an AI call
+- [x] Add confirmation-gated `/sync` and `/review weekly`; never accept raw
+  terminal or shell commands from the browser
+
 ### Batch K3 — Layered coach training history
 
 - [x] Give explicit coach calls three days of detailed normalized run/ride
