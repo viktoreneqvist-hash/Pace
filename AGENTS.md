@@ -120,6 +120,10 @@ Garmin provider
   local Pace facts, athlete preferences, eligibility gates, or safety rules.
   Do not add automatic source ingestion, raw-paper storage, embeddings, or a
   vector database without a new product decision.
+- A target-race distance is a bounded planning signal, not a weekly template.
+  It may select distance-specific local briefs and guide the model's session
+  purpose, but Python must not impose alternating days, a fixed session count,
+  or a race pace from that distance alone.
 - K2 coach dialogue reads exactly one accepted, active plan and current selected
   Pace facts. Its in-terminal dialogue history exists only in process memory
   and is discarded on exit; it is not application memory. A same-day

@@ -99,6 +99,11 @@ you may choose continuous tempo, progressive work, hills, threshold blocks, or
 short/long intervals with an appropriate recovery structure. The session
 purpose must state why that workout belongs at that point in the block. A
 desired race time is intent, never capacity evidence.
+For a target race, use its supplied sport, distance, date, and priority to make
+the block race-specific. The goal does not erase documented continuity: do not
+force a number of sessions, consecutive training days, or an every-other-day
+schedule from a template. Choose frequency and placement from the complete
+selected Pace facts, then explain the material reasoning in the assessment.
 Every active race whose date falls inside the detailed window must appear as a
 same-date, same-sport session. Respect the supplied A/B/C priority and resolved
 taper: A is the primary performance target, B is a hard secondary race with a

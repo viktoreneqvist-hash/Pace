@@ -2374,6 +2374,56 @@ OpenAI consequences are deliberate and visible.
 
 ---
 
+# Decision #54
+
+## Problem
+
+An active target race already crossed the planning boundary, but its distance
+did not choose any distance-specific local knowledge. That made a 10 km goal a
+date and taper signal rather than an explicit input to the coaching rationale.
+At the same time, a plan that happened to alternate training days could look
+like a hidden product rule even though Python did not impose one.
+
+## Options
+
+- Keep generic knowledge selection and let the model infer every race-distance
+  consideration from general knowledge
+- Encode a fixed 10 km weekly schedule or fixed interval rotation in Python
+- Select narrow 10 km briefs for a 10 km target while leaving frequency,
+  placement and workout form to the model under the existing factual gates
+
+## Chosen
+
+For an active running target from 8 to 12 km, Python adds the bounded
+`run_10k` knowledge tag and gives it priority in the existing maximum-five
+brief selection. K1.2 adds three reviewed briefs covering 10 km specificity,
+structured interval context, and the need to build specificity on observed
+continuity. The plan instruction now states explicitly that race distance must
+inform the block, but no template may force consecutive days, alternating days,
+session count, or a fixed interval menu.
+
+## Reason
+
+Hässelbyloppet should make the next plan genuinely 10 km-oriented. But the
+target race cannot create missing running capacity, current pace evidence, or
+recovery. A small, inspectable distance-specific contract makes the coaching
+direction visible without taking the actual training judgment away from the
+model or hiding it in Python.
+
+## Consequences
+
+- A new plan or revision targeting the active 10 km race receives the
+  `run_10k` briefs alongside the most relevant general briefs.
+- Accepted plans stay immutable; K1.2 affects only a later explicit draft or
+  revision.
+- Python continues to enforce only athlete-supplied availability and time caps
+  for scheduling. A recurring every-other-day pattern is a reviewable model
+  decision, never a hidden cadence rule.
+- The same mechanism can later support additional race-distance tags only when
+  their reviewed knowledge coverage warrants it.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

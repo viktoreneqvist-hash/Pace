@@ -418,6 +418,15 @@ until the library is large enough to need them.
 - [x] Keep source briefs as optional evidence support: athlete-specific facts
   remain the only factual contract crossing into an AI decision
 
+### Batch K1.2 — Race-distance-aware coaching knowledge
+
+- [x] Select 10 km-specific reviewed briefs when the active target is a run
+  race between 8 and 12 km; retain the five-brief bound and no runtime web use
+- [x] Make race distance guide block specificity without converting it into a
+  fixed weekly cadence, session count, interval menu, or target pace
+- [x] Preserve continuity, recovery, available-day and target-evidence facts as
+  the controls on what the next plan can actually propose
+
 ### Batch J4.1 — Structured workout prescription
 
 - [x] Store an ordered workout contract on every new planned session:

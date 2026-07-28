@@ -10,6 +10,10 @@ _TAG_WEIGHTS = {
     "recovery": 20,
     "run_ride": 20,
     "taper": 20,
+    # A named race distance is a much more precise planning signal than the
+    # generic planning tags. It must therefore win a slot when the local goal
+    # unambiguously identifies it, without becoming a fixed workout template.
+    "run_10k": 25,
     "workout_structure": 3,
     "race_pacing": 3,
     "strength": 2,
@@ -64,6 +68,9 @@ def select_for_plan_context(
             race = goal.get("race")
             if isinstance(race, dict) and race.get("sport_type") == "run":
                 tags.add("race_pacing")
+                distance_meters = race.get("distance_meters")
+                if isinstance(distance_meters, (int, float)) and 8_000 <= distance_meters <= 12_000:
+                    tags.add("run_10k")
         capacity = _catalog_value(fact_catalog, "capacity_profile")
         if isinstance(capacity, dict):
             sports = capacity.get("sports")

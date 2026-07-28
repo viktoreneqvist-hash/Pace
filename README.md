@@ -204,6 +204,13 @@ fakta- och kapacitetsgrund tillåter det. Löpfart kräver fortfarande aktuell
 verifierad löpevidens; annars använder planen RPE. Cykling använder aldrig
 fartmål.
 
+Ett A-lopp styr riktningen för blocket. Ett aktivt 10 km-lopp, som
+Hässelbyloppet, får därför modellen att välja 10 km-relevant lokal
+coachingkunskap när den skapar nästa utkast. Det är inte en färdig mall: Pace
+väljer fortfarande löpfrekvens, dagplacering och kvalitet från faktisk
+löpkontinuitet, återhämtning och feedback. Python kräver alltså inte varannan
+träningsdag eller en bestämd träningsvecka.
+
 ## Till vardags
 
 Det enklaste vardagsflödet är att starta den lokala appen, synka genom

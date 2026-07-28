@@ -52,3 +52,46 @@ def test_plan_selection_includes_taper_and_run_ride_for_relevant_local_facts():
     }
     assert "taper" in selected_tags
     assert "run_ride" in selected_tags
+
+
+def test_plan_selection_prioritizes_10k_specific_briefs_for_a_10k_run_goal():
+    library = load_knowledge_library()
+    context = {
+        "fact_catalog": {
+            "goal": {
+                "value": {
+                    "race": {
+                        "sport_type": "run",
+                        "distance_meters": 10_000,
+                    }
+                }
+            }
+        }
+    }
+
+    selected = select_for_plan_context(library, context=context)
+
+    selected_ids = {brief.id for brief in selected}
+    assert "10k_race_specificity" in selected_ids
+    assert "10k_interval_monitoring" in selected_ids
+    assert "10k_continuity_before_specificity" in selected_ids
+
+
+def test_plan_selection_does_not_apply_10k_briefs_to_other_race_distances():
+    library = load_knowledge_library()
+    context = {
+        "fact_catalog": {
+            "goal": {
+                "value": {
+                    "race": {
+                        "sport_type": "run",
+                        "distance_meters": 21_097.5,
+                    }
+                }
+            }
+        }
+    }
+
+    selected = select_for_plan_context(library, context=context)
+
+    assert all("run_10k" not in brief.topic_tags for brief in selected)

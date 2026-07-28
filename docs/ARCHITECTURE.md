@@ -493,13 +493,16 @@ may reference only the selected, minimal fact catalog; these are AI reasoning,
 not new Pace facts. The model may additionally apply general endurance-coaching
 knowledge, but must frame it as a coach assessment rather than athlete data or
 an external source. K1 adds an optional `knowledge_references` list: Python
-deterministically selects at most three local curated briefs and retains only
+deterministically selects at most five local curated briefs and retains only
 references to those IDs. A brief contains supported claims, limitations,
 applicability, and source metadata; it supports the assessment but does not
 override local facts or Python safety gates. Private context-note text, raw
 Garmin payloads, and unbounded plan history are absent. The library is
 checked-in Markdown and JSON, with no runtime web retrieval, embeddings, or
-vector database.
+vector database. A narrow target-race tag, such as `run_10k` for an active
+8–12 km running race, may prioritize relevant local briefs. It never creates a
+fixed weekly cadence, session count, interval menu, or pace target; those stay
+model-led and bounded by supplied Pace facts and Python eligibility gates.
 
 Revision drafts use their accepted parent as bounded context and preserve its
 block dates and outline. A sibling revision becomes stale when another
