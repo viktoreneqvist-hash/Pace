@@ -16,7 +16,7 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="pace-csrf" content="{safe_csrf}">
   <title>Pace — Local Coach</title>
-  <link rel="stylesheet" href="/static/pace.css">
+  <link rel="stylesheet" href="/static/pace.css?v=20260728-2">
 </head>
 <body>
   <header class="masthead">
@@ -97,7 +97,8 @@ def render_web_report_page(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pace — {escape(title)}</title>
-  <link rel="stylesheet" href="/static/pace.css">
+  <link rel="stylesheet" href="/static/pace.css?v=20260728-2">
+  <link rel="stylesheet" href="/static/reports.css?v=20260728-2">
 </head>
 <body>
   <header class="masthead">

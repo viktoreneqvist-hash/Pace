@@ -1,0 +1,119 @@
+/* Report-only layout, deliberately separate from the coach conversation view. */
+.app-report{
+  width:min(1180px,calc(100% - 64px));
+  margin:0 auto;
+  padding:48px 0 72px;
+}
+.report-heading{
+  border-bottom:2px solid var(--ink);
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(260px,.55fr);
+  column-gap:48px;
+  padding:0 0 28px;
+  margin:0 0 28px;
+}
+.report-heading .kicker{grid-column:1/-1}
+.report-heading h1{
+  font-size:clamp(2.7rem,5vw,4.8rem);
+  line-height:.9;
+  letter-spacing:-.07em;
+  margin:0;
+  max-width:none;
+}
+.report-heading h1 + p{
+  align-self:end;
+  color:var(--muted);
+  font-size:.95rem;
+  line-height:1.5;
+  margin:0;
+}
+.report-metrics,.report-grid{
+  display:grid;
+  gap:12px;
+  background:transparent;
+  border:0;
+  margin:0 0 24px;
+}
+.report-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+.report-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.report-grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.report-metrics article,.report-metrics .metric,.report-grid article,.report-section{
+  background:var(--white);
+  border:1px solid var(--line);
+  padding:18px;
+}
+.report-metrics article,.report-metrics .metric{min-height:112px}
+.report-metrics span,.report-metrics .metric span{
+  color:var(--muted);
+  display:block;
+  font:700 .66rem ui-monospace,SFMono-Regular,monospace;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.report-metrics b,.report-metrics .metric strong{display:block;font-size:1rem;line-height:1.35;margin-top:10px}
+.report-section{margin:0 0 24px}
+.report-section h2,.report-grid h2{font-size:1.15rem;letter-spacing:-.035em;margin:0 0 12px}
+.report-section p,.report-grid p{line-height:1.55}
+.report-section ul,.report-grid ul{line-height:1.55;padding-left:20px}
+.report-section li,.report-grid li{margin:6px 0}
+.app-report .muted{color:var(--muted);font-size:.84rem}
+.app-report .notice{margin-top:14px}
+.app-report .legend{font-size:.8rem;margin:0 0 10px}
+.app-report svg{background:#eef0ea;display:block;height:auto;width:100%}
+.app-report .training-chart{max-height:320px}
+.app-report .report-grid.four svg{max-height:150px}
+.app-report svg line{stroke:#78857c}
+.app-report svg .gridline{stroke:#ccd3cb;stroke-dasharray:3 4}
+.app-report svg polyline{fill:none;stroke:#d89c27;stroke-width:3}
+.app-report svg circle{fill:#d89c27}
+.app-report svg text{fill:#536158;font:10px ui-monospace,SFMono-Regular,monospace}
+.app-report .ride-bar{fill:var(--green)}
+.app-report .run-bar{fill:var(--blue)}
+.app-report .hover-value{cursor:crosshair}
+.app-report .ride-key{color:var(--green)}
+.app-report .run-key{color:var(--blue)}
+.app-report .x-label{text-anchor:middle}
+#tooltip{
+  background:var(--ink);
+  color:var(--white);
+  display:none;
+  font:12px ui-monospace,SFMono-Regular,monospace;
+  max-width:320px;
+  padding:8px 10px;
+  pointer-events:none;
+  position:fixed;
+  z-index:10;
+}
+.app-report .session-list{display:grid;gap:14px}
+.app-report .session-card{
+  background:var(--white);
+  border:1px solid var(--ink);
+  display:grid;
+  grid-template-columns:150px minmax(0,1fr);
+}
+.app-report .session-date{background:var(--soft);display:flex;flex-direction:column;gap:10px;padding:16px}
+.app-report .session-date strong{font-size:1rem;line-height:1.3}
+.app-report .sport-chip{align-self:flex-start;border:1px solid var(--ink);font:700 .7rem ui-monospace,SFMono-Regular,monospace;padding:4px 6px}
+.app-report .sport-chip.run{background:#dce6ff}.app-report .sport-chip.ride{background:#dcecdf}
+.app-report .session-main{min-width:0;padding:17px}
+.app-report .session-main h3{font-size:1.05rem;margin:0 0 13px}
+.app-report .session-meta{color:var(--muted);display:flex;flex-wrap:wrap;gap:10px 20px;font-size:.82rem;margin-bottom:15px}
+.app-report .session-meta span{display:grid;gap:2px}.app-report .session-meta b{color:var(--muted);font-size:.65rem;letter-spacing:.07em;text-transform:uppercase}
+.app-report .workout-blocks{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.app-report .workout-step{background:#f8f7f1;border:1px solid var(--line);margin:0;min-width:0;padding:12px}
+.app-report .workout-step.interval{background:#fff2ce;border-color:#c7a45b}
+.app-report .step-kind{color:var(--muted);font:700 .66rem ui-monospace,SFMono-Regular,monospace;letter-spacing:.07em;margin:0 0 7px;text-transform:uppercase}
+.app-report .step-scope{font-size:1rem;font-weight:800;margin:0 0 3px}.app-report .step-target{color:var(--green);font-size:.85rem;font-weight:700;margin:0}
+.app-report .step-recovery{border-top:1px solid var(--line);font-size:.8rem;margin:10px 0 0;padding-top:8px}.app-report .step-recovery b{display:block;font-size:.65rem;letter-spacing:.07em;text-transform:uppercase}
+.app-report .step-instruction{color:var(--muted);font-size:.8rem;line-height:1.45;margin:8px 0 0}
+.app-report .outline{line-height:1.55;padding-left:20px}.app-report .assessment h3{font-size:.85rem;margin:18px 0 6px}.app-report .rationale{font-size:1rem}.weekly-summary p:first-of-type{font-size:1.1rem;max-width:800px}
+@media(max-width:900px){
+  .app-report{width:min(100% - 36px,720px);padding:32px 0 56px}
+  .report-heading{display:block}.report-heading h1 + p{margin-top:18px}
+  .report-metrics,.report-grid.four{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .app-report .session-card{grid-template-columns:1fr}.app-report .session-date{align-items:center;flex-direction:row;justify-content:space-between}
+}
+@media(max-width:600px){
+  .report-metrics,.report-grid.two,.report-grid.four{grid-template-columns:1fr}
+  .app-report .workout-blocks{grid-template-columns:1fr}
+}

@@ -238,7 +238,7 @@ def render_plan_fragment(plan: TrainingPlanFact) -> str:
 </section>
 <section class="report-section">
   <h2>Nästa steg</h2>
-  <p>{escape(_next_action_line(plan))}</p>
+  <p>Registrera utfallet i Coach-fliken efter passet. Pace ändrar aldrig planen automatiskt.</p>
 </section>
 <section class="report-section">
   <h2>Detaljerade pass</h2>
