@@ -2287,6 +2287,53 @@ irrelevant data.
 
 ---
 
+# Decision #52
+
+## Problem
+
+The loopback coach view linked to separate static dashboard, plan, and weekly
+review files. Each had its own page chrome, and a report could show data from
+the time it was written rather than the facts currently visible to the coach.
+
+## Options
+
+- Keep the independent static report pages
+- Rebuild every report automatically whenever a coach confirmation is saved
+- Render current dashboard and accepted-plan facts through the loopback app's
+  shared shell; keep the AI weekly review as an explicit stored snapshot
+
+## Chosen
+
+`pace serve` has one persistent Pace navigation bar on Coach, Dashboard, Plan,
+and Veckoreview. Dashboard and Plan are current, read-only server-rendered
+views: opening either page reads the same current local service facts as the
+coach home. They are delivered with `no-store` caching so a navigation after a
+saved context event or session feedback sees the new local state.
+
+Veckoreview remains a deliberate AI call. Creating it writes a small local
+presentation snapshot alongside the existing HTML file. Opening its app view
+never calls the model or silently changes the wording; it shows the snapshot's
+week-ending date instead. Old standalone HTML files remain safe to open through
+the restricted local report catalog.
+
+## Reason
+
+The app now feels like one product and reflects confirmed data without adding
+background AI calls, a front-end application, or report regeneration side
+effects. Keeping the weekly review immutable avoids confusing the athlete with
+different AI assessments of the same past week.
+
+## Consequences
+
+- Dashboard and plan use the facts available when their route is opened; an
+  already-open separate browser tab is not live-synchronised.
+- A legacy weekly HTML file made before this decision is still readable, but
+  needs one new explicit `pace review weekly` call to appear in the app view.
+- The browser continues to expose normalized presentation data only. It never
+  receives Garmin tokens, raw payloads, API keys, or private note text.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

@@ -49,6 +49,54 @@ def render_dashboard_html(*, state: AthleteState, trends: TrainingResponseTrends
 <footer>Skapad lokalt av Pace. Dashboarden är läsande och ändrar aldrig plan, feedback eller kontext.</footer></main><div id=\"tooltip\" role=\"status\"></div><script>{_TOOLTIP_SCRIPT}</script></body></html>"""
 
 
+def render_dashboard_fragment(
+    *,
+    state: AthleteState,
+    trends: TrainingResponseTrends,
+    plan: TrainingPlanFact | None,
+    activities,
+    recovery_observations=None,
+) -> str:
+    """Render the current dashboard facts inside Pace's shared web shell."""
+
+    days = tuple(state.as_of_date - timedelta(days=offset) for offset in range(27, -1, -1))
+    activity_seconds = defaultdict(int)
+    activity_count = defaultdict(int)
+    for activity in activities:
+        if activity.sport_type in {"run", "ride"}:
+            local_day = athlete_local_date(activity.start_time)
+            activity_seconds[local_day, activity.sport_type] += activity.duration_seconds or 0
+            activity_count[local_day] += 1
+    observations = (
+        recovery_observations
+        if recovery_observations is not None
+        else state.recent_recovery_observations
+    )
+    recovery = {item.date: item for item in observations}
+    return f"""
+<section class="report-metrics" aria-label="Dashboardöversikt">
+  <article><span>Nästa pass</span><b>{escape(_next_session(plan, state.as_of_date))}</b></article>
+  <article><span>Feedback, 28 dagar</span><b>{trends.recent.outcomes.feedback_records} / {trends.recent_required_feedback_records}</b></article>
+  <article><span>HRV-baslinje</span><b>{_coverage(state, "hrv")}</b></article>
+  <article><span>Senaste Garmin-synk</span><b>{escape(_sync_label(state))}</b></article>
+</section>
+<section class="report-section report-training">
+  <h2>Träning · 28 dagar</h2>
+  {_training_chart(days, activity_seconds, activity_count)}
+  <p class="muted">Y-axel: timmar per dag. X-axel: Stockholm-datum. Hovra över ett värde för råa dagsvärden.</p>
+</section>
+<section class="report-grid four">
+  <article><h2>HRV · 28 dagar</h2>{_line_chart(days, [recovery.get(day).hrv_value if day in recovery else None for day in days], "ms")}</article>
+  <article><h2>Vilopuls · 28 dagar</h2>{_line_chart(days, [recovery.get(day).resting_heart_rate if day in recovery else None for day in days], "bpm")}</article>
+  <article><h2>Sömn · 28 dagar</h2>{_line_chart(days, [recovery.get(day).sleep_duration_hours if day in recovery else None for day in days], "timmar")}</article>
+  <article><h2>Feedback &amp; RPE</h2>{_feedback_panel(trends)}</article>
+</section>
+<section class="report-grid two">
+  <article><h2>Aktiv kontext</h2>{_context_panel(state)}</article>
+  <article><h2>Datakvalitet</h2>{_quality_panel(state, trends)}</article>
+</section>"""
+
+
 def _training_chart(days, activity_seconds, activity_count):
     ride_hours = [activity_seconds[day, "ride"] / 3600 for day in days]
     run_hours = [activity_seconds[day, "run"] / 3600 for day in days]

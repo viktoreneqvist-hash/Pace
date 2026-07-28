@@ -197,6 +197,10 @@ Garmin provider
   provider IDs, activity names, per-second streams, private note text, or
   historical Garmin readiness/Body Battery/stress/recovery-time data without a
   new decision. Missing distance must remain explicit rather than becoming zero.
+- Dashboard and accepted-plan routes in `pace serve` are current, read-only
+  server-rendered facts and may be refreshed by normal navigation. Weekly
+  reviews are explicitly generated AI snapshots and must never be silently
+  regenerated when local feedback or context changes.
 
 ## Safety and privacy
 

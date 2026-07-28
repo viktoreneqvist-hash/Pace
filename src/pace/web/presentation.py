@@ -23,9 +23,9 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
     <a class="wordmark" href="/">PACE<span>LOCAL COACHING SYSTEM</span></a>
     <nav class="masthead-nav" aria-label="Pace-vyer">
       <a class="nav-link is-current" href="/">Coach</a>
-      <a class="nav-link" data-report-link="dashboard">Dashboard</a>
-      <a class="nav-link" data-report-link="plan">Plan</a>
-      <a class="nav-link" data-report-link="weekly_review">Veckoreview</a>
+      <a class="nav-link" href="/dashboard">Dashboard</a>
+      <a class="nav-link" href="/plan">Plan</a>
+      <a class="nav-link" href="/weekly-review">Veckoreview</a>
     </nav>
     <div class="masthead-meta"><span id="today-label"></span><span>LOCAL ONLY</span></div>
   </header>
@@ -63,5 +63,58 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
   <footer>PACE KÖRS PÅ DIN DATOR · GARMIN OCH OPENAI ANROPAS ENDAST NÄR DU UTTRYCKLIGEN BER OM DET</footer>
   <script id="pace-state" type="application/json">{safe_state}</script>
   <script src="/static/pace.js" defer></script>
+</body>
+</html>"""
+
+
+def render_web_report_page(
+    *,
+    state: dict[str, object],
+    active_page: str,
+    kicker: str,
+    title: str,
+    subtitle: str,
+    body_html: str,
+) -> str:
+    """Render an in-app report with the same persistent Pace navigation."""
+
+    nav = "".join(
+        (
+            f'<a class="nav-link {"is-current" if key == active_page else ""}" '
+            f'href="{href}">{label}</a>'
+        )
+        for key, label, href in (
+            ("coach", "Coach", "/"),
+            ("dashboard", "Dashboard", "/dashboard"),
+            ("plan", "Plan", "/plan"),
+            ("weekly_review", "Veckoreview", "/weekly-review"),
+        )
+    )
+    as_of_date = escape(str(state["as_of_date"]))
+    return f"""<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pace — {escape(title)}</title>
+  <link rel="stylesheet" href="/static/pace.css">
+</head>
+<body>
+  <header class="masthead">
+    <a class="wordmark" href="/">PACE<span>LOCAL COACHING SYSTEM</span></a>
+    <nav class="masthead-nav" aria-label="Pace-vyer">{nav}</nav>
+    <div class="masthead-meta"><span>{as_of_date}</span><span>LOCAL ONLY</span></div>
+  </header>
+  <main class="app-report">
+    <header class="report-heading">
+      <p class="kicker">{escape(kicker)}</p>
+      <h1>{escape(title)}</h1>
+      <p>{escape(subtitle)}</p>
+    </header>
+    {body_html}
+  </main>
+  <footer>PACE KÖRS PÅ DIN DATOR · VYN ÄR LÄSANDE OCH ÄNDRAR INTE DIN PLAN</footer>
+  <div id="tooltip" role="status"></div>
+  <script src="/static/report.js" defer></script>
 </body>
 </html>"""

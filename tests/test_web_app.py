@@ -72,6 +72,9 @@ def _web_client(tmp_path):
         duration_seconds=5_400,
         target_display="Z2 (119–138 bpm)",
         feedback_outcome=None,
+        feedback_perceived_exertion=None,
+        feedback_reason_code=None,
+        workout_steps=(),
     )
     plan = SimpleNamespace(
         id=7,
@@ -80,6 +83,16 @@ def _web_client(tmp_path):
         block_start_date=date(2026, 7, 20),
         block_end_date=date(2026, 8, 22),
         detailed_end_date=date(2026, 8, 2),
+        detailed_start_date=date(2026, 7, 20),
+        block_outline=(),
+        coach_assessment=SimpleNamespace(
+            rationale="Fortsätt med jämn kontinuitet.",
+            inferences=(),
+            uncertainties=(),
+            coaching_principles=(),
+            knowledge_references=(),
+            fact_references=(),
+        ),
         sessions=(session,),
     )
     plan_service = FakePlanService(plan, [])
@@ -123,6 +136,30 @@ def _web_client(tmp_path):
     reports_directory.mkdir()
     (reports_directory / "dashboard.html").write_text("<h1>Dashboard</h1>")
     (reports_directory / "plan-7.html").write_text("<h1>Plan 7</h1>")
+    (reports_directory / "weekly-review.json").write_text(
+        '{"end_date":"2026-07-27","summary":"Veckan är sammanfattad.",'
+        '"observations":["En lokal observation."],'
+        '"coach_assessment":["En coachbedömning."],'
+        '"recommendations":["En rekommendation."],'
+        '"uncertainties":["En osäkerhet."]}'
+    )
+    dashboard_state = SimpleNamespace(
+        as_of_date=date(2026, 7, 27),
+        recent_recovery_observations=(),
+        data_quality=SimpleNamespace(recovery=(), latest_completed_sync=None),
+        relevant_context=SimpleNamespace(events=()),
+    )
+    dashboard_trends = SimpleNamespace(
+        recent=SimpleNamespace(
+            outcomes=SimpleNamespace(feedback_records=2, completed=1, completed_limited=1, skipped=0),
+            reason_counts=(),
+            reported_rpe_average=None,
+            reported_rpe_data_points=0,
+        ),
+        recent_required_feedback_records=6,
+        limitations=(),
+        status="insufficient_data",
+    )
     services = WebServices(
         plan_service=plan_service,
         checkpoint_service=SimpleNamespace(get_checkpoint=lambda **_kwargs: checkpoint),
@@ -152,6 +189,15 @@ def _web_client(tmp_path):
             )
         ),
         analysis_service=SimpleNamespace(get_analysis=lambda **_kwargs: analysis),
+        dashboard_service=SimpleNamespace(
+            get_dashboard_data=lambda **_kwargs: SimpleNamespace(
+                state=dashboard_state,
+                trends=dashboard_trends,
+                plan=plan,
+                activities=(),
+                recovery_observations=(),
+            )
+        ),
         context_service=context,
         reports_directory=reports_directory,
         coach_service_factory=lambda: coach,
@@ -253,3 +299,22 @@ def test_reports_are_available_only_from_the_safe_local_report_catalog(tmp_path)
     assert "Dashboard" in dashboard.text
     assert missing_review.status_code == 404
     assert invalid.status_code == 404
+
+
+def test_in_app_reports_keep_navigation_and_use_current_local_views(tmp_path):
+    client, _plans, _context, _coach = _web_client(tmp_path)
+
+    dashboard = client.get("/dashboard")
+    plan = client.get("/plan")
+    review = client.get("/weekly-review")
+
+    for response in (dashboard, plan, review):
+        assert response.status_code == 200
+        assert "LOCAL COACHING SYSTEM" in response.text
+        assert 'href="/dashboard"' in response.text
+        assert 'href="/plan"' in response.text
+        assert 'href="/weekly-review"' in response.text
+        assert response.headers["cache-control"] == "no-store"
+    assert "Träning · 28 dagar" in dashboard.text
+    assert "Detaljerade pass" in plan.text
+    assert "Veckan är sammanfattad." in review.text

@@ -492,6 +492,13 @@ until the library is large enough to need them.
   the browser, show only the accepted active plan, and link safely to existing
   local dashboard, plan, and weekly-review HTML reports
 
+### Batch UI4 — One coherent local app
+
+- [x] Keep the Pace navigation shell on coach, dashboard, accepted-plan, and
+  weekly-review views instead of sending the athlete to unrelated report pages
+- [x] Render dashboard and plan from current local facts whenever their app
+  routes open; preserve weekly reviews as explicit dated AI snapshots
+
 ### Batch K3 — Layered coach training history
 
 - [x] Give explicit coach calls three days of detailed normalized run/ride

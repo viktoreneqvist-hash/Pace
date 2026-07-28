@@ -1,5 +1,8 @@
 """Owner-only HTML rendering for an explicit weekly AI review."""
 
+import json
+from dataclasses import dataclass
+from datetime import date
 from html import escape
 from pathlib import Path
 
@@ -7,14 +10,90 @@ from pace.config.settings import PROJECT_ROOT
 from pace.weekly_review.models import WeeklyReviewAnswer
 
 
-def write_weekly_review_html(*, end_date, answer: WeeklyReviewAnswer) -> Path:
-    reports = PROJECT_ROOT / "reports"
+@dataclass(frozen=True, slots=True)
+class WeeklyReviewSnapshot:
+    """Persisted AI output for presentation only; it is never recomputed on read."""
+
+    end_date: date
+    summary: str
+    observations: tuple[str, ...]
+    coach_assessment: tuple[str, ...]
+    recommendations: tuple[str, ...]
+    uncertainties: tuple[str, ...]
+
+
+def write_weekly_review_html(
+    *,
+    end_date: date,
+    answer: WeeklyReviewAnswer,
+    reports_directory: Path = PROJECT_ROOT / "reports",
+) -> Path:
+    reports = reports_directory
     reports.mkdir(mode=0o700, parents=True, exist_ok=True)
     reports.chmod(0o700)
     path = reports / "weekly-review.html"
     path.write_text(render_weekly_review_html(end_date=end_date, answer=answer), encoding="utf-8")
     path.chmod(0o600)
+    snapshot_path = reports / "weekly-review.json"
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "end_date": end_date.isoformat(),
+                "summary": answer.summary,
+                "observations": list(answer.observations),
+                "coach_assessment": list(answer.coach_assessment),
+                "recommendations": list(answer.recommendations),
+                "uncertainties": list(answer.uncertainties),
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    snapshot_path.chmod(0o600)
     return path
+
+
+def load_weekly_review_snapshot(
+    *, reports_directory: Path = PROJECT_ROOT / "reports"
+) -> WeeklyReviewSnapshot | None:
+    """Load the latest explicit review without calling the AI service."""
+
+    path = reports_directory / "weekly-review.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return WeeklyReviewSnapshot(
+            end_date=date.fromisoformat(payload["end_date"]),
+            summary=str(payload["summary"]),
+            observations=tuple(str(item) for item in payload["observations"]),
+            coach_assessment=tuple(str(item) for item in payload["coach_assessment"]),
+            recommendations=tuple(str(item) for item in payload["recommendations"]),
+            uncertainties=tuple(str(item) for item in payload["uncertainties"]),
+        )
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def render_weekly_review_fragment(snapshot: WeeklyReviewSnapshot) -> str:
+    """Render an immutable review snapshot inside the shared Pace web shell."""
+
+    def section(title: str, values: tuple[str, ...]) -> str:
+        items = "".join(f"<li>{escape(value)}</li>" for value in values)
+        return f"<article><h2>{escape(title)}</h2><ul>{items or '<li>Inget angivet.</li>'}</ul></article>"
+
+    return (
+        '<section class="report-section weekly-summary">'
+        '<h2>Sammanfattning</h2>'
+        f"<p>{escape(snapshot.summary)}</p>"
+        '<p class="notice">Det här är den senaste uttryckliga AI-reviewen. '
+        'Den räknas inte om när coachen sparar feedback eller context.</p>'
+        "</section>"
+        '<section class="report-grid two">'
+        f'{section("Pace-fakta", snapshot.observations)}'
+        f'{section("Coachens bedömning", snapshot.coach_assessment)}'
+        f'{section("Rekommendationer", snapshot.recommendations)}'
+        f'{section("Osäkerheter", snapshot.uncertainties)}'
+        "</section>"
+    )
 
 
 def render_weekly_review_html(*, end_date, answer: WeeklyReviewAnswer) -> str:

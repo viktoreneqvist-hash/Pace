@@ -34,7 +34,7 @@ function renderState() {
     ["DETALJFÖNSTER", checkpoint.detailed_days_remaining == null ? "—" : `${checkpoint.detailed_days_remaining} dagar`],
     ["PERSONALISERING", `${state.personalization.feedback_records}/${state.personalization.required_feedback_records} feedback`],
   ].map(([name, value]) => `<div class="status-cell"><span>${name}</span><b>${esc(value)}</b></div>`).join("");
-  renderPlan(); renderReports(); renderSettings(); renderRaces(); renderFacts(); renderReportLinks();
+  renderPlan(); renderReports(); renderSettings(); renderRaces(); renderFacts();
 }
 
 function renderPlan() {
@@ -56,23 +56,6 @@ function renderReports() {
     if (report.available) return `<article class="report-link"><a href="${esc(report.path)}">${esc(title)} <span>↗</span></a><p>${esc(description)}</p></article>`;
     return `<article class="report-link is-unavailable"><b>${esc(title)}</b><p>${esc(report.unavailable_message)}</p></article>`;
   }).join("");
-}
-
-function renderReportLinks() {
-  document.querySelectorAll("[data-report-link]").forEach(link => {
-    const report = state.reports[link.dataset.reportLink];
-    if (report.available) {
-      link.href = report.path;
-      link.removeAttribute("aria-disabled");
-      link.removeAttribute("title");
-      link.classList.remove("is-unavailable");
-    } else {
-      link.removeAttribute("href");
-      link.setAttribute("aria-disabled", "true");
-      link.title = report.unavailable_message;
-      link.classList.add("is-unavailable");
-    }
-  });
 }
 
 function renderSettings() {

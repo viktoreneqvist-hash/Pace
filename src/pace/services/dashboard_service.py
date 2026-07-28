@@ -1,5 +1,6 @@
 """Compose existing local facts for the read-only Pace dashboard."""
 
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from pace.database.session import session_scope
@@ -12,8 +13,19 @@ from pace.services.training_plan_service import TrainingPlanService
 from pace.services.training_response_trend_service import TrainingResponseTrendService
 
 
+@dataclass(frozen=True, slots=True)
+class DashboardData:
+    """Read-only inputs shared by the static report and the loopback UI."""
+
+    state: object
+    trends: object
+    plan: object | None
+    activities: tuple
+    recovery_observations: tuple
+
+
 class DashboardService:
-    def write_dashboard(self, *, end_date: date):
+    def get_dashboard_data(self, *, end_date: date) -> DashboardData:
         state = AthleteStateService().get_state(end_date=end_date)
         trends = TrainingResponseTrendService().get_trends(end_date=end_date)
         plans = TrainingPlanService().list_plans()
@@ -30,4 +42,20 @@ class DashboardService:
             )
             for item in daily_metrics
         )
-        return write_dashboard_html(state=state, trends=trends, plan=plan, activities=activities, recovery_observations=recovery_observations)
+        return DashboardData(
+            state=state,
+            trends=trends,
+            plan=plan,
+            activities=tuple(activities),
+            recovery_observations=recovery_observations,
+        )
+
+    def write_dashboard(self, *, end_date: date):
+        data = self.get_dashboard_data(end_date=end_date)
+        return write_dashboard_html(
+            state=data.state,
+            trends=data.trends,
+            plan=data.plan,
+            activities=data.activities,
+            recovery_observations=data.recovery_observations,
+        )

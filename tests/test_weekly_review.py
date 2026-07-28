@@ -4,7 +4,11 @@ from types import SimpleNamespace
 import pytest
 
 from pace.ai.client import PaceAIUnavailableError
-from pace.presentation.weekly_review import render_weekly_review_html
+from pace.presentation.weekly_review import (
+    load_weekly_review_snapshot,
+    render_weekly_review_html,
+    write_weekly_review_html,
+)
 from pace.weekly_review.client import WeeklyReviewClient
 from pace.weekly_review.models import WeeklyReviewAnswer
 from pace.weekly_review.models import WeeklyReviewRequest
@@ -28,6 +32,26 @@ def test_weekly_review_html_is_self_contained_and_read_only():
     assert "Coachens bedömning" in html
     assert "ändrar inte planen" in html
     assert "https://" not in html
+
+
+def test_weekly_review_persists_a_snapshot_for_the_loopback_app(tmp_path):
+    answer = WeeklyReviewAnswer(
+        summary="Veckan var jämn.",
+        observations=("Tre cykelpass.",),
+        coach_assessment=("Kontinuitet först.",),
+        recommendations=("Följ planen.",),
+        uncertainties=("Feedback saknas.",),
+        knowledge_references=(),
+    )
+
+    write_weekly_review_html(
+        end_date=date(2026, 7, 26), answer=answer, reports_directory=tmp_path
+    )
+    snapshot = load_weekly_review_snapshot(reports_directory=tmp_path)
+
+    assert snapshot is not None
+    assert snapshot.end_date == date(2026, 7, 26)
+    assert snapshot.summary == "Veckan var jämn."
 
 
 class FailingResponses:

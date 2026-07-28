@@ -221,6 +221,41 @@ def render_plan_html(plan: TrainingPlanFact) -> str:
 """
 
 
+def render_plan_fragment(plan: TrainingPlanFact) -> str:
+    """Render the accepted plan inside Pace's shared loopback UI shell."""
+
+    sessions = _sorted_sessions(plan)
+    feedback_count = sum(session.feedback_outcome is not None for session in sessions)
+    ride_count = sum(session.sport_type == "ride" for session in sessions)
+    run_count = sum(session.sport_type == "run" for session in sessions)
+    assessment = plan.coach_assessment
+    return f"""
+<section class="report-metrics" aria-label="Planöversikt">
+  {_metric_card("Detaljerat fönster", f"{_format_date(plan.detailed_start_date)}–{_format_date(plan.detailed_end_date)}")}
+  {_metric_card("Planerade pass", str(len(sessions)))}
+  {_metric_card("Cykel / löpning", f"{ride_count} / {run_count}")}
+  {_metric_card("Registrerade utfall", f"{feedback_count} av {len(sessions)}")}
+</section>
+<section class="report-section">
+  <h2>Nästa steg</h2>
+  <p>{escape(_next_action_line(plan))}</p>
+</section>
+<section class="report-section">
+  <h2>Detaljerade pass</h2>
+  <p class="muted">Varje block är en faktisk del av passet. Ett enkelt distanspass visas som ett enda block.</p>
+  <div class="session-list">{''.join(_html_session_card(session) for session in sessions)}</div>
+</section>
+<section class="report-grid two">
+  <article><h2>Blocköversikt</h2><ol class="outline">{''.join(_html_outline_item(item) for item in plan.block_outline)}</ol></article>
+  <article class="assessment"><h2>Coachens bedömning</h2><p class="rationale">{escape(assessment.rationale or 'Ingen coachbedömning finns för denna äldre planversion.')}</p>{_html_text_section('Slutsatser', assessment.inferences)}{_html_text_section('Osäkerheter', assessment.uncertainties)}{_html_text_section('Allmänna coachprinciper', assessment.coaching_principles)}{_html_knowledge_section(plan)}</article>
+</section>
+<section class="report-section">
+  <h2>Faktaunderlag</h2>
+  <p class="muted">Visar vilka lokala faktakategorier som användes. Vyn innehåller inte rå Garmin-data eller privata noteringstexter.</p>
+  <ul>{''.join(f'<li>{escape(_fact_reference_label(reference))}</li>' for reference in assessment.fact_references) or '<li>Ingen faktakatalog finns för denna äldre planversion.</li>'}</ul>
+</section>"""
+
+
 def _sorted_sessions(plan: TrainingPlanFact) -> tuple[PlanSessionFact, ...]:
     return tuple(sorted(plan.sessions, key=lambda item: (item.scheduled_date, item.id)))
 

@@ -17,6 +17,12 @@ from starlette.middleware.sessions import SessionMiddleware
 from pace.ai.client import PaceAIError
 from pace.coach.client import OpenAICoachDialogueClient
 from pace.config.settings import PROJECT_ROOT, resolve_openai_api_key, settings
+from pace.presentation.dashboard import render_dashboard_fragment
+from pace.presentation.plan_views import render_plan_fragment
+from pace.presentation.weekly_review import (
+    load_weekly_review_snapshot,
+    render_weekly_review_fragment,
+)
 from pace.services.context_service import ContextEventInput, ContextService
 from pace.services.heart_rate_zone_service import HeartRateZoneService
 from pace.services.personalization_evidence_service import PersonalizationEvidenceService
@@ -28,7 +34,8 @@ from pace.services.transparent_training_analysis_service import (
     TransparentTrainingAnalysisService,
 )
 from pace.services.coach_dialogue_service import CoachDialogueService
-from pace.web.presentation import render_web_home
+from pace.services.dashboard_service import DashboardService
+from pace.web.presentation import render_web_home, render_web_report_page
 
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -71,6 +78,7 @@ class WebServices:
     personalization_service: Any = field(default_factory=PersonalizationEvidenceService)
     race_service: Any = field(default_factory=RaceService)
     analysis_service: Any = field(default_factory=TransparentTrainingAnalysisService)
+    dashboard_service: Any = field(default_factory=DashboardService)
     context_service: Any = field(default_factory=ContextService)
     reports_directory: Path = REPORTS_DIRECTORY
     coach_service_factory: Callable[[], CoachDialogueService] | None = None
@@ -114,6 +122,90 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
     def api_home(request: Request) -> dict[str, object]:
         _session_value(request, "csrf_token")
         return _home_state(dependencies)
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    def dashboard(request: Request) -> HTMLResponse:
+        _session_value(request, "csrf_token")
+        state = _home_state(dependencies)
+        data = dependencies.dashboard_service.get_dashboard_data(
+            end_date=dependencies.today()
+        )
+        return _html_response(
+            render_web_report_page(
+                state=state,
+                active_page="dashboard",
+                kicker="AKTUELL FAKTAVY",
+                title="Dashboard",
+                subtitle="Aktuella lokala tränings- och återhämtningsfakta. Ingen AI körs här.",
+                body_html=render_dashboard_fragment(
+                    state=data.state,
+                    trends=data.trends,
+                    plan=data.plan,
+                    activities=data.activities,
+                    recovery_observations=data.recovery_observations,
+                ),
+            )
+        )
+
+    @app.get("/plan", response_class=HTMLResponse)
+    def plan(request: Request) -> HTMLResponse:
+        _session_value(request, "csrf_token")
+        state = _home_state(dependencies)
+        active_plan = _active_plan(
+            dependencies.plan_service.list_plans(), dependencies.today()
+        )
+        if active_plan is None:
+            body_html = (
+                '<section class="report-section"><h2>Ingen aktiv plan</h2>'
+                '<p>Det finns ingen accepterad plan för dagens datum. Skapa och acceptera '
+                'ett nytt utkast i Pace när planeringsunderlaget är klart.</p></section>'
+            )
+            subtitle = "Den här vyn visar alltid den accepterade planen som gäller i dag."
+        else:
+            body_html = render_plan_fragment(active_plan)
+            subtitle = "Accepterad plan som gäller i dag. Feedback syns här efter att den har sparats."
+        return _html_response(
+            render_web_report_page(
+                state=state,
+                active_page="plan",
+                kicker="ACCEPTERAD PLAN",
+                title="Plan",
+                subtitle=subtitle,
+                body_html=body_html,
+            )
+        )
+
+    @app.get("/weekly-review", response_class=HTMLResponse)
+    def weekly_review(request: Request) -> HTMLResponse:
+        _session_value(request, "csrf_token")
+        state = _home_state(dependencies)
+        snapshot = load_weekly_review_snapshot(
+            reports_directory=dependencies.reports_directory
+        )
+        if snapshot is None:
+            body_html = (
+                '<section class="report-section"><h2>Ingen kompatibel veckoreview ännu</h2>'
+                '<p>Skapa en ny explicit review i terminalen för att visa den här. '
+                'Pace gör inte ett AI-anrop automatiskt när du öppnar sidan.</p>'
+                '<p class="notice">Kör: uv run pace review weekly</p></section>'
+            )
+            subtitle = "Veckoreview sparas som en uttrycklig AI-snapshot."
+        else:
+            body_html = render_weekly_review_fragment(snapshot)
+            subtitle = (
+                "Senaste uttryckliga AI-snapshoten för veckan som slutar "
+                f"{snapshot.end_date.isoformat()}."
+            )
+        return _html_response(
+            render_web_report_page(
+                state=state,
+                active_page="weekly_review",
+                kicker="EXPLICIT AI-REVIEW",
+                title="Veckoreview",
+                subtitle=subtitle,
+                body_html=body_html,
+            )
+        )
 
     @app.get("/reports/{report_name}")
     def report(report_name: str) -> FileResponse:
@@ -200,6 +292,10 @@ def _session_value(request: Request, key: str) -> str:
     value = secrets.token_urlsafe(24)
     request.session[key] = value
     return value
+
+
+def _html_response(content: str) -> HTMLResponse:
+    return HTMLResponse(content, headers={"Cache-Control": "no-store"})
 
 
 def _require_csrf(request: Request) -> None:
@@ -303,19 +399,23 @@ def _safe_report_path(reports_directory: Path, report_name: str) -> Path | None:
 
 def _reports_payload(reports_directory: Path, active_plan) -> dict[str, dict[str, object]]:
     candidates = {
-        "dashboard": ("dashboard.html", "Kör: uv run pace dashboard"),
-        "weekly_review": ("weekly-review.html", "Kör: uv run pace review weekly"),
+        "dashboard": ("/dashboard", True, ""),
+        "weekly_review": (
+            "/weekly-review",
+            load_weekly_review_snapshot(reports_directory=reports_directory) is not None,
+            "Kör: uv run pace review weekly",
+        ),
         "plan": (
-            None if active_plan is None else f"plan-{active_plan.id}.html",
+            "/plan",
+            active_plan is not None,
             "Skapa eller öppna en accepterad plan först.",
         ),
     }
     result: dict[str, dict[str, object]] = {}
-    for key, (name, unavailable_message) in candidates.items():
-        path = None if name is None else _safe_report_path(reports_directory, name)
+    for key, (path, available, unavailable_message) in candidates.items():
         result[key] = {
-            "path": None if path is None else f"/reports/{path.name}",
-            "available": path is not None and path.is_file(),
+            "path": path,
+            "available": available,
             "unavailable_message": unavailable_message,
         }
     return result
