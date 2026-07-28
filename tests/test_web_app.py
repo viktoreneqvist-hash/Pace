@@ -228,7 +228,7 @@ def test_confirmation_endpoints_require_csrf_and_reuse_existing_services(tmp_pat
         "/api/feedback/confirm",
         headers={"X-Pace-CSRF": csrf},
         json={
-            "session_id": 12,
+            "planned_session_id": 12,
             "outcome": "completed_limited",
             "perceived_exertion": 8,
             "reason_code": "fatigue",

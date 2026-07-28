@@ -11,7 +11,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
 from pace.ai.client import PaceAIError
@@ -50,7 +50,9 @@ class ContextConfirmation(BaseModel):
 
 
 class FeedbackConfirmation(BaseModel):
-    session_id: int
+    session_id: int = Field(
+        validation_alias=AliasChoices("session_id", "planned_session_id")
+    )
     outcome: str
     perceived_exertion: int | None = Field(default=None, ge=1, le=10)
     reason_code: str | None = None

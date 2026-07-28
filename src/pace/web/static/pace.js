@@ -121,10 +121,23 @@ document.querySelectorAll("[data-prompt]").forEach(button => button.addEventList
 document.addEventListener("click", async event => {
   const button = event.target.closest("button"); if (!button) return;
   if (button.dataset.action === "dismiss") { button.closest(".decision-card").remove(); return; }
+  const card = button.closest(".decision-card");
+  const originalLabel = button.textContent;
   try {
-    if (button.dataset.action === "context") { const payload = JSON.parse(button.dataset.payload); await api("/api/context/confirm", {method:"POST", body:JSON.stringify(payload)}); button.closest(".decision-card").innerHTML = "<p><b>Context sparad.</b> Pace har inte ändrat planen.</p>"; }
-    if (button.dataset.action === "feedback") { const payload = JSON.parse(button.dataset.payload); await api("/api/feedback/confirm", {method:"POST", body:JSON.stringify(payload)}); button.closest(".decision-card").innerHTML = "<p><b>Feedback sparad.</b> Ingen plan har ändrats.</p>"; }
-  } catch (error) { button.closest(".decision-card, .draft-card").insertAdjacentHTML("beforeend", `<p class="notice">${esc(error.message)}</p>`); }
+    if (button.dataset.action === "context" || button.dataset.action === "feedback") {
+      button.disabled = true; button.textContent = "Sparar…";
+      const payload = JSON.parse(button.dataset.payload);
+      const path = button.dataset.action === "context" ? "/api/context/confirm" : "/api/feedback/confirm";
+      await api(path, {method:"POST", body:JSON.stringify(payload)});
+      card.innerHTML = button.dataset.action === "context"
+        ? "<p><b>Context sparad.</b> Pace har inte ändrat planen.</p>"
+        : "<p><b>Feedback sparad.</b> Utfallet är registrerat och knappen är borta.</p>";
+      await refreshHome();
+    }
+  } catch (error) {
+    button.disabled = false; button.textContent = originalLabel;
+    card.insertAdjacentHTML("beforeend", `<p class="notice"><b>Kunde inte spara.</b> ${esc(error.message)}</p>`);
+  }
 });
 async function refreshHome() { try { state = await api("/api/home", {method:"GET"}); renderState(); } catch (error) { addMessage("coach", `Kunde inte uppdatera fakta: ${error.message}`); } }
 document.getElementById("refresh-home").addEventListener("click", refreshHome);
