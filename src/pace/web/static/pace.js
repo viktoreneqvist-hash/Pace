@@ -21,6 +21,15 @@ function addMessage(kind, body, extras = "") {
   entry.scrollIntoView({block:"nearest", behavior:"smooth"});
 }
 
+function restoreConversation() {
+  if (!Array.isArray(state.conversation) || chatLog.children.length) return;
+  state.conversation.forEach(message => {
+    if (message && (message.role === "athlete" || message.role === "coach") && typeof message.text === "string") {
+      addMessage(message.role, message.text);
+    }
+  });
+}
+
 function decisionCard(title, body, values, actionLabel, action, payload) {
   const rows = values.map(([name, value]) => `<div><span>${esc(name)}</span><b>${esc(value)}</b></div>`).join("");
   return `<article class="decision-card"><h3>${esc(title)}</h3><p>${esc(body)}</p><div class="decision-grid">${rows}</div><div class="decision-actions"><button class="primary" data-action="${action}" data-payload='${esc(JSON.stringify(payload))}'>${esc(actionLabel)}</button><button class="text-button" data-action="dismiss">Avfärda</button></div></article>`;
@@ -40,8 +49,7 @@ function renderState() {
 function renderPlan() {
   const target = document.getElementById("active-plan"); const plan = state.active_plan;
   if (!plan) {
-    const draft = state.draft_plan;
-    target.innerHTML = draft ? `<p class="notice">Utkast ${draft.id} väntar på ditt beslut.</p><p><a class="report-action" href="/plan">Granska hela utkastet →</a></p><button class="primary" type="button" data-action="plan_accept" data-payload='{"plan_id":${draft.id}}'>Acceptera utkast</button>` : '<p class="empty">Ingen accepterad aktiv plan. Skapa ett utkast när planeringsunderlaget är klart.</p>';
+    target.innerHTML = '<p class="empty">Ingen aktiv plan. Skapa en plan när planeringsunderlaget är klart.</p>';
     return;
   }
   const upcoming = plan.sessions.filter(session => session.scheduled_date >= state.as_of_date).slice(0, 3);
@@ -136,15 +144,15 @@ document.addEventListener("click", async event => {
     const title = race ? `Planera mot ${race.name}` : "Skapa generell plan";
     const body = race
       ? `${race.priority}-loppet blir det enda planmålet. Andra sparade lopp ignoreras.`
-      : "Inga sparade lopp blir planmål. Coachens utkast utgår från din aktuella historik och dina preferenser.";
-    addMessage("coach", "Kontrollera ditt planval innan AI-utkastet skapas.", decisionCard(title, body, [["Planmål", race ? `${race.name} · ${race.priority}` : "Inget lopp"], ["Detaljerat fönster", "14 dagar"]], "Skapa planutkast", "plan_draft", {race_id: raceId}));
+      : "Inga sparade lopp blir planmål. Planen utgår från din aktuella historik och dina preferenser.";
+    addMessage("coach", "Kontrollera ditt planval innan planen skapas.", decisionCard(title, body, [["Planmål", race ? `${race.name} · ${race.priority}` : "Inget lopp"], ["Detaljerat fönster", "14 dagar"]], "Skapa och aktivera plan", "plan_draft", {race_id: raceId}));
     return;
   }
   if (button.dataset.action === "dismiss") { button.closest(".decision-card").remove(); return; }
   const card = button.closest(".decision-card") || button.parentElement;
   const originalLabel = button.textContent;
   try {
-    if (button.dataset.action === "context" || button.dataset.action === "feedback" || button.dataset.action === "command" || button.dataset.action === "plan_draft" || button.dataset.action === "plan_accept") {
+    if (button.dataset.action === "context" || button.dataset.action === "feedback" || button.dataset.action === "command" || button.dataset.action === "plan_draft") {
       button.disabled = true; button.textContent = "Sparar…";
       const payload = JSON.parse(button.dataset.payload);
       const path = button.dataset.action === "context"
@@ -153,8 +161,6 @@ document.addEventListener("click", async event => {
           ? "/api/feedback/confirm"
           : button.dataset.action === "plan_draft"
             ? "/api/plan/draft/confirm"
-            : button.dataset.action === "plan_accept"
-              ? "/api/plan/accept/confirm"
             : "/api/command/confirm";
       const result = await api(path, {method:"POST", body:JSON.stringify(payload)});
       card.innerHTML = button.dataset.action === "context"
@@ -162,9 +168,7 @@ document.addEventListener("click", async event => {
         : button.dataset.action === "feedback"
           ? "<p><b>Feedback sparad.</b> Utfallet är registrerat och knappen är borta.</p>"
           : button.dataset.action === "plan_draft"
-            ? `<p><b>Planutkast ${esc(result.plan.id)} skapat.</b> Granska det i fliken Plan och acceptera när du är nöjd.</p>`
-          : button.dataset.action === "plan_accept"
-            ? `<p><b>Plan ${esc(result.plan_id)} accepterad.</b> Den gäller nu som din aktiva plan.</p>`
+            ? `<p><b>Plan ${esc(result.plan.id)} är aktiv.</b> <a class="report-action" href="/plan">Granska planen →</a></p>`
             : `<p><b>Klart.</b> ${esc(result.message)}</p>`;
       await refreshHome();
     }
@@ -176,3 +180,4 @@ document.addEventListener("click", async event => {
 async function refreshHome() { try { state = await api("/api/home", {method:"GET"}); renderState(); } catch (error) { addMessage("coach", `Kunde inte uppdatera fakta: ${error.message}`); } }
 document.getElementById("refresh-home").addEventListener("click", refreshHome);
 renderState();
+restoreConversation();

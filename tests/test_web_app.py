@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import date
+from copy import copy
 import re
 from types import SimpleNamespace
 
@@ -21,7 +22,7 @@ class FakePlanService:
     draft_calls: list[dict] = field(default_factory=list)
 
     def list_plans(self):
-        return (self.plan,)
+        return self.plan if isinstance(self.plan, tuple) else (self.plan,)
 
     def add_feedback(self, **kwargs):
         self.feedback_calls.append(kwargs)
@@ -310,6 +311,22 @@ def test_chat_keeps_conversation_in_server_memory_and_returns_confirmation_draft
     assert response.json()["context_event_draft"]["event_type"] == "work_stress"
     assert response.json()["feedback_draft"]["perceived_exertion"] == 8
     assert coach.calls[0]["conversation"] == ()
+    restored = client.get("/")
+    assert "Det här är ett avgränsat coachsvar." in restored.text
+
+
+def test_legacy_draft_is_visible_only_when_its_review_link_is_opened(tmp_path):
+    client, plans, _context, _coach, _sync, _review = _web_client(tmp_path)
+    draft = copy(plans.plan)
+    draft.id = 18
+    draft.status = "draft"
+    plans.plan = (plans.plan, draft)
+
+    response = client.get("/plan?draft=18")
+
+    assert response.status_code == 200
+    assert "Tidigare planutkast" in response.text
+    assert "Äldre utkast 18" in response.text
 
 
 def test_confirmation_endpoints_require_csrf_and_reuse_existing_services(tmp_path):
@@ -373,6 +390,8 @@ def test_plan_draft_confirmation_uses_only_the_selected_race_or_general_mode(tmp
 
     assert general.status_code == 200
     assert race_target.status_code == 200
+    assert general.json()["status"] == "accepted"
+    assert race_target.json()["status"] == "accepted"
     assert plans.draft_calls == [
         {
             "as_of_date": date(2026, 7, 27),

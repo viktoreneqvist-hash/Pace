@@ -517,7 +517,7 @@ def build_parser() -> ArgumentParser:
 
     plan_draft_parser = plan_subparsers.add_parser(
         "draft",
-        help="skapa ett AI-genererat, granskningsbart planutkast",
+        help="skapa och aktivera en validerad AI-genererad plan",
     )
     plan_draft_parser.add_argument(
         "--race-id",
@@ -539,13 +539,13 @@ def build_parser() -> ArgumentParser:
 
     plan_list_parser = plan_subparsers.add_parser(
         "list",
-        help="visa lokala utkast, accepterade planer och tidigare versioner",
+        help="visa lokala planer och tidigare versioner",
     )
     plan_list_parser.set_defaults(handler=run_plan_list)
 
     plan_show_parser = plan_subparsers.add_parser(
         "show",
-        help="visa ett planutkast eller en accepterad plan",
+        help="visa en lokal planversion",
     )
     plan_show_parser.add_argument("--id", type=int, required=True)
     plan_show_parser.set_defaults(handler=run_plan_show)
@@ -582,7 +582,7 @@ def build_parser() -> ArgumentParser:
 
     plan_accept_parser = plan_subparsers.add_parser(
         "accept",
-        help="acceptera ett utkast utan att radera tidigare planversioner",
+        help="acceptera ett äldre legacy-utkast utan att radera planversioner",
     )
     plan_accept_parser.add_argument("--id", type=int, required=True)
     plan_accept_parser.set_defaults(handler=run_plan_accept)
@@ -627,7 +627,7 @@ def build_parser() -> ArgumentParser:
 
     plan_revise_parser = plan_subparsers.add_parser(
         "revise",
-        help="skapa ett nytt kort revisionsutkast; den accepterade planen lämnas orörd",
+        help="skapa och aktivera en kort reviderad plan efter validering",
     )
     plan_revise_parser.add_argument("--id", type=int, required=True)
     plan_revise_parser.add_argument("--days", type=plan_days, default=14)
@@ -1419,7 +1419,7 @@ def run_zones_show(args: Namespace) -> int:
 def _plan_service_with_ai() -> TrainingPlanService:
     api_key = resolve_openai_api_key(settings)
     if not api_key:
-        raise ValueError("OPENAI_API_KEY saknas; inget planutkast har skapats.")
+        raise ValueError("OPENAI_API_KEY saknas; ingen plan har skapats.")
     return TrainingPlanService(
         generator=OpenAIPlanClient(api_key=api_key, model=settings.openai_model)
     )
@@ -1434,11 +1434,11 @@ def run_plan_draft(args: Namespace, *, today: date | None = None) -> int:
             race_id=args.race_id,
         )
     except (ValueError, PaceAIError) as error:
-        print(f"Planutkastet kunde inte skapas: {error}")
+        print(f"Planen kunde inte skapas: {error}")
         return 2
     print(json.dumps(asdict(plan), default=_json_default, indent=2))
     print(f"Granska läsbart: 'pace plan review --id {plan.id}'.")
-    print(f"Planutkast {plan.id} är inte accepterat. Acceptera med 'pace plan accept --id {plan.id}'.")
+    print(f"Plan {plan.id} är aktiv. En tidigare aktiv plan ersätts först efter lyckad validering.")
     return 0
 
 
@@ -1677,10 +1677,10 @@ def run_plan_revise(args: Namespace, *, today: date | None = None) -> int:
             detailed_days=args.days,
         )
     except (ValueError, PaceAIError) as error:
-        print(f"Revisionsutkastet kunde inte skapas: {error}")
+        print(f"Den reviderade planen kunde inte skapas: {error}")
         return 2
     print(json.dumps(asdict(plan), default=_json_default, indent=2))
-    print(f"Revisionsutkast {plan.id} är inte accepterat. Den tidigare planen är orörd.")
+    print(f"Reviderad plan {plan.id} är aktiv. Den tidigare planen ersattes först efter lyckad validering.")
     return 0
 
 

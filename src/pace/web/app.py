@@ -107,10 +107,6 @@ class PlanDraftConfirmation(BaseModel):
     race_id: int | None = None
 
 
-class PlanAcceptanceConfirmation(BaseModel):
-    plan_id: int = Field(gt=0)
-
-
 class OpenAIKeySetup(BaseModel):
     api_key: SecretStr
 
@@ -207,7 +203,7 @@ class WebServices:
             return self.plan_generation_service_factory()
         api_key = resolve_openai_api_key(settings)
         if not api_key:
-            raise ValueError("OPENAI_API_KEY saknas; inget planutkast har skapats.")
+            raise ValueError("OPENAI_API_KEY saknas; ingen plan har skapats.")
         return TrainingPlanService(
             generator=OpenAIPlanClient(api_key=api_key, model=settings.openai_model)
         )
@@ -230,7 +226,9 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request) -> HTMLResponse:
         csrf_token = _session_value(request, "csrf_token")
+        conversation_id = _session_value(request, "conversation_id")
         state = _home_state(dependencies)
+        state["conversation"] = conversations.get(conversation_id, [])
         if state["onboarding"]["active"]:
             return HTMLResponse(render_web_onboarding(state=state, csrf_token=csrf_token))
         return HTMLResponse(render_web_home(state=state, csrf_token=csrf_token))
@@ -274,32 +272,38 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
     def plan(request: Request) -> HTMLResponse:
         _session_value(request, "csrf_token")
         state = _home_state(dependencies)
-        active_plan = _active_plan(
-            dependencies.plan_service.list_plans(), dependencies.today()
-        )
-        draft_plan = _latest_draft(dependencies.plan_service.list_plans())
-        if active_plan is None:
+        plans = dependencies.plan_service.list_plans()
+        active_plan = _active_plan(plans, dependencies.today())
+        requested_draft_id = request.query_params.get("draft")
+        draft_plan = _selected_draft(plans, requested_draft_id)
+        if draft_plan is not None:
+            body_html = render_plan_fragment(draft_plan)
+            subtitle = (
+                f"Äldre utkast {draft_plan.id}. Nya planer aktiveras direkt efter "
+                "lyckad validering."
+            )
+            title = "Tidigare planutkast"
+            kicker = "ARKIV"
+        elif active_plan is None:
             if draft_plan is None:
                 body_html = (
                     '<section class="report-section"><h2>Ingen aktiv plan</h2>'
-                    '<p>Öppna Coach för att skapa ett planutkast när underlaget är klart.</p></section>'
+                    '<p>Öppna Coach för att skapa en plan när underlaget är klart.</p></section>'
                 )
-                subtitle = "Den här vyn visar din accepterade plan eller senaste utkast."
-            else:
-                body_html = render_plan_fragment(draft_plan)
-                subtitle = (
-                    f"Utkast {draft_plan.id}. Läs igenom det och acceptera sedan i Coach. "
-                    "Det ändrar inte din aktiva plan förrän du bekräftar."
-                )
+                subtitle = "Den här vyn visar din aktiva plan och tidigare planversioner."
+            title = "Plan"
+            kicker = "PLAN"
         else:
             body_html = render_plan_fragment(active_plan)
-            subtitle = "Accepterad plan som gäller i dag. Feedback syns här efter att den har sparats."
+            subtitle = "Aktiv plan som gäller i dag. Feedback syns här efter att den har sparats."
+            title = "Plan"
+            kicker = "ACCEPTERAD PLAN"
         return _html_response(
             render_web_report_page(
                 state=state,
                 active_page="plan",
-                kicker="ACCEPTERAD PLAN",
-                title="Plan",
+                kicker=kicker,
+                title=title,
                 subtitle=subtitle,
                 body_html=body_html,
             )
@@ -511,7 +515,7 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
     def confirm_plan_draft(
         request: Request, payload: PlanDraftConfirmation
     ) -> dict[str, object]:
-        """Generate only the explicitly selected general or race-targeted draft."""
+        """Generate and activate only the explicitly selected plan."""
 
         _require_csrf(request)
         try:
@@ -523,24 +527,13 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
         except (ValueError, PaceAIError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         return {
-            "status": "draft_created",
+            "status": "accepted",
             "plan": {
                 "id": plan.id,
                 "goal_mode": plan.goal_mode,
                 "race_id": plan.race_id,
             },
         }
-
-    @app.post("/api/plan/accept/confirm")
-    def confirm_plan_acceptance(
-        request: Request, payload: PlanAcceptanceConfirmation
-    ) -> dict[str, object]:
-        _require_csrf(request)
-        try:
-            plan = dependencies.plan_service.accept_plan(plan_id=payload.plan_id)
-        except ValueError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
-        return {"status": "accepted", "plan_id": plan.id}
 
     @app.post("/api/setup/openai")
     def setup_openai(request: Request, payload: OpenAIKeySetup) -> dict[str, object]:
@@ -762,7 +755,6 @@ def _home_state(services: WebServices) -> dict[str, object]:
     as_of_date = services.today()
     plans = services.plan_service.list_plans()
     active_plan = _active_plan(plans, as_of_date)
-    draft_plan = _latest_draft(plans)
     checkpoint = services.checkpoint_service.get_checkpoint(as_of_date=as_of_date)
     preference = services.preference_service.get_preference()
     zones = services.zone_service.get_profile(sport_type="ride")
@@ -779,7 +771,6 @@ def _home_state(services: WebServices) -> dict[str, object]:
         "as_of_date": as_of_date.isoformat(),
         "checkpoint": _jsonable(checkpoint),
         "active_plan": _plan_payload(active_plan),
-        "draft_plan": _plan_payload(draft_plan),
         "reports": _reports_payload(services.reports_directory, active_plan),
         "preference": preference_payload,
         "ride_zones": zones_payload,
@@ -810,11 +801,21 @@ def _active_plan(plans, as_of_date: date):
     )
 
 
-def _latest_draft(plans):
-    """Expose one reviewable newest draft; drafts never silently become active."""
+def _selected_draft(plans, requested_id: str | None):
+    """Show a legacy draft only through an explicit review link."""
 
-    drafts = [plan for plan in plans if plan.status == "draft"]
-    return max(drafts, key=lambda plan: plan.id, default=None)
+    if requested_id is not None:
+        try:
+            plan_id = int(requested_id)
+        except ValueError:
+            plan_id = -1
+        requested = next(
+            (plan for plan in plans if plan.id == plan_id and plan.status == "draft"),
+            None,
+        )
+        if requested is not None:
+            return requested
+    return None
 
 
 def _history_is_ready(analysis: object) -> bool:
@@ -902,7 +903,7 @@ def _reports_payload(reports_directory: Path, active_plan) -> dict[str, dict[str
         "plan": (
             "/plan",
             active_plan is not None,
-            "Skapa eller öppna ett planutkast först.",
+            "Skapa eller öppna en aktiv plan först.",
         ),
     }
     result: dict[str, dict[str, object]] = {}

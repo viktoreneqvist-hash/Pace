@@ -2581,6 +2581,58 @@ Garmin payloads into an AI prompt or creating a large background system.
 
 ---
 
+# Decision #58
+
+## Problem
+
+The local UI made an athlete perform two confirmations for the same deliberate
+action: first create a fully validated plan draft, then accept it in a separate
+view. This hid the active workflow behind old draft cards and made ordinary
+planning slower without adding a meaningful safety boundary.
+
+## Options
+
+- Keep a separate manual acceptance step for every generated plan
+- Let the model create or replace plans from dialogue without an athlete action
+- Treat the explicit **Skapa plan** click (or `pace plan draft` command) as the
+  single athlete approval, while retaining full Python validation before any
+  database change
+
+## Chosen
+
+Pace now treats the explicit creation action as the single authorization for a
+new plan. The AI call remains stateless and cannot invoke itself from dialogue.
+Python validates the complete response, target eligibility, availability,
+block outline, selected facts and knowledge references before persisting a new
+`accepted` plan version. Only after the complete new version and its sessions
+exist does Pace mark any overlapping active plan as `superseded`.
+
+The same rule applies to an explicit revision. Failed generation or validation
+does not create a plan and leaves the previous active version unchanged. The
+legacy `plan accept` path remains only to read or recover older stored drafts;
+it is not part of normal UI or CLI planning. AI dialogue may still create only
+unsaved context, feedback and same-day adjustment proposals.
+
+## Reason
+
+The athlete already made the material intent decision by choosing a general
+goal or a specific race and pressing the creation button. The valuable safety
+boundary is deterministic validation and atomic replacement, not a second
+click after the exact same plan has already been requested.
+
+## Consequences
+
+- There is always one current plan version after a successful explicit create
+  or revision action; older versions remain locally readable as history.
+- A plan view normally shows only the active version. A legacy draft appears
+  only through a direct archive link and cannot mask the current plan.
+- Existing accepted plans stay immutable. No sync, coach answer, recovery
+  signal or background process can replace them.
+- The browser restores the bounded, in-memory coach transcript on navigation;
+  it remains non-persistent and disappears when the local server stops.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

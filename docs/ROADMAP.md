@@ -264,26 +264,27 @@ pace, power, or zone targets into a plan.
 - [x] Keep Python responsible for eligibility and limitations; defer all target
   proposals, workout generation, and plan writing to J3
 
-### Batch J3 — Reviewable short-horizon plan drafts
+### Batch J3 — Validated short-horizon plan versions
 
 Create a block view to an explicit A-race and a detailed one- or two-week
-draft. Capture structured pass outcomes and optional, explicitly shared
-feedback for a later revision draft; never overwrite an accepted plan.
+plan version. Capture structured pass outcomes and optional, explicitly shared
+feedback for a later explicit revision; never overwrite an active plan without
+the athlete creating a validated replacement.
 
 - [x] Store a local planning preference with availability and sport role, not
   self-reported performance volume or PB; let the coach decide session mix
   from selected facts rather than a fixed Python ratio
 - [x] Use a rolling four-week general-goal block when no A-race is selected
-- [x] Generate an explicit, stateless AI plan draft with a block outline and
+- [x] Generate an explicit, stateless AI plan with a block outline and
   seven or fourteen detailed days
 - [x] Send only selected normalized Pace facts, context metadata, and optional
   explicitly shared feedback; never raw Garmin data or context-note text
 - [x] Validate plan dates, required session fields, health/history gates, and
   sport-specific intensity eligibility in Python before writing a draft
 - [x] Accept a plan explicitly; preserve every prior version and mark only an
-  accepted parent plan superseded after accepting its revision
+  active parent plan superseded only after its validated revision persists
 - [x] Store `completed`, `completed_limited`, or `skipped` session feedback
-- [x] Generate only a short new revision draft from an accepted plan; never
+- [x] Generate only a short new revision from an accepted plan; never
   overwrite the block outline or an accepted plan automatically
 - [x] Support cycling distance, duration, and athlete-confirmed Garmin zone
   1–5 targets after two recent rides; let the coach decide zone distribution,
@@ -294,8 +295,9 @@ feedback for a later revision draft; never overwrite an accepted plan.
   plan draft
 - [x] Harden the current plan contract: structured numeric targets and Garmin
   zones, fact-catalog-only assessment references, Python availability checks,
-  full block-outline coverage, immutable bounded revisions, and no acceptance
-  of legacy/incomplete drafts
+  full block-outline coverage, immutable bounded revisions, automatic
+  activation after an explicit create action, and no acceptance of
+  legacy/incomplete drafts
 - [x] Add integrity gates around planning: stale Garmin-history blocking,
   SQLite foreign-key enforcement and upgrade checks, and migration cleanup of
   the superseded fixed weekly-run preference

@@ -1,4 +1,4 @@
-"""Generate, validate, version, and revise reviewable Pace plan drafts."""
+"""Generate, validate, version, and revise explicit Pace plan versions."""
 
 from dataclasses import asdict
 from datetime import date, timedelta
@@ -87,7 +87,7 @@ class TrainingPlanService:
         detailed_days: int,
         race_id: int | None,
     ) -> TrainingPlanFact:
-        """Generate and persist a draft only after gates and output validation pass."""
+        """Generate and activate a validated plan after the athlete's explicit click."""
 
         goal = self._resolve_goal(as_of_date=as_of_date, race_id=race_id)
         detailed_start_date = as_of_date
@@ -134,7 +134,7 @@ class TrainingPlanService:
         as_of_date: date,
         detailed_days: int,
     ) -> TrainingPlanFact:
-        """Create a separate short-horizon revision draft; never edit an accepted plan."""
+        """Create and activate a separate short-horizon revision; never edit its parent."""
 
         with session_scope() as session:
             parent = get_training_plan(session, plan_id=plan_id)
@@ -471,11 +471,19 @@ class TrainingPlanService:
         performance_readiness: PerformanceReadiness,
     ) -> TrainingPlanFact:
         with session_scope() as session:
+            if goal["race_id"] is not None:
+                race = get_race_by_id(session, goal["race_id"])
+                if race is None or race.status != "active":
+                    raise ValueError("A plan for a cancelled race cannot be activated.")
+            if parent_plan_id is not None:
+                parent = get_training_plan(session, plan_id=parent_plan_id)
+                if parent is None or parent.status != "accepted":
+                    raise ValueError("This revision is stale because its parent is no longer active.")
             plan = create_training_plan(
                 session,
                 TrainingPlan(
                     parent_plan_id=parent_plan_id,
-                    status="draft",
+                    status="accepted",
                     contract_version=CURRENT_PLAN_CONTRACT_VERSION,
                     goal_mode=goal["goal_mode"],
                     race_id=goal["race_id"],
@@ -518,6 +526,11 @@ class TrainingPlanService:
                         workout_steps=_serialize_workout_steps(item.workout_steps),
                     ),
                 )
+            _supersede_replaced_active_plans(
+                session=session,
+                plan=plan,
+                as_of_date=as_of_date,
+            )
             return _plan_fact(session, plan)
 
     def _generate_validated(
@@ -552,6 +565,16 @@ class TrainingPlanService:
         if self._generator is None:
             raise RuntimeError("A plan draft generator is required.")
         return self._generator
+
+
+def _supersede_replaced_active_plans(*, session, plan: TrainingPlan, as_of_date: date) -> None:
+    """Version an explicit replacement only after its complete new plan exists."""
+
+    for existing in list_training_plans(session):
+        if existing.id == plan.id or existing.status != "accepted":
+            continue
+        if existing.block_start_date <= as_of_date <= existing.block_end_date:
+            existing.status = "superseded"
 
 
 def _validate_plan_days(days: int) -> int:

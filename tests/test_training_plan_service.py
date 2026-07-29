@@ -238,14 +238,14 @@ def _service(
     )
 
 
-def test_initial_plan_is_a_persisted_draft_with_selected_fact_catalog_only():
+def test_initial_plan_is_activated_after_validation_with_selected_fact_catalog_only():
     generator = StubGenerator(_generated_plan())
 
     plan = _service(generator).generate_draft(
         as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
     )
 
-    assert plan.status == "draft"
+    assert plan.status == "accepted"
     assert plan.contract_version == 3
     assert plan.goal_mode == "general"
     assert plan.sessions[0].target.kind == "rpe"
@@ -270,7 +270,7 @@ def test_initial_plan_retries_one_python_rejected_ai_candidate():
         as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
     )
 
-    assert plan.status == "draft"
+    assert plan.status == "accepted"
     assert len(generator.requests) == 2
     assert generator.requests[0].repair_instruction is None
     assert "block outline must cover" in generator.requests[1].repair_instruction
@@ -344,25 +344,25 @@ def test_plan_rejects_an_incomplete_or_unreferenced_assessment_before_persistenc
 
 def test_legacy_draft_cannot_be_accepted():
     service = _service(StubGenerator(_generated_plan()))
-    draft = service.generate_draft(
+    plan = service.generate_draft(
         as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
     )
     with session_scope() as session:
-        stored = get_training_plan(session, plan_id=draft.id)
+        stored = get_training_plan(session, plan_id=plan.id)
         assert stored is not None
+        stored.status = "draft"
         stored.contract_version = 1
 
     with pytest.raises(ValueError, match="Legacy draft"):
-        service.accept_plan(plan_id=draft.id)
+        service.accept_plan(plan_id=plan.id)
 
 
 def test_feedback_creates_a_bounded_revision_without_overwriting_parent():
     generator = StubGenerator(_generated_plan())
     service = _service(generator)
-    initial = service.generate_draft(
+    accepted = service.generate_draft(
         as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
     )
-    accepted = service.accept_plan(plan_id=initial.id)
     service.add_feedback(
         session_id=accepted.sessions[0].id,
         outcome="completed_limited",
@@ -378,12 +378,12 @@ def test_feedback_creates_a_bounded_revision_without_overwriting_parent():
         detailed_days=14,
     )
 
-    assert revision.status == "draft"
+    assert revision.status == "accepted"
     assert revision.parent_plan_id == accepted.id
     assert revision.block_start_date == accepted.block_start_date
     assert revision.block_end_date == accepted.block_end_date
     assert revision.block_outline == accepted.block_outline
-    assert service.get_plan(plan_id=accepted.id).status == "accepted"
+    assert service.get_plan(plan_id=accepted.id).status == "superseded"
     assert generator.requests[-1].mode == "revision_draft"
     revision_catalog = generator.requests[-1].context["fact_catalog"]
     assert revision_catalog["feedback"]["value"][0]["note"] is None
@@ -396,10 +396,9 @@ def test_feedback_creates_a_bounded_revision_without_overwriting_parent():
 
 def test_feedback_rejects_rpe_or_reason_for_an_incompatible_outcome():
     service = _service(StubGenerator(_generated_plan()))
-    initial = service.generate_draft(
+    accepted = service.generate_draft(
         as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
     )
-    accepted = service.accept_plan(plan_id=initial.id)
 
     with pytest.raises(ValueError, match="RPE can only"):
         service.add_feedback(
@@ -415,24 +414,33 @@ def test_feedback_rejects_rpe_or_reason_for_an_incompatible_outcome():
         )
 
 
-def test_only_one_sibling_revision_can_be_accepted():
+def test_revision_replaces_its_parent_and_blocks_a_second_sibling_revision():
     service = _service(StubGenerator(_generated_plan()))
-    initial = service.generate_draft(
+    accepted = service.generate_draft(
         as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
     )
-    accepted = service.accept_plan(plan_id=initial.id)
     first = service.generate_revision(
         plan_id=accepted.id, as_of_date=date(2026, 7, 26), detailed_days=14
     )
-    second = service.generate_revision(
-        plan_id=accepted.id, as_of_date=date(2026, 7, 26), detailed_days=14
+    with pytest.raises(ValueError, match="Only an accepted"):
+        service.generate_revision(
+            plan_id=accepted.id, as_of_date=date(2026, 7, 26), detailed_days=14
+        )
+    assert service.get_plan(plan_id=accepted.id).status == "superseded"
+    assert first.status == "accepted"
+
+
+def test_new_validated_plan_supersedes_an_overlapping_active_plan_only_after_persistence():
+    service = _service(StubGenerator(_generated_plan()))
+    first = service.generate_draft(
+        as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
+    )
+    second = service.generate_draft(
+        as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
     )
 
-    service.accept_plan(plan_id=first.id)
-    with pytest.raises(ValueError, match="stale"):
-        service.accept_plan(plan_id=second.id)
-    assert service.get_plan(plan_id=accepted.id).status == "superseded"
-    assert service.get_plan(plan_id=second.id).status == "draft"
+    assert second.status == "accepted"
+    assert service.get_plan(plan_id=first.id).status == "superseded"
 
 
 def test_plan_rejects_an_outline_that_does_not_cover_the_entire_block():

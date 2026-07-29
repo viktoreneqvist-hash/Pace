@@ -1,7 +1,7 @@
 # Pace
 
 Pace är en privat, lokal träningscoach för löpning och cykling. Den hämtar din
-Garmin-historik till din egen dator, bygger ett granskningsbart kort planutkast
+Garmin-historik till din egen dator, bygger en granskningsbar kort planversion
 och använder AI bara när du uttryckligen ber om en plan, fråga eller veckoreview.
 
 Detta är en tidig privat alpha för inbjudna vänner. Du behöver ett eget
@@ -20,8 +20,10 @@ Garmin-data → lokal databas → Python räknar fakta → du lägger till conte
 
 - **Python** räknar tid, distans, frekvens, HRV-baslinjer och datakvalitet.
 - **Du** styr mål, lopp, tillgänglighet och vad som faktiskt hände på ett pass.
-- **AI-coachen** diskuterar och skapar endast utkast. Den får aldrig acceptera
-  en plan, spara feedback eller ändra en plan utan ditt klick.
+- **AI-coachen** diskuterar och föreslår. Ditt klick på **Skapa plan** är det
+  enda godkännandet av en ny plan: Pace aktiverar den först efter full Python-
+  validering. Coachen kan aldrig själv starta det flödet, spara feedback eller
+  ändra en plan.
 - **Allt kör lokalt.** Garmin-token, databas, rapporter och API-nyckel lämnar
   inte datorn via Git.
 
@@ -58,8 +60,8 @@ din webbläsare och guidar dig genom allt som behövs:
 - valfria framtida lopp och sedan ett uttryckligt planmål
 
 Databasen initieras automatiskt vid start. Garmin-lösenordet sparas aldrig;
-Pace sparar bara Garmins återanvändbara lokala session. När ett planutkast är
-skapat går Pace över till den vanliga Coach-vyn. Du kan göra allt vardagligt i
+Pace sparar bara Garmins återanvändbara lokala session. När en plan är
+skapad går Pace över till den vanliga Coach-vyn. Du kan göra allt vardagligt i
 webbgränssnittet; terminalkommandona längre ned är för felsökning och avancerad
 användning.
 
@@ -84,17 +86,17 @@ lokala app:
 - **Coach** är samtalet och platsen där du kan bekräfta context och passutfall.
 - **Dashboard** visar aktuella tränings- och recovery-fakta. Den räknas om från
   dina lokala data varje gång du öppnar den.
-- **Plan** visar den accepterade plan som gäller i dag och uppdateras när du
+- **Plan** visar den aktiva plan som gäller i dag och uppdateras när du
   har sparat feedback.
 - **Veckoreview** visar den senaste uttryckliga AI-snapshoten. Den skrivs inte
   om automatiskt när ny feedback tillkommer, så en gammal vecka får samma
   bedömning när du läser den igen.
 - **Inställningar** ändrar träningsläge, ambition, tillgängliga dagar,
   cykelpulszoner och framtida lopp. Du kan också synka de senaste sju eller
-  80 dagarna därifrån. Ändringen används först i nästa planutkast; en
-  accepterad plan skrivs aldrig om.
+  80 dagarna därifrån. Ändringen används först i nästa plan; en aktiv plan
+  skrivs aldrig om.
 
-Pace ändrar aldrig en accepterad plan automatiskt och chattens korta historik
+Pace ändrar aldrig en aktiv plan automatiskt och chattens korta historik
 försvinner när den lokala servern stoppas.
 
 ### Kommandon direkt i chatten
@@ -148,7 +150,7 @@ uv run pace db init
 Första-startflödet ovan är den rekommenderade vägen. Det visar samma steg i
 webbläsaren och behöver inga kommandon efter `uv sync`.
 
-Pace behöver 28 aktuella sammanhängande Garmin-dagar innan ett planutkast kan
+Pace behöver 28 aktuella sammanhängande Garmin-dagar innan en plan kan
 skapas. Första-starten och Inställningar importerar normalt 80 dagar, vilket
 ger coachen ett bättre historiskt underlag. Varje Garmin-anrop är ändå högst
 sju dagar. Importera äldre veckor manuellt i sjudagarsbatcher om `pace plan
@@ -189,20 +191,22 @@ uv run pace race add "Exempel 10 km" \
   --desired-time 00:45:00
 ```
 
-Skapa ett 14-dagars utkast. Planen blir inte aktiv förrän du godkänner den:
+Skapa en 14-dagars plan. Kommandot, precis som knappen i Coach, är ditt
+uttryckliga godkännande. Pace validerar först hela AI-svaret och aktiverar
+sedan planen. Om valideringen eller AI-anropet misslyckas ligger den tidigare
+aktiva planen kvar oförändrad:
 
 ```bash
 uv run pace plan draft --race-id 1 --days 14
 uv run pace plan review --id 1
 uv run pace plan report --id 1
 open reports/plan-1.html
-uv run pace plan accept --id 1
 ```
 
 Byt `1` mot plan-id:t som Pace skriver ut. HTML-rapporten är privat och lokal;
 den skickas inte till GitHub.
 
-Ett nytt planutkast innehåller ett faktiskt passupplägg, inte bara en rubrik:
+En ny plan innehåller ett faktiskt passupplägg, inte bara en rubrik:
 uppvärmning, jämna delar, intervallrepetitioner med vila och nedjogg. Pace kan
 alltså uttrycka exempelvis `10 × 1 km` eller `20 × 400 m` när din aktuella
 fakta- och kapacitetsgrund tillåter det. Löpfart kräver fortfarande aktuell
@@ -211,7 +215,7 @@ fartmål.
 
 Ett A-lopp styr riktningen för blocket. Ett aktivt 10 km-lopp, som
 Hässelbyloppet, får därför modellen att välja 10 km-relevant lokal
-coachingkunskap när den skapar nästa utkast. Det är inte en färdig mall: Pace
+coachingkunskap när den skapar nästa plan. Det är inte en färdig mall: Pace
 väljer fortfarande löpfrekvens, dagplacering och kvalitet från faktisk
 löpkontinuitet, återhämtning och feedback. Python kräver alltså inte varannan
 träningsdag eller en bestämd träningsvecka.
@@ -231,8 +235,9 @@ uv run pace plan draft --days 14
 ```
 
 I Coach-UI:t finns samma val under **Kommande lopp**. Välj antingen **Skapa
-utkast utan lopp** eller **Planera mot detta lopp**. Pace visar alltid ett
-bekräftelsekort innan den gör AI-anropet eller sparar ett utkast.
+plan utan lopp** eller **Planera mot detta lopp**. Pace visar alltid ett
+bekräftelsekort före AI-anropet. Klicket **Skapa och aktivera plan** skapar
+den nya aktiva versionen först när hela planen är validerad.
 
 ## Till vardags
 
@@ -266,11 +271,12 @@ fullt reproducerbara arbetsflöden.
 samlar dem på en startsida. Där visas även aktuellt ambitionsläge, sportroll,
 veckotillgänglighet och sparade cykelpulszoner. Den synkar inte Garmin, anropar
 inte AI och ändrar inte planen. `pace plan checkpoint` säger när detaljfönstret
-håller på att ta slut eller ett lopp närmar sig. Den visar bara vilket utkast du
-bör skapa; den skapar eller accepterar aldrig revisionen åt dig.
+håller på att ta slut eller ett lopp närmar sig. Den visar bara vilken ny plan
+eller revision du kan skapa; den startar aldrig en AI-körning själv.
 
-Om ett pass missas eller blir begränsat registrerar du utfallet och skapar ett
-kort revisionsutkast. Pace skriver aldrig över ett accepterat plan automatiskt.
+Om ett pass missas eller blir begränsat registrerar du utfallet och skapar en
+kort revision. Ditt revisionskommando är ett uttryckligt beslut; en lyckat
+validerad revision blir aktiv och den tidigare versionen arkiveras lokalt.
 
 ```bash
 uv run pace plan feedback --session-id 1 --outcome skipped --reason schedule --note "Jobbresa"
@@ -282,13 +288,13 @@ för redan synkade löp- och cykelpass. `pace plan workout evaluate` jämför se
 planerad tid, distans och intervallstruktur med dessa data. Splits är fortfarande
 inte ett bevis på att varje intervall utfördes rätt; din registrerade feedback
 är det enda uttryckliga utfallet och det som kan ligga till grund för nästa
-revisionsutkast.
+revision.
 
 `pace analysis show` visar de faktiska 28-dagarsvärdena för tid, distans,
 frekvens, feedback/RPE och recovery-täckning. Pace skapar inget eget dolt
 belastningsscore. Saknad distans visas som saknad, inte som noll.
 
-Om ett planutkast innehåller en coachprincip du vill behålla kan du bekräfta
+Om en plan innehåller en coachprincip du vill behålla kan du bekräfta
 den. Den granskas igen efter 84 dagar och ändrar aldrig en plan automatiskt:
 
 ```bash
@@ -303,8 +309,9 @@ uv run pace profile list
 - Vid en AI-fråga skickar Pace bara ett litet urval av normaliserade fakta till
   OpenAI — aldrig Garmin-lösenord, token, rådata, databasdump eller privat
   context-text.
-- Python räknar mått och datakvalitet. AI:n kan skapa ett granskningsbart
-  utkast, men kan inte acceptera eller skriva över ditt plan.
+- Python räknar mått och datakvalitet. AI:n kan föreslå en granskningsbar plan,
+  men kan inte acceptera, skapa eller skriva över något utan ditt uttryckliga
+  plan- eller revisionsklick.
 - Pace-fakta beskriver dig och din träning. AI:n får använda allmän
   tränarkunskap för sin bedömning, men den visas som coachbedömning — inte som
   ny Pace-data eller forskning.

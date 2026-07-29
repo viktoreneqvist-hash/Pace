@@ -63,7 +63,7 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
   </main>
   <footer>PACE KÖRS PÅ DIN DATOR · GARMIN OCH OPENAI ANROPAS ENDAST NÄR DU UTTRYCKLIGEN BER OM DET</footer>
   <script id="pace-state" type="application/json">{safe_state}</script>
-  <script src="/static/pace.js?v=20260729-2" defer></script>
+  <script src="/static/pace.js?v=20260729-3" defer></script>
 </body>
 </html>"""
 
@@ -141,8 +141,8 @@ def render_web_onboarding(*, state: dict[str, object], csrf_token: str) -> str:
         <button class="secondary" type="submit">Spara lopp</button>
       </form>
       <section id="setup-plan" class="setup-card wide-card setup-final">
-        <p class="kicker">7 · PLAN</p><h2>Skapa ditt första planutkast</h2>
-        <p class="muted-copy">När checklistan är klar väljer du här om utkastet ska vara generellt eller riktas mot ett av dina sparade lopp. Det gör ett avsiktligt AI-anrop och skapar aldrig en accepterad plan automatiskt.</p>
+        <p class="kicker">7 · PLAN</p><h2>Skapa din första plan</h2>
+        <p class="muted-copy">När checklistan är klar väljer du här om planen ska vara generell eller riktas mot ett av dina sparade lopp. Klicket är ditt uttryckliga godkännande: Pace aktiverar den först när AI-svaret har validerats helt.</p>
         <div id="setup-plan-actions"></div>
       </section>
     </section>
@@ -174,7 +174,7 @@ def render_web_settings(*, state: dict[str, object], csrf_token: str) -> str:
     </nav><div class="masthead-meta"><span>{escape(str(state['as_of_date']))}</span><span>LOCAL ONLY</span></div>
   </header>
   <main class="settings-shell">
-    <header class="settings-heading"><p class="kicker">DIN LOKALA RAM</p><h1>Inställningar</h1><p>Ändringar gäller framtida utkast. De skriver aldrig om en accepterad plan.</p></header>
+    <header class="settings-heading"><p class="kicker">DIN LOKALA RAM</p><h1>Inställningar</h1><p>Ändringar gäller framtida planer. De skriver aldrig om en aktiv plan.</p></header>
     <div id="settings-error" class="setup-error" hidden></div>
     <div id="settings-saved" class="settings-saved" hidden></div>
     <div class="settings-grid">
