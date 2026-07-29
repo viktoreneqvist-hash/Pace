@@ -37,44 +37,36 @@ På Mac med Homebrew installerar du uv en gång:
 brew install uv
 ```
 
-## Starta Pace
+## Starta Pace — utan terminal efter installation
 
 Klona det privata repo som du blivit inbjuden till:
 
 ```bash
 git clone <repo-adress>
-cd pace
+cd Pace
 uv sync
 ```
 
-Skapa din lokala fil för OpenAI-nyckeln. Den ignoreras av Git och Pace läser
-den automatiskt — du behöver aldrig köra `source` innan du använder Pace.
+Dubbelklicka sedan på **Start Pace.command** i Finder. Första gången öppnar Pace
+din webbläsare och guidar dig genom allt som behövs:
 
-```bash
-mkdir -p .local
-cp pace.env.example .local/pace.env
-chmod 600 .local/pace.env
-open -e .local/pace.env
-```
+- din OpenAI API-nyckel (lokalt och privat)
+- Garmin-inloggning, inklusive eventuell MFA
+- träningsläge, ambitionsläge och vilka dagar du är tillgänglig
+- Garmin-pulszoner om du tillåter cykling
+- fyra säkra Garmin-batcher för 28 dagars historik
+- valfria framtida lopp och sedan ett uttryckligt planmål
 
-Klistra in din egen nyckel efter `OPENAI_API_KEY=` och spara. Hoppa över detta
-om du först bara vill synka Garmin och se vanliga Python-beräknade mått.
-
-Initiera databasen, logga in på Garmin och hämta senaste veckan:
-
-```bash
-uv run pace db init
-uv run pace garmin login
-uv run pace sync --days 7
-uv run pace state show
-```
-
-Garmin frågar efter e-post, lösenord och eventuellt MFA direkt i terminalen.
-Pace sparar bara en återanvändbar Garmin-session lokalt på din dator.
+Databasen initieras automatiskt vid start. Garmin-lösenordet sparas aldrig;
+Pace sparar bara Garmins återanvändbara lokala session. När ett planutkast är
+skapat går Pace över till den vanliga Coach-vyn. Du kan göra allt vardagligt i
+webbgränssnittet; terminalkommandona längre ned är för felsökning och avancerad
+användning.
 
 ## Öppna den lokala coachen
 
-Till vardags räcker det att starta Pace så här:
+Till vardags räcker det att dubbelklicka på **Start Pace.command**. Alternativt
+kan du starta från terminalen:
 
 ```bash
 uv run pace serve
@@ -149,6 +141,9 @@ uv run pace db init
 
 ## Skapa första planen
 
+Första-startflödet ovan är den rekommenderade vägen. Det visar samma steg i
+webbläsaren och behöver inga kommandon efter `uv sync`.
+
 Pace behöver 28 aktuella sammanhängande Garmin-dagar innan ett planutkast kan
 skapas. Importera äldre veckor i sjudagarsbatcher om `pace plan readiness`
 inte säger `ready`:
@@ -170,6 +165,11 @@ uv run pace preferences set \
   --day fri:any --day sat:any --day sun:any
 uv run pace preferences ambition --ambition balanced
 ```
+
+Sportlägena är `run_only`, `run_primary`, `balanced`, `ride_primary` och
+`ride_only`. `run_only` och `ride_only` är hårda gränser: Pace föreslår aldrig
+det andra sportslaget. De två *primary*-lägena är bara din preferens; modellen
+väljer fortfarande passen utifrån fakta, återhämtning och planmålet.
 
 Lägg till ett lopp när du har ett. `A` är huvudmålet, `B` är ett
 sekundärt lopp med partiell taper och `C` behandlas som ett hårt träningspass:

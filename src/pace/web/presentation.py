@@ -16,7 +16,7 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="pace-csrf" content="{safe_csrf}">
   <title>Pace — Local Coach</title>
-  <link rel="stylesheet" href="/static/pace.css?v=20260729-1">
+  <link rel="stylesheet" href="/static/pace.css?v=20260729-2">
 </head>
 <body>
   <header class="masthead">
@@ -62,7 +62,93 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
   </main>
   <footer>PACE KÖRS PÅ DIN DATOR · GARMIN OCH OPENAI ANROPAS ENDAST NÄR DU UTTRYCKLIGEN BER OM DET</footer>
   <script id="pace-state" type="application/json">{safe_state}</script>
-  <script src="/static/pace.js?v=20260729-1" defer></script>
+  <script src="/static/pace.js?v=20260729-2" defer></script>
+</body>
+</html>"""
+
+
+def render_web_onboarding(*, state: dict[str, object], csrf_token: str) -> str:
+    """Render a resumable first-run checklist; all writes stay same-origin."""
+
+    safe_state = json.dumps(state, ensure_ascii=False).replace("<", "\\u003c")
+    safe_csrf = escape(csrf_token)
+    return f"""<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="pace-csrf" content="{safe_csrf}">
+  <title>Pace — Första start</title>
+  <link rel="stylesheet" href="/static/pace.css?v=20260729-2">
+</head>
+<body>
+  <header class="masthead">
+    <a class="wordmark" href="/">PACE<span>LOCAL COACHING SYSTEM</span></a>
+    <div class="masthead-meta"><span>FÖRSTA START</span><span>LOCAL ONLY</span></div>
+  </header>
+  <main class="onboarding-shell">
+    <section class="onboarding-intro">
+      <p class="kicker">STEG 1 AV 1 — DIN LOKALA COACH</p>
+      <h1>Bygg din<br><em>utgångspunkt.</em></h1>
+      <p>Pace sparar data på den här datorn. Du bestämmer om Garmin, AI och tävlingar används. Ingen plan skapas innan du väljer planmål.</p>
+    </section>
+    <section class="onboarding-workspace">
+      <div id="setup-status" class="setup-status" aria-live="polite"></div>
+      <div id="setup-error" class="setup-error" aria-live="polite"></div>
+      <form id="setup-openai" class="setup-card">
+        <p class="kicker">1 · AI-NYCKEL</p><h2>Aktivera coachen</h2>
+        <p class="muted-copy">Din egen OpenAI-nyckel sparas endast i Paces lokala, privata inställningsfil. Den visas aldrig här igen.</p>
+        <label>OpenAI API-nyckel<input name="api_key" type="password" autocomplete="off" required></label>
+        <button class="primary" type="submit">Spara AI-nyckel</button>
+      </form>
+      <form id="setup-garmin" class="setup-card">
+        <p class="kicker">2 · GARMIN</p><h2>Anslut träningsdata</h2>
+        <p class="muted-copy">E-post och lösenord skickas endast till Garmin för inloggning och sparas inte av Pace. MFA-kod behövs bara om Garmin frågar.</p>
+        <label>Garmin-e-post<input name="email" type="email" autocomplete="username" required></label>
+        <label>Lösenord<input name="password" type="password" autocomplete="current-password" required></label>
+        <label>MFA-kod (valfri)<input name="mfa_code" inputmode="numeric" autocomplete="one-time-code"></label>
+        <button class="primary" type="submit">Anslut Garmin</button>
+      </form>
+      <form id="setup-preferences" class="setup-card wide-card">
+        <p class="kicker">3 · DIN RAM</p><h2>Välj vad du faktiskt vill träna</h2>
+        <div class="choice-grid" role="radiogroup" aria-label="Träningsläge">
+          <label><input type="radio" name="sport_role" value="run_only" required><b>Endast löpning</b><span>Inga cykelpass.</span></label>
+          <label><input type="radio" name="sport_role" value="run_primary"><b>Löpning primär</b><span>Löpning i fokus, cykel kan stötta.</span></label>
+          <label><input type="radio" name="sport_role" value="balanced" checked><b>Balanserad</b><span>Coachen väljer sport utifrån fakta.</span></label>
+          <label><input type="radio" name="sport_role" value="ride_primary"><b>Cykling primär</b><span>Cykling i fokus, löpning kan stötta.</span></label>
+          <label><input type="radio" name="sport_role" value="ride_only"><b>Endast cykling</b><span>Inga löppass.</span></label>
+        </div>
+        <fieldset><legend>Ambitionsläge</legend><label><input type="radio" name="coaching_ambition" value="cautious"> Försiktig</label><label><input type="radio" name="coaching_ambition" value="balanced" checked> Balanserad</label><label><input type="radio" name="coaching_ambition" value="ambitious"> Offensiv</label></fieldset>
+        <fieldset><legend>Tillgängliga dagar</legend><div class="weekday-grid">{''.join(f'<label><input type="checkbox" name="day" value="{key}:any" checked> {label}</label>' for key, label in (("mon", "Mån"), ("tue", "Tis"), ("wed", "Ons"), ("thu", "Tor"), ("fri", "Fre"), ("sat", "Lör"), ("sun", "Sön")))}</div></fieldset>
+        <button class="primary" type="submit">Spara min träningsram</button>
+      </form>
+      <form id="setup-zones" class="setup-card wide-card">
+        <p class="kicker">4 · CYKELPULS</p><h2>Bekräfta dina Garmin-zoner</h2>
+        <p class="muted-copy">Behövs bara om du tillåter cykling. Ange gränser som de visas i Garmin, till exempel Z2 119–138.</p>
+        <div class="zone-inputs">{''.join(f'<label>Z{number}<input name="zone_{number}" placeholder="{default}" inputmode="numeric"></label>' for number, default in ((1,"99-118"),(2,"119-138"),(3,"139-158"),(4,"159-177"),(5,"178-197")))}</div>
+        <button class="primary" type="submit">Spara cykelzoner</button>
+      </form>
+      <section id="setup-history" class="setup-card wide-card">
+        <p class="kicker">5 · UNDERLAG</p><h2>Hämta 28 dagars historik</h2>
+        <p class="muted-copy">Pace importerar fyra sammanhängande Garmin-batcher på sju dagar. Varje batch följer samma synkgräns som den vanliga synken.</p>
+        <button id="history-button" class="primary" type="button">Hämta 28 dagar från Garmin</button>
+      </section>
+      <form id="setup-race" class="setup-card wide-card">
+        <p class="kicker">6 · VALFRITT</p><h2>Lägg till ett framtida lopp</h2>
+        <p class="muted-copy">Du kan lägga till fler lopp senare. Ett lopp blir aldrig planmål förrän du väljer just det loppet när utkastet skapas.</p>
+        <div class="race-inputs"><label>Namn<input name="name" placeholder="Hässlebyloppet"></label><label>Datum<input name="race_date" type="date"></label><label>Distans (km)<input name="distance_km" type="number" min="0.1" step="0.1"></label><label>Sport<select name="sport_type"><option value="run">Löpning</option><option value="ride">Cykling</option></select></label><label>Prioritet<select name="priority"><option value="A">A</option><option value="B">B</option><option value="C">C</option></select></label></div>
+        <button class="secondary" type="submit">Spara lopp</button>
+      </form>
+      <section id="setup-plan" class="setup-card wide-card setup-final">
+        <p class="kicker">7 · PLAN</p><h2>Skapa ditt första planutkast</h2>
+        <p class="muted-copy">När checklistan är klar väljer du här om utkastet ska vara generellt eller riktas mot ett av dina sparade lopp. Det gör ett avsiktligt AI-anrop och skapar aldrig en accepterad plan automatiskt.</p>
+        <div id="setup-plan-actions"></div>
+      </section>
+    </section>
+  </main>
+  <footer>PACE KÖRS PÅ DIN DATOR · DU KAN ÄNDRA INSTÄLLNINGAR SENARE</footer>
+  <script id="pace-state" type="application/json">{safe_state}</script>
+  <script src="/static/onboarding.js?v=20260729-1" defer></script>
 </body>
 </html>"""
 

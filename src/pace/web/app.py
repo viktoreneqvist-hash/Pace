@@ -11,14 +11,20 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, SecretStr
 from starlette.middleware.sessions import SessionMiddleware
 
 from pace.ai.client import PaceAIError
 from pace.ai.plan_client import OpenAIPlanClient
 from pace.coach.client import OpenAICoachDialogueClient
-from pace.config.settings import PROJECT_ROOT, resolve_openai_api_key, settings
+from pace.config.settings import (
+    PROJECT_ROOT,
+    resolve_openai_api_key,
+    save_openai_api_key,
+    settings,
+)
 from pace.integrations.garmin.client import (
+    GARMIN_TOKEN_FILENAME,
     GarminAuthenticationRequiredError,
     GarminConnectClient,
     GarminIntegrationError,
@@ -32,11 +38,15 @@ from pace.presentation.weekly_review import (
 )
 from pace.services.context_service import ContextEventInput, ContextService
 from pace.services.heart_rate_zone_service import HeartRateZoneService
+from pace.services.heart_rate_zone_service import HeartRateZoneInput
 from pace.services.personalization_evidence_service import PersonalizationEvidenceService
 from pace.services.plan_checkpoint_service import PlanCheckpointService
-from pace.services.race_service import RaceService, resolved_taper
+from pace.services.race_service import RaceInput, RaceService, resolved_taper
 from pace.services.training_plan_service import TrainingPlanService
-from pace.services.training_preference_service import TrainingPreferenceService
+from pace.services.training_preference_service import (
+    TrainingPreferenceInput,
+    TrainingPreferenceService,
+)
 from pace.services.transparent_training_analysis_service import (
     TransparentTrainingAnalysisService,
 )
@@ -44,7 +54,11 @@ from pace.services.coach_dialogue_service import CoachDialogueService
 from pace.services.dashboard_service import DashboardService
 from pace.services.garmin_sync_service import GarminSyncService
 from pace.services.weekly_review_service import WeeklyReviewService
-from pace.web.presentation import render_web_home, render_web_report_page
+from pace.web.presentation import (
+    render_web_home,
+    render_web_onboarding,
+    render_web_report_page,
+)
 from pace.weekly_review.client import WeeklyReviewClient
 
 
@@ -89,6 +103,38 @@ class PlanDraftConfirmation(BaseModel):
     """One explicit browser choice of either a selected race or no race."""
 
     race_id: int | None = None
+
+
+class PlanAcceptanceConfirmation(BaseModel):
+    plan_id: int = Field(gt=0)
+
+
+class OpenAIKeySetup(BaseModel):
+    api_key: SecretStr
+
+
+class GarminLoginSetup(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: SecretStr
+    mfa_code: SecretStr | None = None
+
+
+class PreferenceSetup(BaseModel):
+    sport_role: str
+    coaching_ambition: str
+    available_days: list[str] = Field(min_length=1, max_length=7)
+
+
+class ZoneSetup(BaseModel):
+    zones: list[str] = Field(min_length=5, max_length=5)
+
+
+class RaceSetup(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    sport_type: str
+    race_date: date
+    distance_km: float = Field(gt=0, le=1_000)
+    priority: str
 
 
 @dataclass(slots=True)
@@ -171,6 +217,8 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
     def home(request: Request) -> HTMLResponse:
         csrf_token = _session_value(request, "csrf_token")
         state = _home_state(dependencies)
+        if state["onboarding"]["active"]:
+            return HTMLResponse(render_web_onboarding(state=state, csrf_token=csrf_token))
         return HTMLResponse(render_web_home(state=state, csrf_token=csrf_token))
 
     @app.get("/api/home")
@@ -209,13 +257,20 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
         active_plan = _active_plan(
             dependencies.plan_service.list_plans(), dependencies.today()
         )
+        draft_plan = _latest_draft(dependencies.plan_service.list_plans())
         if active_plan is None:
-            body_html = (
-                '<section class="report-section"><h2>Ingen aktiv plan</h2>'
-                '<p>Det finns ingen accepterad plan för dagens datum. Skapa och acceptera '
-                'ett nytt utkast i Pace när planeringsunderlaget är klart.</p></section>'
-            )
-            subtitle = "Den här vyn visar alltid den accepterade planen som gäller i dag."
+            if draft_plan is None:
+                body_html = (
+                    '<section class="report-section"><h2>Ingen aktiv plan</h2>'
+                    '<p>Öppna Coach för att skapa ett planutkast när underlaget är klart.</p></section>'
+                )
+                subtitle = "Den här vyn visar din accepterade plan eller senaste utkast."
+            else:
+                body_html = render_plan_fragment(draft_plan)
+                subtitle = (
+                    f"Utkast {draft_plan.id}. Läs igenom det och acceptera sedan i Coach. "
+                    "Det ändrar inte din aktiva plan förrän du bekräftar."
+                )
         else:
             body_html = render_plan_fragment(active_plan)
             subtitle = "Accepterad plan som gäller i dag. Feedback syns här efter att den har sparats."
@@ -456,6 +511,117 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
             },
         }
 
+    @app.post("/api/plan/accept/confirm")
+    def confirm_plan_acceptance(
+        request: Request, payload: PlanAcceptanceConfirmation
+    ) -> dict[str, object]:
+        _require_csrf(request)
+        try:
+            plan = dependencies.plan_service.accept_plan(plan_id=payload.plan_id)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {"status": "accepted", "plan_id": plan.id}
+
+    @app.post("/api/setup/openai")
+    def setup_openai(request: Request, payload: OpenAIKeySetup) -> dict[str, object]:
+        _require_csrf(request)
+        try:
+            save_openai_api_key(api_key=payload.api_key.get_secret_value())
+        except (OSError, ValueError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return _home_state(dependencies)
+
+    @app.post("/api/setup/garmin")
+    def setup_garmin(request: Request, payload: GarminLoginSetup) -> dict[str, object]:
+        """Authenticate locally; credentials are never stored, logged, or returned."""
+
+        _require_csrf(request)
+        try:
+            GarminConnectClient.login_with_credentials(
+                email=payload.email.strip(),
+                password=payload.password.get_secret_value(),
+                token_dir=settings.garmin_token_dir,
+                prompt_mfa=lambda: (
+                    "" if payload.mfa_code is None else payload.mfa_code.get_secret_value()
+                ),
+            )
+        except GarminRateLimitError as error:
+            raise HTTPException(status_code=429, detail=str(error)) from error
+        except (GarminAuthenticationRequiredError, GarminIntegrationError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return _home_state(dependencies)
+
+    @app.post("/api/setup/preferences")
+    def setup_preferences(request: Request, payload: PreferenceSetup) -> dict[str, object]:
+        _require_csrf(request)
+        try:
+            dependencies.preference_service.set_preference(
+                TrainingPreferenceInput(
+                    sport_role=payload.sport_role,
+                    coaching_ambition=payload.coaching_ambition,
+                    available_days=tuple(payload.available_days),
+                )
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return _home_state(dependencies)
+
+    @app.post("/api/setup/zones")
+    def setup_zones(request: Request, payload: ZoneSetup) -> dict[str, object]:
+        _require_csrf(request)
+        try:
+            dependencies.zone_service.set_profile(
+                HeartRateZoneInput(sport_type="ride", zones=tuple(payload.zones))
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return _home_state(dependencies)
+
+    @app.post("/api/setup/races")
+    def setup_race(request: Request, payload: RaceSetup) -> dict[str, object]:
+        _require_csrf(request)
+        try:
+            race = dependencies.race_service.add_race(
+                RaceInput(
+                    name=payload.name,
+                    sport_type=payload.sport_type,
+                    race_date=payload.race_date,
+                    distance_meters=payload.distance_km * 1_000,
+                    priority=payload.priority,
+                )
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {"status": "saved", "race": _race_payload(race), "state": _home_state(dependencies)}
+
+    @app.post("/api/setup/history/confirm")
+    def setup_history(request: Request) -> dict[str, object]:
+        """Import the minimum planning history as four visible seven-day batches."""
+
+        _require_csrf(request)
+        end_date = dependencies.today()
+        results = []
+        try:
+            sync_service = dependencies.sync_service()
+            for offset in range(0, 28, 7):
+                batch_end = end_date - timedelta(days=offset)
+                results.append(
+                    sync_service.sync(
+                        start_date=batch_end - timedelta(days=6), end_date=batch_end
+                    )
+                )
+        except GarminAuthenticationRequiredError as error:
+            raise HTTPException(status_code=422, detail=f"Historikimporten kan inte starta: {error}") from error
+        except GarminRateLimitError as error:
+            raise HTTPException(status_code=429, detail=f"Garmin begränsade historikimporten: {error}") from error
+        except (GarminIntegrationError, ValueError) as error:
+            raise HTTPException(status_code=422, detail=f"Historikimporten misslyckades: {error}") from error
+        return {
+            "status": "completed",
+            "batches": [_sync_command_result(item) for item in results],
+            "state": _home_state(dependencies),
+        }
+
     return app
 
 
@@ -483,22 +649,39 @@ def _home_state(services: WebServices) -> dict[str, object]:
     as_of_date = services.today()
     plans = services.plan_service.list_plans()
     active_plan = _active_plan(plans, as_of_date)
+    draft_plan = _latest_draft(plans)
     checkpoint = services.checkpoint_service.get_checkpoint(as_of_date=as_of_date)
     preference = services.preference_service.get_preference()
     zones = services.zone_service.get_profile(sport_type="ride")
     personalization = services.personalization_service.get_evidence(end_date=as_of_date)
     analysis = services.analysis_service.get_analysis(end_date=as_of_date)
     races = services.race_service.list_upcoming_races(as_of_date=as_of_date)
+    preference_payload = _preference_payload(preference)
+    zones_payload = None if zones is None else _jsonable(zones.zones)
+    analysis_payload = _jsonable(analysis)
+    history_ready = _history_is_ready(analysis_payload)
+    needs_ride_zones = preference is not None and preference.sport_role != "run_only"
+    onboarding_active = not plans
     return {
         "as_of_date": as_of_date.isoformat(),
         "checkpoint": _jsonable(checkpoint),
         "active_plan": _plan_payload(active_plan),
+        "draft_plan": _plan_payload(draft_plan),
         "reports": _reports_payload(services.reports_directory, active_plan),
-        "preference": _preference_payload(preference),
-        "ride_zones": None if zones is None else _jsonable(zones.zones),
+        "preference": preference_payload,
+        "ride_zones": zones_payload,
         "personalization": _jsonable(personalization),
-        "analysis": _jsonable(analysis),
+        "analysis": analysis_payload,
         "races": [_race_payload(race) for race in races],
+        "onboarding": {
+            "active": onboarding_active,
+            "openai_configured": bool(resolve_openai_api_key(settings)),
+            "garmin_connected": (settings.garmin_token_dir / GARMIN_TOKEN_FILENAME).is_file(),
+            "preferences_configured": preference_payload is not None,
+            "ride_zones_required": needs_ride_zones,
+            "ride_zones_configured": zones_payload is not None,
+            "history_ready": history_ready,
+        },
     }
 
 
@@ -512,6 +695,25 @@ def _active_plan(plans, as_of_date: date):
         ),
         None,
     )
+
+
+def _latest_draft(plans):
+    """Expose one reviewable newest draft; drafts never silently become active."""
+
+    drafts = [plan for plan in plans if plan.status == "draft"]
+    return max(drafts, key=lambda plan: plan.id, default=None)
+
+
+def _history_is_ready(analysis: object) -> bool:
+    """The onboarding minimum is 28 locally observed recovery days, never raw data."""
+
+    if not isinstance(analysis, dict):
+        return False
+    coverage = analysis.get("recovery_coverage")
+    if not isinstance(coverage, list):
+        return False
+    observed = [item[1] for item in coverage if isinstance(item, list) and len(item) >= 2]
+    return bool(observed) and min(observed) >= 28
 
 
 def _plan_payload(plan) -> dict[str, object] | None:
@@ -582,7 +784,7 @@ def _reports_payload(reports_directory: Path, active_plan) -> dict[str, dict[str
         "plan": (
             "/plan",
             active_plan is not None,
-            "Skapa eller öppna en accepterad plan först.",
+            "Skapa eller öppna ett planutkast först.",
         ),
     }
     result: dict[str, dict[str, object]] = {}

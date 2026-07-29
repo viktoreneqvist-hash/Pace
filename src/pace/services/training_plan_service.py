@@ -417,6 +417,7 @@ class TrainingPlanService:
         _validate_fact_references(generated=generated, context=context)
         _validate_knowledge_references(generated=generated, context=context)
         _validate_availability(generated=generated, context=context)
+        _validate_sport_mode(generated=generated, context=context)
         _validate_races_in_detailed_window(generated=generated, context=context)
         allowed_intensity = {
             fact.sport_type: set(fact.allowed_intensity_types)
@@ -900,6 +901,22 @@ def _validate_availability(*, generated: GeneratedPlanDraft, context: dict[str, 
         minutes_limit = limits_by_day[day]
         if minutes_limit is not None and total_seconds > minutes_limit * 60:
             raise ValueError("AI plan draft exceeds athlete availability on one day.")
+
+
+def _validate_sport_mode(*, generated: GeneratedPlanDraft, context: dict[str, object]) -> None:
+    """Treat only-sport selections as athlete-owned hard boundaries."""
+
+    catalog = context.get("fact_catalog")
+    preference_entry = catalog.get("training_preference") if isinstance(catalog, dict) else None
+    preference = preference_entry.get("value") if isinstance(preference_entry, dict) else None
+    role = preference.get("sport_role") if isinstance(preference, dict) else None
+    allowed = {"run", "ride"}
+    if role == "run_only":
+        allowed = {"run"}
+    elif role == "ride_only":
+        allowed = {"ride"}
+    if any(session.sport_type not in allowed for session in generated.sessions):
+        raise ValueError("AI plan draft used a sport outside the athlete's selected sport mode.")
 
 
 def _validate_block_outline(*, outline, block_start_date: date, block_end_date: date) -> None:

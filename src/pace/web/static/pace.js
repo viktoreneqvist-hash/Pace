@@ -7,7 +7,7 @@ const label = (value, values, fallback = "—") => values[value] || fallback;
 const sport = value => label(value, {run:"Löpning", ride:"Cykel"}, value || "—");
 const outcome = value => label(value, {completed:"Genomförd", completed_limited:"Begränsad", skipped:"Missad"}, "Ej rapporterad");
 const ambition = value => label(value, {cautious:"Försiktig", balanced:"Balanserad", ambitious:"Offensiv"});
-const role = value => label(value, {run_primary:"Löpning primär", ride_primary:"Cykling primär", balanced:"Balanserad löpning/cykling"});
+const role = value => label(value, {run_only:"Endast löpning", run_primary:"Löpning primär", ride_primary:"Cykling primär", ride_only:"Endast cykling", balanced:"Balanserad löpning/cykling"});
 const day = value => label(value, {mon:"Mån", tue:"Tis", wed:"Ons", thu:"Tor", fri:"Fre", sat:"Lör", sun:"Sön"}, value);
 const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
 
@@ -39,7 +39,11 @@ function renderState() {
 
 function renderPlan() {
   const target = document.getElementById("active-plan"); const plan = state.active_plan;
-  if (!plan) { target.innerHTML = '<p class="empty">Ingen accepterad aktiv plan. Skapa ett utkast när planeringsunderlaget är klart.</p>'; return; }
+  if (!plan) {
+    const draft = state.draft_plan;
+    target.innerHTML = draft ? `<p class="notice">Utkast ${draft.id} väntar på ditt beslut.</p><p><a class="report-action" href="/plan">Granska hela utkastet →</a></p><button class="primary" type="button" data-action="plan_accept" data-payload='{"plan_id":${draft.id}}'>Acceptera utkast</button>` : '<p class="empty">Ingen accepterad aktiv plan. Skapa ett utkast när planeringsunderlaget är klart.</p>';
+    return;
+  }
   const upcoming = plan.sessions.filter(session => session.scheduled_date >= state.as_of_date).slice(0, 3);
   target.innerHTML = `<p class="notice">Plan ${plan.id} · detaljerad till ${plan.detailed_end_date}</p>` + (upcoming.length ? upcoming.map(session => `<article class="plan-session"><span class="plan-date">${esc(session.scheduled_date)} · ${sport(session.sport_type)}</span><b>${esc(session.purpose)}</b><span>${km(session.distance_meters)} · ${hours(session.duration_seconds)} · ${esc(session.target_display)}</span><span>${outcome(session.feedback_outcome)}</span></article>`).join("") : '<p class="empty">Inga detaljerade pass kvar.</p>');
 }
@@ -137,10 +141,10 @@ document.addEventListener("click", async event => {
     return;
   }
   if (button.dataset.action === "dismiss") { button.closest(".decision-card").remove(); return; }
-  const card = button.closest(".decision-card");
+  const card = button.closest(".decision-card") || button.parentElement;
   const originalLabel = button.textContent;
   try {
-    if (button.dataset.action === "context" || button.dataset.action === "feedback" || button.dataset.action === "command" || button.dataset.action === "plan_draft") {
+    if (button.dataset.action === "context" || button.dataset.action === "feedback" || button.dataset.action === "command" || button.dataset.action === "plan_draft" || button.dataset.action === "plan_accept") {
       button.disabled = true; button.textContent = "Sparar…";
       const payload = JSON.parse(button.dataset.payload);
       const path = button.dataset.action === "context"
@@ -149,6 +153,8 @@ document.addEventListener("click", async event => {
           ? "/api/feedback/confirm"
           : button.dataset.action === "plan_draft"
             ? "/api/plan/draft/confirm"
+            : button.dataset.action === "plan_accept"
+              ? "/api/plan/accept/confirm"
             : "/api/command/confirm";
       const result = await api(path, {method:"POST", body:JSON.stringify(payload)});
       card.innerHTML = button.dataset.action === "context"
@@ -156,8 +162,10 @@ document.addEventListener("click", async event => {
         : button.dataset.action === "feedback"
           ? "<p><b>Feedback sparad.</b> Utfallet är registrerat och knappen är borta.</p>"
           : button.dataset.action === "plan_draft"
-            ? `<p><b>Planutkast ${esc(result.plan.id)} skapat.</b> Det är inte accepterat. Granska det i terminalen med <code>pace plan review --id ${esc(result.plan.id)}</code>.</p>`
-          : `<p><b>Klart.</b> ${esc(result.message)}</p>`;
+            ? `<p><b>Planutkast ${esc(result.plan.id)} skapat.</b> Granska det i fliken Plan och acceptera när du är nöjd.</p>`
+          : button.dataset.action === "plan_accept"
+            ? `<p><b>Plan ${esc(result.plan_id)} accepterad.</b> Den gäller nu som din aktiva plan.</p>`
+            : `<p><b>Klart.</b> ${esc(result.message)}</p>`;
       await refreshHome();
     }
   } catch (error) {

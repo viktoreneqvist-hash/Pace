@@ -9,15 +9,10 @@ import shlex
 from threading import Timer
 import webbrowser
 
-from alembic import command as alembic_command
-from alembic.config import Config as AlembicConfig
 from sqlalchemy.exc import OperationalError
 
-from pace.config.settings import PROJECT_ROOT, resolve_openai_api_key, settings
-from pace.database.engine import (
-    assert_sqlite_foreign_key_integrity,
-    secure_sqlite_database_file,
-)
+from pace.config.settings import resolve_openai_api_key, settings
+from pace.database.initialization import initialize_database
 from pace.integrations.garmin import (
     GarminAuthenticationRequiredError,
     GarminConnectClient,
@@ -899,13 +894,8 @@ def build_parser() -> ArgumentParser:
 def run_db_init(_args: Namespace) -> int:
     """Apply every reviewed Alembic migration to Pace's local database."""
 
-    alembic_config = AlembicConfig(PROJECT_ROOT / "alembic.ini")
-    alembic_config.set_main_option("sqlalchemy.url", settings.database_url)
-
     try:
-        assert_sqlite_foreign_key_integrity(settings.database_url)
-        alembic_command.upgrade(alembic_config, "head")
-        secure_sqlite_database_file(settings.database_url)
+        initialize_database(database_url=settings.database_url)
     except Exception:
         print("Databasen kunde inte initieras eller uppgraderas.")
         return 1
@@ -1589,6 +1579,11 @@ def run_serve(args: Namespace) -> int:
 
     from pace.web.app import create_app
 
+    try:
+        initialize_database(database_url=settings.database_url)
+    except Exception:
+        print("Pace-databasen kunde inte initieras eller uppgraderas.")
+        return 1
     url = f"http://127.0.0.1:{args.port}"
     print(f"Pace Home kör lokalt på {url}")
     print("Stäng med Ctrl+C. Inga data publiceras på nätet.")

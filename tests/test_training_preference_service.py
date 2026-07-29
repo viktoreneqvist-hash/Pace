@@ -55,3 +55,15 @@ def test_coaching_ambition_can_change_without_reentering_availability():
         {"day": "mon", "minutes": None},
         {"day": "wed", "minutes": 60},
     ]
+
+
+@pytest.mark.parametrize("sport_role", ("run_only", "ride_only"))
+def test_only_sport_roles_are_valid_explicit_athlete_boundaries(sport_role):
+    preference = TrainingPreferenceService().set_preference(
+        TrainingPreferenceInput(
+            sport_role=sport_role,
+            available_days=("mon:any",),
+        )
+    )
+
+    assert preference.sport_role == sport_role

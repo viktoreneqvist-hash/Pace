@@ -11,7 +11,9 @@ from pace.repositories.training_preference_repository import (
 )
 
 
-SUPPORTED_SPORT_ROLES = frozenset({"run_primary", "ride_primary", "balanced"})
+SUPPORTED_SPORT_ROLES = frozenset(
+    {"run_only", "run_primary", "balanced", "ride_primary", "ride_only"}
+)
 SUPPORTED_COACHING_AMBITIONS = frozenset({"cautious", "balanced", "ambitious"})
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 

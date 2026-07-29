@@ -11,6 +11,7 @@ from pace.personalization.models import PersonalizationEvidence
 from pace.planning.checkpoint_models import PlanCheckpoint
 from pace.training_analysis.models import SportWindowAnalysis, TransparentTrainingAnalysis
 from pace.web.app import WebServices, create_app
+from pace.web.presentation import render_web_onboarding
 
 
 @dataclass
@@ -269,6 +270,30 @@ def test_local_web_home_renders_current_plan_and_report_navigation(tmp_path):
     assert '"taper": "full"' in response.text
     assert "Offensiv" not in response.text
     assert "Noir" not in response.text
+
+
+def test_first_run_onboarding_contains_the_complete_local_setup_path():
+    page = render_web_onboarding(
+        state={
+            "onboarding": {
+                "active": True,
+                "openai_configured": False,
+                "garmin_connected": False,
+                "preferences_configured": False,
+                "ride_zones_required": False,
+                "ride_zones_configured": False,
+                "history_ready": False,
+            },
+            "races": [],
+        },
+        csrf_token="local-csrf",
+    )
+
+    assert "Bygg din" in page
+    assert "Endast löpning" in page
+    assert "Endast cykling" in page
+    assert "/api/setup/history/confirm" not in page
+    assert "onboarding.js" in page
 
 
 def test_chat_keeps_conversation_in_server_memory_and_returns_confirmation_drafts(tmp_path):

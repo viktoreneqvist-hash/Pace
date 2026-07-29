@@ -2474,6 +2474,59 @@ and stops chat wording or calendar proximity from silently redefining the plan.
 
 ---
 
+# Decision #56
+
+## Problem
+
+Pace had a capable local coach UI, but a new user still needed the terminal to
+create the database, configure a private API key, authenticate Garmin, import
+the required history, save preferences and create the first plan. The old three
+sport-role names also could not express that a user does not own a bike or does
+not want to run at all.
+
+## Options
+
+- Keep terminal setup and document it better
+- Build a cloud account and hosted onboarding flow
+- Add a resumable loopback-only onboarding page that calls the existing Pace
+  services, plus a simple Finder launcher
+
+## Chosen
+
+`Start Pace.command` runs `uv sync` and `pace serve` from the repository.
+`pace serve` now applies reviewed database migrations before starting. A user
+without any saved plan sees a local onboarding checklist for an API key,
+Garmin login, preferences, optional cycling zones, four explicit seven-day
+history batches, optional races and one selected plan target. Credentials are
+submitted only to the loopback server, used once for Garmin authentication and
+never rendered, logged or persisted by Pace; only Garmin's owner-only session
+token is retained.
+
+The five athlete-facing sport modes are `run_only`, `run_primary`, `balanced`,
+`ride_primary` and `ride_only`. The two `only` modes are Python-enforced hard
+constraints for plan drafts and coach replacements. The two `primary` modes
+remain preference information for the model, not fixed workout templates.
+
+## Reason
+
+This removes normal-use terminal friction without introducing a hosted service,
+account system or a second implementation of training logic. Reusing existing
+services keeps Garmin rate limits, token protection, plan gates and explicit
+acceptance intact. A user may state an ownership or sport boundary without
+turning their softer preference into a hidden training prescription.
+
+## Consequences
+
+- The first-run history import still consists only of bounded seven-day syncs.
+- API keys remain locally owner-only; no browser response contains the key.
+- A created draft must still be explicitly accepted in the UI before becoming
+  the active plan.
+- Existing CLI commands continue to work for debugging and advanced users.
+- Future settings editing belongs in the same UI, rather than requiring a
+  terminal-only parallel workflow.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |
@@ -2482,7 +2535,7 @@ and stops chat wording or calendar proximity from silently redefining the plan.
 | Package management | uv |
 | Data source | Garmin only |
 | Database | SQLite |
-| Interface | CLI plus owner-only local HTML and loopback coach UI |
+| Interface | Loopback coach UI with CLI fallback; first-run onboarding and Finder launcher |
 | Architecture style | Layered application |
 | Metrics | Deterministic Python |
 | Memory | Structured context events |

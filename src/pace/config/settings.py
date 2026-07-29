@@ -93,3 +93,21 @@ def resolve_openai_api_key(config: Settings = settings) -> str | None:
     """Read the local secret only when the explicit AI command needs it."""
 
     return config.openai_api_key or _read_openai_api_key(config.openai_secrets_file)
+
+
+def save_openai_api_key(*, api_key: str, config: Settings = settings) -> None:
+    """Persist one owner-only API key for Pace's local UI setup flow.
+
+    The value is deliberately written only to Pace's own ignored local file. It
+    is never returned by an API response or embedded into HTML.
+    """
+
+    clean_key = api_key.strip()
+    if not clean_key:
+        raise ValueError("OpenAI API-nyckeln får inte vara tom.")
+    secrets_file = config.openai_secrets_file
+    secrets_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if secrets_file.parent.stat().st_mode & 0o777 != 0o700:
+        secrets_file.parent.chmod(0o700)
+    secrets_file.write_text(f"OPENAI_API_KEY={clean_key}\n", encoding="utf-8")
+    secrets_file.chmod(0o600)

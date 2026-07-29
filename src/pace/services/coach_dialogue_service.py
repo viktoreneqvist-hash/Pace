@@ -173,6 +173,12 @@ class CoachDialogueService:
             raise ValueError("Coach replacement must stay on the selected date.")
         if session.sport_type not in {"run", "ride"}:
             raise ValueError("Coach replacement used an unsupported sport.")
+        preference = self._preference_service.get_preference()
+        if preference is not None and (
+            (preference.sport_role == "run_only" and session.sport_type != "run")
+            or (preference.sport_role == "ride_only" and session.sport_type != "ride")
+        ):
+            raise ValueError("Coach replacement used a sport outside the athlete's selected sport mode.")
         if session.distance_meters is None and session.duration_seconds is None:
             raise ValueError("Coach replacement needs distance or duration.")
         if session.sport_type == "ride" and (
