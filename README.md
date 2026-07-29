@@ -175,8 +175,7 @@ Lägg till ett lopp när du har ett. `A` är huvudmålet, `B` är ett
 sekundärt lopp med partiell taper och `C` behandlas som ett hårt träningspass:
 
 ```bash
-uv run pace race add \
-  --name "Exempel 10 km" \
+uv run pace race add "Exempel 10 km" \
   --sport run \
   --date 2026-10-11 \
   --distance-km 10 \
