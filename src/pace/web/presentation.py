@@ -16,7 +16,7 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="pace-csrf" content="{safe_csrf}">
   <title>Pace — Local Coach</title>
-  <link rel="stylesheet" href="/static/pace.css?v=20260729-2">
+  <link rel="stylesheet" href="/static/pace.css?v=20260729-3">
 </head>
 <body>
   <header class="masthead">
@@ -26,6 +26,7 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
       <a class="nav-link" href="/dashboard">Dashboard</a>
       <a class="nav-link" href="/plan">Plan</a>
       <a class="nav-link" href="/weekly-review">Veckoreview</a>
+      <a class="nav-link" href="/settings">Inställningar</a>
     </nav>
     <div class="masthead-meta"><span id="today-label"></span><span>LOCAL ONLY</span></div>
   </header>
@@ -129,9 +130,9 @@ def render_web_onboarding(*, state: dict[str, object], csrf_token: str) -> str:
         <button class="primary" type="submit">Spara cykelzoner</button>
       </form>
       <section id="setup-history" class="setup-card wide-card">
-        <p class="kicker">5 · UNDERLAG</p><h2>Hämta 28 dagars historik</h2>
-        <p class="muted-copy">Pace importerar fyra sammanhängande Garmin-batcher på sju dagar. Varje batch följer samma synkgräns som den vanliga synken.</p>
-        <button id="history-button" class="primary" type="button">Hämta 28 dagar från Garmin</button>
+        <p class="kicker">5 · UNDERLAG</p><h2>Hämta 80 dagars historik</h2>
+        <p class="muted-copy">Pace importerar normalt 80 dagar i tolv sammanhängande Garmin-batcher. Varje enskild batch är högst sju dagar.</p>
+        <button id="history-button" class="primary" type="button">Hämta 80 dagar från Garmin</button>
       </section>
       <form id="setup-race" class="setup-card wide-card">
         <p class="kicker">6 · VALFRITT</p><h2>Lägg till ett framtida lopp</h2>
@@ -151,6 +152,43 @@ def render_web_onboarding(*, state: dict[str, object], csrf_token: str) -> str:
   <script src="/static/onboarding.js?v=20260729-1" defer></script>
 </body>
 </html>"""
+
+
+def render_web_settings(*, state: dict[str, object], csrf_token: str) -> str:
+    """Render settings as a first-class local view, never a terminal detour."""
+
+    safe_state = json.dumps(state, ensure_ascii=False).replace("<", "\\u003c")
+    safe_csrf = escape(csrf_token)
+    return f"""<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="pace-csrf" content="{safe_csrf}"><title>Pace — Inställningar</title>
+  <link rel="stylesheet" href="/static/pace.css?v=20260729-3">
+</head>
+<body>
+  <header class="masthead">
+    <a class="wordmark" href="/">PACE<span>LOCAL COACHING SYSTEM</span></a>
+    <nav class="masthead-nav" aria-label="Pace-vyer">
+      <a class="nav-link" href="/">Coach</a><a class="nav-link" href="/dashboard">Dashboard</a><a class="nav-link" href="/plan">Plan</a><a class="nav-link" href="/weekly-review">Veckoreview</a><a class="nav-link is-current" href="/settings">Inställningar</a>
+    </nav><div class="masthead-meta"><span>{escape(str(state['as_of_date']))}</span><span>LOCAL ONLY</span></div>
+  </header>
+  <main class="settings-shell">
+    <header class="settings-heading"><p class="kicker">DIN LOKALA RAM</p><h1>Inställningar</h1><p>Ändringar gäller framtida utkast. De skriver aldrig om en accepterad plan.</p></header>
+    <div id="settings-error" class="setup-error" hidden></div>
+    <div id="settings-saved" class="settings-saved" hidden></div>
+    <div class="settings-grid">
+      <section class="setup-card"><p class="kicker">TRÄNINGSRAM</p><h2>Sport, ambition och dagar</h2>
+        <form id="settings-preferences"><div id="settings-role-choices" class="choice-grid"></div><fieldset><legend>Ambitionsläge</legend><div id="settings-ambition-choices"></div></fieldset><fieldset><legend>Tillgängliga dagar</legend><div id="settings-days" class="weekday-grid"></div></fieldset><button class="primary" type="submit">Spara träningsram</button></form>
+      </section>
+      <section id="settings-zones-card" class="setup-card"><p class="kicker">CYKELPULS</p><h2>Garmin-zoner</h2><p class="muted-copy">Lämna cykelzonerna tomma bara om du har valt Endast löpning.</p><form id="settings-zones-form"><div id="settings-zones" class="zone-inputs"></div><button class="primary" type="submit">Spara cykelzoner</button></form></section>
+      <section class="setup-card"><p class="kicker">GARMIN</p><h2>Synka träningsdata</h2><p class="muted-copy">Normal synk hämtar de senaste sju dagarna. Den längre uppdateringen läser 80 dagar för ett bättre historiskt underlag, men gör fortfarande bara säkra batcher om högst sju dagar.</p><div class="plan-action-list"><button class="primary" data-sync-days="7" type="button">Synka senaste 7 dagar</button><button class="secondary" data-sync-days="80" type="button">Uppdatera senaste 80 dagar</button></div></section>
+      <section class="setup-card"><p class="kicker">KOMMANDE LOPP</p><h2>Lägg till lopp</h2><form id="settings-race-add"><div class="race-inputs"><label>Namn<input name="name" required></label><label>Datum<input name="race_date" type="date" required></label><label>Distans (km)<input name="distance_km" type="number" min="0.1" step="0.1" required></label><label>Sport<select name="sport_type"><option value="run">Löpning</option><option value="ride">Cykling</option></select></label><label>Prioritet<select name="priority"><option value="A">A</option><option value="B">B</option><option value="C">C</option></select></label></div><button class="secondary" type="submit">Spara lopp</button></form><div id="settings-races" class="settings-races"></div></section>
+      <section class="setup-card"><p class="kicker">ANSLUTNINGAR</p><h2>AI och Garmin</h2><p class="muted-copy">Byt bara om du behöver ansluta ett annat konto eller ersätta din egen OpenAI-nyckel. Pace visar aldrig befintliga lösenord, token eller nycklar.</p><form id="settings-openai"><label>Ny OpenAI API-nyckel<input name="api_key" type="password" autocomplete="off" required></label><button class="text-button" type="submit">Ersätt AI-nyckel</button></form><form id="settings-garmin"><label>Garmin-e-post<input name="email" type="email" autocomplete="username" required></label><label>Lösenord<input name="password" type="password" autocomplete="current-password" required></label><label>MFA-kod (vid behov)<input name="mfa_code" autocomplete="one-time-code"></label><button class="text-button" type="submit">Anslut Garmin igen</button></form></section>
+    </div>
+  </main><footer>PACE KÖRS PÅ DIN DATOR · ÄNDRINGAR ÄR LOKALA</footer>
+  <script id="pace-state" type="application/json">{safe_state}</script><script src="/static/settings.js?v=20260729-1" defer></script>
+</body></html>"""
 
 
 def render_web_report_page(
@@ -174,6 +212,7 @@ def render_web_report_page(
             ("dashboard", "Dashboard", "/dashboard"),
             ("plan", "Plan", "/plan"),
             ("weekly_review", "Veckoreview", "/weekly-review"),
+            ("settings", "Inställningar", "/settings"),
         )
     )
     as_of_date = escape(str(state["as_of_date"]))
@@ -183,7 +222,7 @@ def render_web_report_page(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pace — {escape(title)}</title>
-  <link rel="stylesheet" href="/static/pace.css?v=20260729-1">
+  <link rel="stylesheet" href="/static/pace.css?v=20260729-3">
   <link rel="stylesheet" href="/static/reports.css?v=20260728-2">
 </head>
 <body>

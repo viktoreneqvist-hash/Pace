@@ -74,6 +74,14 @@ Before beginning the next batch:
 - [x] CLI help and database initialization pass against isolated local state
 - [x] Independent review finds no unresolved P0 or P1 technical risk
 
+### Local UI and onboarding
+
+- [x] Loopback-only Coach, Dashboard, Plan and Veckoreview with persistent navigation
+- [x] First-run UI for local key, Garmin, preferences, zones, history and first plan target
+- [x] Finder launcher and automatic reviewed database initialization on local start
+- [x] Editable local Settings view for planning preferences, zones and future races
+- [x] Explicit UI sync for the latest seven days or standard 80-day history refresh
+
 ## Batch E — Context memory
 
 ### Goal

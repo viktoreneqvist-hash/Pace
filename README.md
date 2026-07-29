@@ -54,7 +54,7 @@ din webbläsare och guidar dig genom allt som behövs:
 - Garmin-inloggning, inklusive eventuell MFA
 - träningsläge, ambitionsläge och vilka dagar du är tillgänglig
 - Garmin-pulszoner om du tillåter cykling
-- fyra säkra Garmin-batcher för 28 dagars historik
+- tolv säkra Garmin-batcher för 80 dagars historik
 - valfria framtida lopp och sedan ett uttryckligt planmål
 
 Databasen initieras automatiskt vid start. Garmin-lösenordet sparas aldrig;
@@ -89,6 +89,10 @@ lokala app:
 - **Veckoreview** visar den senaste uttryckliga AI-snapshoten. Den skrivs inte
   om automatiskt när ny feedback tillkommer, så en gammal vecka får samma
   bedömning när du läser den igen.
+- **Inställningar** ändrar träningsläge, ambition, tillgängliga dagar,
+  cykelpulszoner och framtida lopp. Du kan också synka de senaste sju eller
+  80 dagarna därifrån. Ändringen används först i nästa planutkast; en
+  accepterad plan skrivs aldrig om.
 
 Pace ändrar aldrig en accepterad plan automatiskt och chattens korta historik
 försvinner när den lokala servern stoppas.
@@ -145,8 +149,10 @@ Första-startflödet ovan är den rekommenderade vägen. Det visar samma steg i
 webbläsaren och behöver inga kommandon efter `uv sync`.
 
 Pace behöver 28 aktuella sammanhängande Garmin-dagar innan ett planutkast kan
-skapas. Importera äldre veckor i sjudagarsbatcher om `pace plan readiness`
-inte säger `ready`:
+skapas. Första-starten och Inställningar importerar normalt 80 dagar, vilket
+ger coachen ett bättre historiskt underlag. Varje Garmin-anrop är ändå högst
+sju dagar. Importera äldre veckor manuellt i sjudagarsbatcher om `pace plan
+readiness` inte säger `ready`:
 
 ```bash
 uv run pace sync --days 7 --end-date 2026-07-18

@@ -23,7 +23,7 @@ function pendingRequirements() {
   if (!setup.garmin_connected) pending.push("Garmin");
   if (!setup.preferences_configured) pending.push("träningsram");
   if (setup.ride_zones_required && !setup.ride_zones_configured) pending.push("cykelpulszoner");
-  if (!setup.history_ready) pending.push("28 dagars historik");
+  if (!setup.history_ready) pending.push("Garmin-historik");
   return pending;
 }
 
@@ -33,7 +33,7 @@ function render() {
     ["AI-nyckel", setup.openai_configured], ["Garmin", setup.garmin_connected],
     ["Träningsram", setup.preferences_configured],
     ["Cykelpulszoner", !setup.ride_zones_required || setup.ride_zones_configured],
-    ["28 dagars historik", setup.history_ready],
+    ["Planeringsunderlag", setup.history_ready],
   ];
   document.getElementById("setup-status").innerHTML = rows.map(([label, done]) => `<span class="setup-state ${done ? "done" : ""}"><b>${done ? "KLAR" : "ÅTERSTÅR"}</b>${esc(label)}</span>`).join("");
   document.getElementById("setup-openai").classList.toggle("is-complete", setup.openai_configured);
@@ -92,7 +92,7 @@ document.getElementById("setup-race").addEventListener("submit", async event => 
 });
 document.getElementById("history-button").addEventListener("click", async event => {
   clearError(); const button = event.currentTarget; start(button); button.textContent = "Hämtar fyra säkra batcher…";
-  try { update(await api("/api/setup/history/confirm")); button.textContent = "Historik hämtad"; }
+  try { update(await api("/api/setup/history/confirm", {days:80})); button.textContent = "Historik hämtad"; }
   catch (error) { showError(error); stop(button); }
 });
 document.addEventListener("click", async event => {

@@ -2496,8 +2496,8 @@ not want to run at all.
 `Start Pace.command` runs `uv sync` and `pace serve` from the repository.
 `pace serve` now applies reviewed database migrations before starting. A user
 without any saved plan sees a local onboarding checklist for an API key,
-Garmin login, preferences, optional cycling zones, four explicit seven-day
-history batches, optional races and one selected plan target. Credentials are
+Garmin login, preferences, optional cycling zones, twelve explicit seven-day
+history batches covering 80 days, optional races and one selected plan target. Credentials are
 submitted only to the loopback server, used once for Garmin authentication and
 never rendered, logged or persisted by Pace; only Garmin's owner-only session
 token is retained.
@@ -2524,6 +2524,57 @@ turning their softer preference into a hidden training prescription.
 - Existing CLI commands continue to work for debugging and advanced users.
 - Future settings editing belongs in the same UI, rather than requiring a
   terminal-only parallel workflow.
+
+---
+
+# Decision #57
+
+## Problem
+
+First-run onboarding did not help an athlete who already had a plan: the
+existing Settings panel was read-only and Garmin sync still depended on a
+terminal command. The initial 28-day import also met the minimum planning gate
+but gave the coach less recent historical context than the agreed 84-day
+training-history input can use.
+
+## Options
+
+- Keep settings and sync terminal-only after first setup
+- Let the browser call one unrestricted 80-day Garmin request
+- Add a persistent local Settings view that reuses existing services and
+  composes exactly 80 days from bounded seven-day sync batches
+
+## Chosen
+
+Pace has a fifth persistent navigation view: **Inställningar**. It can update
+the five sport modes, coaching ambition, available days, Garmin cycling zones,
+future races and local connection credentials. It also exposes an explicit
+normal seven-day sync and an explicit 80-day refresh.
+
+The 80-day refresh executes twelve sequential `GarminSyncService` calls. Eleven
+cover seven days and the last covers three days, for exactly 80 inclusive
+calendar days. The existing service remains the only Garmin write path and
+therefore retains its authentication, rate-limit, partial-result and audit
+behaviour. The 28-day contiguous-data gate remains the minimum for creating a
+plan; 80 days is the standard import and coaching-history horizon, not a new
+hard gate.
+
+## Reason
+
+Settings are athlete-owned constraints and preferences, so hiding them behind
+terminal syntax contradicts the local UI's purpose. Eighty days gives enough
+recent context to see continuity and volume direction without importing raw
+Garmin payloads into an AI prompt or creating a large background system.
+
+## Consequences
+
+- The UI remains local-only and every Garmin operation is a visible click.
+- A user may update future planning preferences without deleting or rewriting
+  an accepted plan.
+- Race fact edits remain protected once a plan or observed result references
+  that race; Pace reports the protection instead of silently changing history.
+- A long refresh can encounter Garmin rate limiting part-way through; already
+  completed batches remain safely stored and the user can retry later.
 
 ---
 

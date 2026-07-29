@@ -387,6 +387,31 @@ def test_plan_draft_confirmation_uses_only_the_selected_race_or_general_mode(tmp
     ]
 
 
+def test_settings_is_a_local_view_and_history_sync_keeps_seven_day_batches(tmp_path):
+    client, _plans, _context, _coach, sync, _review = _web_client(tmp_path)
+    csrf = _csrf(client)
+
+    page = client.get("/settings")
+    result = client.post(
+        "/api/setup/history/confirm",
+        headers={"X-Pace-CSRF": csrf},
+        json={"days": 80},
+    )
+
+    assert page.status_code == 200
+    assert "Inställningar" in page.text
+    assert 'href="/settings"' in page.text
+    assert result.status_code == 200
+    assert len(sync.calls) == 12
+    assert all(
+        (call["end_date"] - call["start_date"]).days <= 6 for call in sync.calls
+    )
+    assert sync.calls[-1] == {
+        "start_date": date(2026, 5, 9),
+        "end_date": date(2026, 5, 11),
+    }
+
+
 def test_reports_are_available_only_from_the_safe_local_report_catalog(tmp_path):
     client, _plans, _context, _coach, _sync, _review = _web_client(tmp_path)
 

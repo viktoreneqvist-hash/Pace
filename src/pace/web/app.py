@@ -58,6 +58,7 @@ from pace.web.presentation import (
     render_web_home,
     render_web_onboarding,
     render_web_report_page,
+    render_web_settings,
 )
 from pace.weekly_review.client import WeeklyReviewClient
 
@@ -135,6 +136,18 @@ class RaceSetup(BaseModel):
     race_date: date
     distance_km: float = Field(gt=0, le=1_000)
     priority: str
+
+
+class RaceUpdateSetup(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    sport_type: str
+    race_date: date
+    distance_km: float = Field(gt=0, le=1_000)
+    priority: str
+
+
+class HistorySyncConfirmation(BaseModel):
+    days: int = Field(default=80, ge=1, le=80)
 
 
 @dataclass(slots=True)
@@ -225,6 +238,12 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
     def api_home(request: Request) -> dict[str, object]:
         _session_value(request, "csrf_token")
         return _home_state(dependencies)
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_page(request: Request) -> HTMLResponse:
+        csrf_token = _session_value(request, "csrf_token")
+        state = _home_state(dependencies)
+        return _html_response(render_web_settings(state=state, csrf_token=csrf_token))
 
     @app.get("/dashboard", response_class=HTMLResponse)
     def dashboard(request: Request) -> HTMLResponse:
@@ -594,20 +613,53 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail=str(error)) from error
         return {"status": "saved", "race": _race_payload(race), "state": _home_state(dependencies)}
 
+    @app.put("/api/settings/races/{race_id}")
+    def update_race(
+        request: Request, race_id: int, payload: RaceUpdateSetup
+    ) -> dict[str, object]:
+        _require_csrf(request)
+        try:
+            race = dependencies.race_service.update_race(
+                race_id=race_id,
+                name=payload.name,
+                sport_type=payload.sport_type,
+                race_date=payload.race_date,
+                distance_meters=payload.distance_km * 1_000,
+                priority=payload.priority,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {"status": "updated", "race": _race_payload(race), "state": _home_state(dependencies)}
+
+    @app.delete("/api/settings/races/{race_id}")
+    def remove_race(request: Request, race_id: int) -> dict[str, object]:
+        _require_csrf(request)
+        try:
+            dependencies.race_service.remove_race(
+                race_id=race_id, as_of_date=dependencies.today()
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {"status": "removed", "state": _home_state(dependencies)}
+
     @app.post("/api/setup/history/confirm")
-    def setup_history(request: Request) -> dict[str, object]:
-        """Import the minimum planning history as four visible seven-day batches."""
+    def setup_history(
+        request: Request, payload: HistorySyncConfirmation = HistorySyncConfirmation()
+    ) -> dict[str, object]:
+        """Import requested history through Garmin-safe seven-day service batches."""
 
         _require_csrf(request)
         end_date = dependencies.today()
         results = []
         try:
             sync_service = dependencies.sync_service()
-            for offset in range(0, 28, 7):
+            for offset in range(0, payload.days, 7):
                 batch_end = end_date - timedelta(days=offset)
+                batch_days = min(7, payload.days - offset)
                 results.append(
                     sync_service.sync(
-                        start_date=batch_end - timedelta(days=6), end_date=batch_end
+                        start_date=batch_end - timedelta(days=batch_days - 1),
+                        end_date=batch_end,
                     )
                 )
         except GarminAuthenticationRequiredError as error:
@@ -760,6 +812,11 @@ def _race_payload(race) -> dict[str, object]:
         "sport_type": race.sport_type,
         "priority": race.priority,
         "taper": resolved_taper(race),
+        "distance_km": (
+            None
+            if getattr(race, "distance_meters", None) is None
+            else race.distance_meters / 1_000
+        ),
     }
 
 
