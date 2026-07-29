@@ -124,6 +124,10 @@ Garmin provider
   It may select distance-specific local briefs and guide the model's session
   purpose, but Python must not impose alternating days, a fixed session count,
   or a race pace from that distance alone.
+- A stored race becomes a plan target only through an explicit `race_id`. Any
+  active A, B, or C race may be selected and retains its stored priority and
+  taper. A missing `race_id` means a general plan; never send or enforce other
+  stored races as implicit targets.
 - K2 coach dialogue reads exactly one accepted, active plan and current selected
   Pace facts. Its in-terminal dialogue history exists only in process memory
   and is discarded on exit; it is not application memory. A same-day

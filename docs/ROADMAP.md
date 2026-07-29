@@ -292,6 +292,15 @@ feedback for a later revision draft; never overwrite an accepted plan.
   SQLite foreign-key enforcement and upgrade checks, and migration cleanup of
   the superseded fixed weekly-run preference
 
+### Batch J3.5 — Athlete-selected race scope
+
+- [x] Treat `--race-id` as an explicit target selection for any active A/B/C
+  race; preserve its stored priority and resolved taper in the draft
+- [x] Make a missing `--race-id` an explicit general plan: stored races are not
+  sent as implicit plan objectives or forced into the detailed window
+- [x] Let Coach-UI show a confirmation-gated choice between a general plan and
+  each stored active race; it must never infer a target from chat text alone
+
 ### Batch J3.3 — Local plan presentation
 
 - [x] Add readable terminal views for a full plan review and today's/next

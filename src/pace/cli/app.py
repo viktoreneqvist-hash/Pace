@@ -527,7 +527,7 @@ def build_parser() -> ArgumentParser:
     plan_draft_parser.add_argument(
         "--race-id",
         type=int,
-        help="valfritt A-lopp som definierar blocket; utan lopp används allmänt mål",
+        help="valfritt aktivt lopp som definierar blocket; utan lopp används allmänt mål",
     )
     plan_draft_parser.add_argument(
         "--days",

@@ -148,7 +148,8 @@ Garmin summaries + privacy-minimized performance splits
 The model chooses the useful workout form from the selected facts and block
 purpose. Python does not rotate templates to manufacture variety. Python still
 owns the hard contract: dates, availability, supported sports, target evidence,
-cycling zones, race presence inside the detailed window, and draft-only writes.
+cycling zones, the explicitly selected target-race presence inside the detailed
+window, and draft-only writes. Other stored races are not implicit plan inputs.
 
 Garmin splits can support a transparent planned-versus-observed comparison, but
 they do not prove that an interval prescription was followed. Explicit athlete

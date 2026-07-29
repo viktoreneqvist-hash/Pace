@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 import re
 from types import SimpleNamespace
@@ -17,12 +17,17 @@ from pace.web.app import WebServices, create_app
 class FakePlanService:
     plan: object
     feedback_calls: list[dict]
+    draft_calls: list[dict] = field(default_factory=list)
 
     def list_plans(self):
         return (self.plan,)
 
     def add_feedback(self, **kwargs):
         self.feedback_calls.append(kwargs)
+
+    def generate_draft(self, **kwargs):
+        self.draft_calls.append(kwargs)
+        return SimpleNamespace(id=18, goal_mode="general", race_id=kwargs["race_id"])
 
 class FakeCoachService:
     def __init__(self):
@@ -231,6 +236,7 @@ def _web_client(tmp_path):
         coach_service_factory=lambda: coach,
         sync_service_factory=lambda: sync,
         weekly_review_service_factory=lambda: weekly_review,
+        plan_generation_service_factory=lambda: plan_service,
         today=lambda: date(2026, 7, 27),
     )
     return (
@@ -323,6 +329,37 @@ def test_confirmation_endpoints_require_csrf_and_reuse_existing_services(tmp_pat
     assert feedback_response.json() == {"status": "saved", "session_id": 12}
     assert context.inputs[0].event_type == "work_stress"
     assert plans.feedback_calls[0]["outcome"] == "completed_limited"
+
+
+def test_plan_draft_confirmation_uses_only_the_selected_race_or_general_mode(tmp_path):
+    client, plans, _context, _coach, _sync, _review = _web_client(tmp_path)
+    csrf = _csrf(client)
+
+    general = client.post(
+        "/api/plan/draft/confirm",
+        headers={"X-Pace-CSRF": csrf},
+        json={"race_id": None},
+    )
+    race_target = client.post(
+        "/api/plan/draft/confirm",
+        headers={"X-Pace-CSRF": csrf},
+        json={"race_id": 3},
+    )
+
+    assert general.status_code == 200
+    assert race_target.status_code == 200
+    assert plans.draft_calls == [
+        {
+            "as_of_date": date(2026, 7, 27),
+            "detailed_days": 14,
+            "race_id": None,
+        },
+        {
+            "as_of_date": date(2026, 7, 27),
+            "detailed_days": 14,
+            "race_id": 3,
+        },
+    ]
 
 
 def test_reports_are_available_only_from_the_safe_local_report_catalog(tmp_path):

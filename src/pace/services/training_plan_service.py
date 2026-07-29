@@ -322,8 +322,6 @@ class TrainingPlanService:
             raise ValueError("A cancelled race cannot define a new plan block.")
         if race.race_date < as_of_date:
             raise ValueError("A plan target race must be today or in the future.")
-        if race.priority != "A":
-            raise ValueError("A block-defining target race must have priority A.")
         return {
             "goal_mode": "race",
             "race_id": race.id,
@@ -725,7 +723,9 @@ def _fact_catalog(
             "python_derived",
             {"start_date": detailed_start_date, "end_date": detailed_end_date},
         ),
-        "planning_readiness": _catalog_entry("python_derived", asdict(plan_readiness)),
+        "planning_readiness": _catalog_entry(
+            "python_derived", _planning_readiness_for_selected_goal(plan_readiness)
+        ),
         "capacity_profile": _catalog_entry("garmin_verified", asdict(capacity)),
         "performance_readiness": _catalog_entry(
             "garmin_verified", asdict(performance_readiness)
@@ -781,38 +781,43 @@ def _render_catalog_fact(entry: dict[str, object]) -> str:
 def _validate_races_in_detailed_window(
     *, generated: GeneratedPlanDraft, context: dict[str, object]
 ) -> None:
+    """Require only the athlete-selected target race, never every stored race."""
+
     catalog = context.get("fact_catalog")
     if not isinstance(catalog, dict):
         return
     detailed_window = _catalog_value(catalog, "detailed_window")
-    planning = _catalog_value(catalog, "planning_readiness")
-    if not isinstance(detailed_window, dict) or not isinstance(planning, dict):
+    goal = _catalog_value(catalog, "goal")
+    if not isinstance(detailed_window, dict) or not isinstance(goal, dict):
         return
     try:
         start = date.fromisoformat(str(detailed_window["start_date"]))
         end = date.fromisoformat(str(detailed_window["end_date"]))
     except (KeyError, ValueError):
         return
-    races = planning.get("upcoming_races")
-    if not isinstance(races, list):
+    race = goal.get("race")
+    if not isinstance(race, dict):
         return
-    for race in races:
-        if not isinstance(race, dict):
-            continue
-        try:
-            race_date = date.fromisoformat(str(race["race_date"]))
-        except (KeyError, ValueError):
-            continue
-        if not start <= race_date <= end:
-            continue
-        sport_type = race.get("sport_type")
-        if not any(
-            session.scheduled_date == race_date and session.sport_type == sport_type
-            for session in generated.sessions
-        ):
-            raise ValueError(
-                "AI plan draft omitted an active race inside the detailed window."
-            )
+    try:
+        race_date = date.fromisoformat(str(race["race_date"]))
+    except (KeyError, ValueError):
+        return
+    if not start <= race_date <= end:
+        return
+    sport_type = race.get("sport_type")
+    if not any(
+        session.scheduled_date == race_date and session.sport_type == sport_type
+        for session in generated.sessions
+    ):
+        raise ValueError("AI plan draft omitted the selected target race inside the detailed window.")
+
+
+def _planning_readiness_for_selected_goal(plan_readiness) -> dict[str, object]:
+    """Keep readiness gates, but never make stored races implicit plan inputs."""
+
+    value = asdict(plan_readiness)
+    value["upcoming_races"] = []
+    return value
 
 
 def _catalog_value(catalog: dict[str, object], key: str) -> object:

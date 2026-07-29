@@ -210,6 +210,24 @@ väljer fortfarande löpfrekvens, dagplacering och kvalitet från faktisk
 löpkontinuitet, återhämtning och feedback. Python kräver alltså inte varannan
 träningsdag eller en bestämd träningsvecka.
 
+Ett lopp är aldrig ett tvång. Välj ett specifikt aktivt lopp, oavsett om det
+har prioritet A, B eller C, när du vill att blocket ska förbereda för just det:
+
+```bash
+uv run pace plan draft --race-id 2 --days 14
+```
+
+Utelämna `--race-id` när du uttryckligen vill ha en generell plan. Då används
+inga sparade lopp som planmål, även om de ligger inom de närmaste 14 dagarna:
+
+```bash
+uv run pace plan draft --days 14
+```
+
+I Coach-UI:t finns samma val under **Kommande lopp**. Välj antingen **Skapa
+utkast utan lopp** eller **Planera mot detta lopp**. Pace visar alltid ett
+bekräftelsekort innan den gör AI-anropet eller sparar ett utkast.
+
 ## Till vardags
 
 Det enklaste vardagsflödet är att starta den lokala appen, synka genom

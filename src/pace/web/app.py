@@ -15,6 +15,7 @@ from pydantic import AliasChoices, BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
 from pace.ai.client import PaceAIError
+from pace.ai.plan_client import OpenAIPlanClient
 from pace.coach.client import OpenAICoachDialogueClient
 from pace.config.settings import PROJECT_ROOT, resolve_openai_api_key, settings
 from pace.integrations.garmin.client import (
@@ -84,6 +85,12 @@ class FeedbackConfirmation(BaseModel):
     share_note_with_ai: bool = False
 
 
+class PlanDraftConfirmation(BaseModel):
+    """One explicit browser choice of either a selected race or no race."""
+
+    race_id: int | None = None
+
+
 @dataclass(slots=True)
 class WebServices:
     """Dependency bundle that keeps HTTP thin and makes synthetic tests simple."""
@@ -101,6 +108,7 @@ class WebServices:
     coach_service_factory: Callable[[], CoachDialogueService] | None = None
     sync_service_factory: Callable[[], GarminSyncService] | None = None
     weekly_review_service_factory: Callable[[], WeeklyReviewService] | None = None
+    plan_generation_service_factory: Callable[[], TrainingPlanService] | None = None
     today: Callable[[], date] = date.today
 
     def coach_service(self) -> CoachDialogueService:
@@ -130,6 +138,18 @@ class WebServices:
             raise ValueError("OPENAI_API_KEY saknas; veckoreview kan inte startas.")
         return WeeklyReviewService(
             client=WeeklyReviewClient(api_key=api_key, model=settings.openai_model)
+        )
+
+    def plan_generation_service(self) -> TrainingPlanService:
+        """Create the AI-capable service only after a browser confirmation."""
+
+        if self.plan_generation_service_factory is not None:
+            return self.plan_generation_service_factory()
+        api_key = resolve_openai_api_key(settings)
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY saknas; inget planutkast har skapats.")
+        return TrainingPlanService(
+            generator=OpenAIPlanClient(api_key=api_key, model=settings.openai_model)
         )
 
 
@@ -411,6 +431,30 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         return {"status": "saved", "session_id": payload.session_id}
+
+    @app.post("/api/plan/draft/confirm")
+    def confirm_plan_draft(
+        request: Request, payload: PlanDraftConfirmation
+    ) -> dict[str, object]:
+        """Generate only the explicitly selected general or race-targeted draft."""
+
+        _require_csrf(request)
+        try:
+            plan = dependencies.plan_generation_service().generate_draft(
+                as_of_date=dependencies.today(),
+                detailed_days=14,
+                race_id=payload.race_id,
+            )
+        except (ValueError, PaceAIError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {
+            "status": "draft_created",
+            "plan": {
+                "id": plan.id,
+                "goal_mode": plan.goal_mode,
+                "race_id": plan.race_id,
+            },
+        }
 
     return app
 

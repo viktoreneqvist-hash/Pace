@@ -104,11 +104,14 @@ the block race-specific. The goal does not erase documented continuity: do not
 force a number of sessions, consecutive training days, or an every-other-day
 schedule from a template. Choose frequency and placement from the complete
 selected Pace facts, then explain the material reasoning in the assessment.
-Every active race whose date falls inside the detailed window must appear as a
-same-date, same-sport session. Respect the supplied A/B/C priority and resolved
-taper: A is the primary performance target, B is a hard secondary race with a
-partial compromise, and C is treated as a hard training session. Do not silently
-omit a race or promote a B/C race into the primary goal.
+Only goal.race is the athlete-selected plan target. Do not turn another stored
+or upcoming race into a plan objective, taper, race session, or coaching
+constraint unless it is supplied as goal.race. If the selected target's date
+falls inside the detailed window, it must appear as a same-date, same-sport
+session. Respect its supplied A/B/C priority and resolved taper: A is the
+primary performance target, B is a hard secondary race with a partial
+compromise, and C is treated as a hard training session. Do not silently
+promote a B/C target into an A target.
 Availability null means no supplied time ceiling; it is never permission to
 prescribe unlimited training. Return a coach_assessment with fact_references
 as exact ID strings selected only from the supplied fact_catalog, then your inferences, rationale,

@@ -24,6 +24,7 @@ from pace.services.training_plan_service import (
     TrainingPlanService,
     _validate_races_in_detailed_window,
 )
+from pace.services.race_service import RaceInput, RaceService
 from pace.services.training_preference_service import _parse_available_days
 
 
@@ -447,7 +448,7 @@ def test_plan_rejects_an_outline_that_does_not_cover_the_entire_block():
         )
 
 
-def test_plan_cannot_omit_an_active_race_inside_the_detailed_window():
+def test_plan_requires_the_selected_target_race_inside_the_detailed_window():
     context = {
         "fact_catalog": {
             "detailed_window": {
@@ -457,16 +458,52 @@ def test_plan_cannot_omit_an_active_race_inside_the_detailed_window():
                     "end_date": "2026-08-08",
                 },
             },
+            "goal": {
+                "provenance": "explicit_athlete_preference",
+                "value": {
+                    "race": {
+                        "id": 7,
+                        "name": "B-lopp",
+                        "sport_type": "run",
+                        "race_date": "2026-08-01",
+                        "priority": "B",
+                    }
+                },
+            },
+        }
+    }
+
+    with pytest.raises(ValueError, match="omitted the selected target race"):
+        _validate_races_in_detailed_window(
+            generated=_generated_plan(),
+            context=context,
+        )
+
+
+def test_general_plan_ignores_unselected_races_inside_the_detailed_window():
+    context = {
+        "fact_catalog": {
+            "detailed_window": {
+                "provenance": "python_derived",
+                "value": {
+                    "start_date": "2026-07-26",
+                    "end_date": "2026-08-08",
+                },
+            },
+            "goal": {
+                "provenance": "explicit_athlete_preference",
+                "value": {"goal_mode": "general", "race": None},
+            },
             "planning_readiness": {
                 "provenance": "python_derived",
                 "value": {
                     "upcoming_races": [
                         {
                             "id": 7,
-                            "name": "B-lopp",
+                            "name": "Lopp användaren inte valt",
                             "sport_type": "run",
                             "race_date": "2026-08-01",
-                            "priority": "B",
+                            "priority": "A",
                         }
                     ]
                 },
@@ -474,11 +511,32 @@ def test_plan_cannot_omit_an_active_race_inside_the_detailed_window():
         }
     }
 
-    with pytest.raises(ValueError, match="omitted an active race"):
-        _validate_races_in_detailed_window(
-            generated=_generated_plan(),
-            context=context,
+    _validate_races_in_detailed_window(generated=_generated_plan(), context=context)
+
+
+@pytest.mark.parametrize(
+    ("priority", "expected_taper"),
+    (("B", "partial"), ("C", "none")),
+)
+def test_any_active_race_priority_can_be_an_explicit_plan_target(priority, expected_taper):
+    race = RaceService().add_race(
+        RaceInput(
+            name=f"{priority}-lopp",
+            sport_type="run",
+            race_date=date(2026, 9, 1),
+            distance_meters=10_000,
+            priority=priority,
         )
+    )
+
+    goal = _service(StubGenerator(_generated_plan()))._resolve_goal(
+        as_of_date=date(2026, 7, 26), race_id=race.id
+    )
+
+    assert goal["goal_mode"] == "race"
+    assert goal["race_id"] == race.id
+    assert goal["race"]["priority"] == priority
+    assert goal["race"]["taper"] == expected_taper
 
 
 def test_plan_enforces_available_days_and_time_caps_in_python():

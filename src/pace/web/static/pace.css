@@ -70,6 +70,10 @@ h1 em{font-family:Georgia,serif;font-weight:400;letter-spacing:-.07em}
 .setting-line b,.setting-line span{display:block}
 .setting-line b{font-size:.88rem}
 .setting-line span{color:var(--muted);font-size:.78rem;margin-top:3px}
+.plan-choice{border-top:1px solid var(--line);padding:10px 0}
+.plan-choice:first-child{border-top:0}
+.plan-choice p{color:var(--muted);font-size:.78rem;line-height:1.4;margin:4px 0 9px}
+.plan-choice .text-button{margin-top:9px}
 .zone-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
 .zone{background:var(--white);border:1px solid var(--line);font:700 .7rem ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 6px}
 .facts-panel{border-top:1px solid var(--ink);grid-column:1/-1;padding:30px}

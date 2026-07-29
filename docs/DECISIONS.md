@@ -2424,6 +2424,56 @@ model or hiding it in Python.
 
 ---
 
+# Decision #55
+
+## Problem
+
+Pace stored A/B/C race priorities, but only an A race could define a new block.
+It also exposed every upcoming race inside the detailed window to the model and
+validated that the draft included each one. This let a stored event become an
+implicit plan constraint even when the athlete selected no race or explicitly
+wanted to train for something else.
+
+## Options
+
+- Keep A races mandatory plan targets and treat all nearby events as required
+- Let the model infer which stored event matters from a free-text chat request
+- Make one race target, or no race, an explicit athlete choice before each new
+  draft and preserve the selected event's own A/B/C role
+
+## Chosen
+
+`race_id` is now optional explicit plan scope. With no `race_id`, Pace creates
+a general four-week block and sends no stored upcoming races as plan targets.
+With an active `race_id`, any A, B, or C race can define the block. Its stored
+priority and resolved taper stay in the goal contract: B remains a hard
+secondary race with partial taper, and C remains a hard training event.
+
+Only the selected target race is required as a same-date session when it falls
+inside the detailed window. Coach-UI presents a choice between a general plan
+and each active race, then requires a separate confirmation before the
+AI-capable plan service is created.
+
+## Reason
+
+Race registration records an option, not a loss of athlete agency. A user may
+want to cycle through a running event, skip a race-focused block, or target a
+B event for a specific reason. Explicit selection makes this intent inspectable
+and stops chat wording or calendar proximity from silently redefining the plan.
+
+## Consequences
+
+- `uv run pace plan draft --days 14` is reliably race-free even when an event
+  falls in the next 14 days.
+- `uv run pace plan draft --race-id <id> --days 14` works for active A/B/C
+  races without promoting the stored priority.
+- Existing accepted plans and their selected targets remain unchanged; use a
+  new draft to choose a different scope.
+- The web coach does not infer targets from normal chat text. It exposes a
+  visible target choice and confirmation instead.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

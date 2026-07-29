@@ -68,7 +68,11 @@ function renderSettings() {
 
 function renderRaces() {
   const target = document.getElementById("races");
-  target.innerHTML = state.races.length ? `<div class="races-list">${state.races.map(race => `<div class="setting-line"><b>${esc(race.name)} · ${esc(race.priority)}</b><span>${esc(race.race_date)} · ${sport(race.sport_type)} · taper ${esc(race.taper)}</span></div>`).join("")}</div>` : '<p class="empty">Inga kommande lopp sparade.</p>';
+  const general = `<article class="plan-choice"><b>Generell plan</b><p>Ingen tävling är planmål.</p><button class="text-button" type="button" data-plan-general="true">Skapa utkast utan lopp →</button></article>`;
+  const races = state.races.length
+    ? `<div class="races-list">${state.races.map(race => `<article class="setting-line plan-choice"><b>${esc(race.name)} · ${esc(race.priority)}</b><span>${esc(race.race_date)} · ${sport(race.sport_type)} · taper ${esc(race.taper)}</span><button class="text-button" type="button" data-plan-race-id="${race.id}">Planera mot detta lopp →</button></article>`).join("")}</div>`
+    : '<p class="empty">Inga kommande lopp sparade.</p>';
+  target.innerHTML = `${general}${races}`;
 }
 
 function renderFacts() {
@@ -122,23 +126,37 @@ document.getElementById("chat-form").addEventListener("submit", event => { event
 document.querySelectorAll("[data-prompt]").forEach(button => button.addEventListener("click", () => submitQuestion(button.dataset.prompt)));
 document.addEventListener("click", async event => {
   const button = event.target.closest("button"); if (!button) return;
+  if (button.dataset.planGeneral === "true" || button.dataset.planRaceId) {
+    const raceId = button.dataset.planGeneral === "true" ? null : Number(button.dataset.planRaceId);
+    const race = state.races.find(item => item.id === raceId);
+    const title = race ? `Planera mot ${race.name}` : "Skapa generell plan";
+    const body = race
+      ? `${race.priority}-loppet blir det enda planmålet. Andra sparade lopp ignoreras.`
+      : "Inga sparade lopp blir planmål. Coachens utkast utgår från din aktuella historik och dina preferenser.";
+    addMessage("coach", "Kontrollera ditt planval innan AI-utkastet skapas.", decisionCard(title, body, [["Planmål", race ? `${race.name} · ${race.priority}` : "Inget lopp"], ["Detaljerat fönster", "14 dagar"]], "Skapa planutkast", "plan_draft", {race_id: raceId}));
+    return;
+  }
   if (button.dataset.action === "dismiss") { button.closest(".decision-card").remove(); return; }
   const card = button.closest(".decision-card");
   const originalLabel = button.textContent;
   try {
-    if (button.dataset.action === "context" || button.dataset.action === "feedback" || button.dataset.action === "command") {
+    if (button.dataset.action === "context" || button.dataset.action === "feedback" || button.dataset.action === "command" || button.dataset.action === "plan_draft") {
       button.disabled = true; button.textContent = "Sparar…";
       const payload = JSON.parse(button.dataset.payload);
       const path = button.dataset.action === "context"
         ? "/api/context/confirm"
         : button.dataset.action === "feedback"
           ? "/api/feedback/confirm"
-          : "/api/command/confirm";
+          : button.dataset.action === "plan_draft"
+            ? "/api/plan/draft/confirm"
+            : "/api/command/confirm";
       const result = await api(path, {method:"POST", body:JSON.stringify(payload)});
       card.innerHTML = button.dataset.action === "context"
         ? "<p><b>Context sparad.</b> Pace har inte ändrat planen.</p>"
         : button.dataset.action === "feedback"
           ? "<p><b>Feedback sparad.</b> Utfallet är registrerat och knappen är borta.</p>"
+          : button.dataset.action === "plan_draft"
+            ? `<p><b>Planutkast ${esc(result.plan.id)} skapat.</b> Det är inte accepterat. Granska det i terminalen med <code>pace plan review --id ${esc(result.plan.id)}</code>.</p>`
           : `<p><b>Klart.</b> ${esc(result.message)}</p>`;
       await refreshHome();
     }
