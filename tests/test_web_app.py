@@ -412,6 +412,27 @@ def test_settings_is_a_local_view_and_history_sync_keeps_seven_day_batches(tmp_p
     }
 
 
+def test_history_sync_stream_reports_each_bounded_batch_and_completion(tmp_path):
+    client, _plans, _context, _coach, sync, _review = _web_client(tmp_path)
+    csrf = _csrf(client)
+
+    response = client.post(
+        "/api/setup/history/stream",
+        headers={"X-Pace-CSRF": csrf},
+        json={"days": 8},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.text.count("event: progress") == 4
+    assert "event: completed" in response.text
+    assert len(sync.calls) == 2
+    assert sync.calls == [
+        {"start_date": date(2026, 7, 21), "end_date": date(2026, 7, 27)},
+        {"start_date": date(2026, 7, 20), "end_date": date(2026, 7, 20)},
+    ]
+
+
 def test_reports_are_available_only_from_the_safe_local_report_catalog(tmp_path):
     client, _plans, _context, _coach, _sync, _review = _web_client(tmp_path)
 

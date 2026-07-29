@@ -3,13 +3,14 @@
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
+import json
 import secrets
 from pathlib import Path
 import re
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AliasChoices, BaseModel, Field, SecretStr
 from starlette.middleware.sessions import SessionMiddleware
@@ -653,13 +654,12 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
         results = []
         try:
             sync_service = dependencies.sync_service()
-            for offset in range(0, payload.days, 7):
-                batch_end = end_date - timedelta(days=offset)
-                batch_days = min(7, payload.days - offset)
+            for start_date, batch_end in _history_batches(
+                end_date=end_date, days=payload.days
+            ):
                 results.append(
                     sync_service.sync(
-                        start_date=batch_end - timedelta(days=batch_days - 1),
-                        end_date=batch_end,
+                        start_date=start_date, end_date=batch_end,
                     )
                 )
         except GarminAuthenticationRequiredError as error:
@@ -673,6 +673,67 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
             "batches": [_sync_command_result(item) for item in results],
             "state": _home_state(dependencies),
         }
+
+    @app.post("/api/setup/history/stream")
+    def stream_history(
+        request: Request, payload: HistorySyncConfirmation
+    ) -> StreamingResponse:
+        """Stream bounded batch progress without inventing a persistent job system."""
+
+        _require_csrf(request)
+
+        def events():
+            end_date = dependencies.today()
+            batches = _history_batches(end_date=end_date, days=payload.days)
+            try:
+                sync_service = dependencies.sync_service()
+                for index, (start_date, batch_end) in enumerate(batches, start=1):
+                    yield _sse(
+                        "progress",
+                        {
+                            "completed_batches": index - 1,
+                            "total_batches": len(batches),
+                            "start_date": start_date.isoformat(),
+                            "end_date": batch_end.isoformat(),
+                            "phase": "started",
+                        },
+                    )
+                    result = sync_service.sync(
+                        start_date=start_date, end_date=batch_end
+                    )
+                    yield _sse(
+                        "progress",
+                        {
+                            "completed_batches": index,
+                            "total_batches": len(batches),
+                            "start_date": start_date.isoformat(),
+                            "end_date": batch_end.isoformat(),
+                            "phase": "completed",
+                            "message": _sync_command_result(result),
+                        },
+                    )
+            except GarminRateLimitError as error:
+                yield _sse("error", {"message": f"Garmin begränsade synken: {error}"})
+                return
+            except GarminAuthenticationRequiredError as error:
+                yield _sse("error", {"message": f"Synken kan inte fortsätta: {error}"})
+                return
+            except (GarminIntegrationError, ValueError) as error:
+                yield _sse("error", {"message": f"Synken misslyckades: {error}"})
+                return
+            yield _sse(
+                "completed",
+                {
+                    "message": f"{payload.days} dagars Garmin-data är synkad i säkra batcher.",
+                    "state": _home_state(dependencies),
+                },
+            )
+
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
 
     return app
 
@@ -898,6 +959,23 @@ def _analysis_command_answer(state: dict[str, object]) -> str:
 
 def _sync_window_label(end_date: date) -> str:
     return f"{end_date - timedelta(days=6)} till {end_date}"
+
+
+def _history_batches(*, end_date: date, days: int) -> tuple[tuple[date, date], ...]:
+    """Partition an inclusive UI history window into Garmin-safe date batches."""
+
+    batches: list[tuple[date, date]] = []
+    for offset in range(0, days, 7):
+        batch_end = end_date - timedelta(days=offset)
+        batch_days = min(7, days - offset)
+        batches.append((batch_end - timedelta(days=batch_days - 1), batch_end))
+    return tuple(batches)
+
+
+def _sse(event: str, payload: dict[str, object]) -> str:
+    """Encode one small, same-origin server-sent event without private data."""
+
+    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 def _sync_command_result(result) -> str:

@@ -61,6 +61,28 @@ function showError(error) { errorBox.textContent = error.message; errorBox.hidde
 function clearError() { errorBox.hidden = true; errorBox.textContent = ""; }
 function update(nextState) { state = nextState.state || nextState; render(); }
 
+async function streamHistory(button) {
+  start(button); button.textContent = "Startar Garmin-synk…";
+  const response = await fetch("/api/setup/history/stream", {method:"POST",headers:{"Content-Type":"application/json","X-Pace-CSRF":csrf},body:JSON.stringify({days:80})});
+  if (!response.ok) { const data = await response.json(); throw new Error(data.detail || "Historikimporten kunde inte starta."); }
+  const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let complete = false;
+  const slow = window.setTimeout(() => { button.textContent = "Garmin arbetar fortfarande med aktuell batch…"; }, 45_000);
+  try {
+    while (true) {
+      const chunk = await reader.read(); if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, {stream:true}); const parts = buffer.split("\n\n"); buffer = parts.pop() || "";
+      for (const part of parts) {
+        const event = part.match(/^event: (.+)$/m)?.[1]; const raw = part.match(/^data: (.+)$/m)?.[1]; if (!event || !raw) continue;
+        const payload = JSON.parse(raw);
+        if (event === "progress") button.textContent = payload.phase === "started" ? `Batch ${payload.completed_batches + 1} av ${payload.total_batches} körs…` : `Batch ${payload.completed_batches} av ${payload.total_batches} klar`;
+        if (event === "error") throw new Error(payload.message);
+        if (event === "completed") { update(payload.state); button.disabled = false; button.textContent = "Historik hämtad"; complete = true; }
+      }
+    }
+  } finally { window.clearTimeout(slow); }
+  if (!complete) throw new Error("Synkanslutningen avslutades innan Pace fick ett slutresultat. Redan färdiga batcher är sparade.");
+}
+
 document.getElementById("setup-openai").addEventListener("submit", async event => {
   event.preventDefault(); clearError(); const button = event.currentTarget.querySelector("button"); start(button);
   try { update(await api("/api/setup/openai", {api_key: new FormData(event.currentTarget).get("api_key")})); event.currentTarget.reset(); }
@@ -91,8 +113,8 @@ document.getElementById("setup-race").addEventListener("submit", async event => 
   catch (error) { showError(error); stop(button); }
 });
 document.getElementById("history-button").addEventListener("click", async event => {
-  clearError(); const button = event.currentTarget; start(button); button.textContent = "Hämtar fyra säkra batcher…";
-  try { update(await api("/api/setup/history/confirm", {days:80})); button.textContent = "Historik hämtad"; }
+  clearError(); const button = event.currentTarget;
+  try { await streamHistory(button); }
   catch (error) { showError(error); stop(button); }
 });
 document.addEventListener("click", async event => {

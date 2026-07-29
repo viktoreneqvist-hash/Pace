@@ -19,6 +19,33 @@ function busy(button, text) { button.disabled = true; button.dataset.label = but
 function idle(button) { button.disabled = false; button.textContent = button.dataset.label || "Försök igen"; }
 function update(response) { state = response.state || response; render(); }
 
+async function streamHistory(days, button) {
+  busy(button, "Startar Garmin-synk…");
+  const response = await fetch("/api/setup/history/stream", {method:"POST",headers:{"Content-Type":"application/json","X-Pace-CSRF":csrf},body:JSON.stringify({days})});
+  if (!response.ok) { const data = await response.json(); throw new Error(data.detail || "Historikimporten kunde inte starta."); }
+  const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let complete = false;
+  const slow = window.setTimeout(() => saved("Garmin arbetar fortfarande med den aktuella batchen. Redan klara batcher är sparade."), 45_000);
+  try {
+    while (true) {
+      const chunk = await reader.read(); if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, {stream:true});
+      const parts = buffer.split("\n\n"); buffer = parts.pop() || "";
+      for (const part of parts) {
+        const event = part.match(/^event: (.+)$/m)?.[1]; const raw = part.match(/^data: (.+)$/m)?.[1]; if (!event || !raw) continue;
+        const payload = JSON.parse(raw);
+        if (event === "progress") {
+          const range = `${payload.start_date} – ${payload.end_date}`;
+          saved(payload.phase === "started" ? `Batch ${payload.completed_batches + 1} av ${payload.total_batches} körs: ${range}.` : `Batch ${payload.completed_batches} av ${payload.total_batches} klar: ${range}.`);
+        }
+        if (event === "error") throw new Error(payload.message);
+        if (event === "completed") { update(payload.state); saved(payload.message); complete = true; }
+      }
+    }
+  } finally { window.clearTimeout(slow); }
+  if (!complete) throw new Error("Synkanslutningen avslutades innan Pace fick ett slutresultat. Redan färdiga batcher är sparade.");
+  button.disabled = false; button.textContent = "Synkad";
+}
+
 function render() {
   const pref = state.preference || {sport_role:"balanced",coaching_ambition:"balanced",available_days:[]};
   document.getElementById("settings-role-choices").innerHTML = Object.entries(roleLabels).map(([value,[title,text]]) => `<label><input type="radio" name="sport_role" value="${value}" ${pref.sport_role === value ? "checked" : ""}><b>${title}</b><span>${text}</span></label>`).join("");
@@ -36,6 +63,6 @@ document.getElementById("settings-zones-form").addEventListener("submit", async 
 document.getElementById("settings-race-add").addEventListener("submit", async event => { event.preventDefault(); clearNotice(); const button = event.currentTarget.querySelector("button"); busy(button,"Sparar…"); try { update(await api("/api/setup/races","POST",Object.fromEntries(new FormData(event.currentTarget)))); event.currentTarget.reset(); saved("Lopp sparat. Det blir planmål först när du väljer det inför ett nytt utkast."); } catch (error) { showError(error); idle(button); } });
 document.getElementById("settings-openai").addEventListener("submit", async event => { event.preventDefault(); clearNotice(); const button = event.currentTarget.querySelector("button"); busy(button,"Sparar…"); try { update(await api("/api/setup/openai","POST",{api_key:new FormData(event.currentTarget).get("api_key")})); event.currentTarget.reset(); saved("AI-nyckeln är ersatt lokalt."); } catch (error) { showError(error); idle(button); } });
 document.getElementById("settings-garmin").addEventListener("submit", async event => { event.preventDefault(); clearNotice(); const button = event.currentTarget.querySelector("button"); busy(button,"Ansluter…"); const form = new FormData(event.currentTarget); try { update(await api("/api/setup/garmin","POST",{email:form.get("email"),password:form.get("password"),mfa_code:form.get("mfa_code") || null})); event.currentTarget.reset(); saved("Garmin-sessionen är uppdaterad lokalt."); } catch (error) { showError(error); idle(button); } });
-document.addEventListener("click", async event => { const sync = event.target.closest("[data-sync-days]"); const remove = event.target.closest("[data-remove-race]"); if (sync) { clearNotice(); busy(sync,"Synkar…"); try { const result = await api("/api/setup/history/confirm","POST",{days:Number(sync.dataset.syncDays)}); update(result); saved(`${sync.dataset.syncDays} dagars Garmin-data är synkad i säkra batcher.`); } catch (error) { showError(error); idle(sync); } } if (remove) { clearNotice(); if (!window.confirm("Ta bort detta lopp? Lopp som redan används av en plan eller ett resultat skyddas av Pace.")) return; busy(remove,"Tar bort…"); try { update(await api(`/api/settings/races/${remove.dataset.removeRace}`,"DELETE")); saved("Loppet är borttaget."); } catch (error) { showError(error); idle(remove); } } });
+document.addEventListener("click", async event => { const sync = event.target.closest("[data-sync-days]"); const remove = event.target.closest("[data-remove-race]"); if (sync) { clearNotice(); try { await streamHistory(Number(sync.dataset.syncDays), sync); } catch (error) { showError(error); idle(sync); } } if (remove) { clearNotice(); if (!window.confirm("Ta bort detta lopp? Lopp som redan används av en plan eller ett resultat skyddas av Pace.")) return; busy(remove,"Tar bort…"); try { update(await api(`/api/settings/races/${remove.dataset.removeRace}`,"DELETE")); saved("Loppet är borttaget."); } catch (error) { showError(error); idle(remove); } } });
 document.addEventListener("submit", async event => { const form = event.target.closest(".race-edit"); if (!form) return; event.preventDefault(); clearNotice(); const button = form.querySelector('button[type="submit"]'); busy(button,"Sparar…"); try { update(await api(`/api/settings/races/${form.dataset.raceId}`,"PUT",Object.fromEntries(new FormData(form)))); saved("Loppet är uppdaterat."); } catch (error) { showError(error); idle(button); } });
 render();

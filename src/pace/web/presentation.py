@@ -149,7 +149,7 @@ def render_web_onboarding(*, state: dict[str, object], csrf_token: str) -> str:
   </main>
   <footer>PACE KÖRS PÅ DIN DATOR · DU KAN ÄNDRA INSTÄLLNINGAR SENARE</footer>
   <script id="pace-state" type="application/json">{safe_state}</script>
-  <script src="/static/onboarding.js?v=20260729-1" defer></script>
+  <script src="/static/onboarding.js?v=20260729-2" defer></script>
 </body>
 </html>"""
 
@@ -187,7 +187,7 @@ def render_web_settings(*, state: dict[str, object], csrf_token: str) -> str:
       <section class="setup-card"><p class="kicker">ANSLUTNINGAR</p><h2>AI och Garmin</h2><p class="muted-copy">Byt bara om du behöver ansluta ett annat konto eller ersätta din egen OpenAI-nyckel. Pace visar aldrig befintliga lösenord, token eller nycklar.</p><form id="settings-openai"><label>Ny OpenAI API-nyckel<input name="api_key" type="password" autocomplete="off" required></label><button class="text-button" type="submit">Ersätt AI-nyckel</button></form><form id="settings-garmin"><label>Garmin-e-post<input name="email" type="email" autocomplete="username" required></label><label>Lösenord<input name="password" type="password" autocomplete="current-password" required></label><label>MFA-kod (vid behov)<input name="mfa_code" autocomplete="one-time-code"></label><button class="text-button" type="submit">Anslut Garmin igen</button></form></section>
     </div>
   </main><footer>PACE KÖRS PÅ DIN DATOR · ÄNDRINGAR ÄR LOKALA</footer>
-  <script id="pace-state" type="application/json">{safe_state}</script><script src="/static/settings.js?v=20260729-1" defer></script>
+  <script id="pace-state" type="application/json">{safe_state}</script><script src="/static/settings.js?v=20260729-2" defer></script>
 </body></html>"""
 
 

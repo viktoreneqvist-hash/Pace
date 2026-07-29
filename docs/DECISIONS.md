@@ -2575,6 +2575,9 @@ Garmin payloads into an AI prompt or creating a large background system.
   that race; Pace reports the protection instead of silently changing history.
 - A long refresh can encounter Garmin rate limiting part-way through; already
   completed batches remain safely stored and the user can retry later.
+- The browser receives a local progress event before and after every batch.
+  This is a streamed response to the explicit click, not a persistent
+  background job or automatic retry system.
 
 ---
 
