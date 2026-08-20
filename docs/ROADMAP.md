@@ -534,6 +534,15 @@ until the library is large enough to need them.
 - [x] Add confirmation-gated `/sync` and `/review weekly`; never accept raw
   terminal or shell commands from the browser
 
+### Batch UI6 — Next detailed plan window
+
+- [x] Show an explicit **Skapa nästa 14 dagar** action in Plan only when the
+  existing read-only checkpoint says a revision is due
+- [x] Reuse the validated revision service with the current active plan ID;
+  never let the browser choose a stale or arbitrary parent plan
+- [x] Preserve the active plan if AI generation or Python validation fails, and
+  refresh Plan only after a successfully activated revision
+
 ### Batch K3 — Layered coach training history
 
 - [x] Give explicit coach calls three days of detailed normalized run/ride

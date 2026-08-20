@@ -87,7 +87,9 @@ lokala app:
 - **Dashboard** visar aktuella tränings- och recovery-fakta. Den räknas om från
   dina lokala data varje gång du öppnar den.
 - **Plan** visar den aktiva plan som gäller i dag och uppdateras när du
-  har sparat feedback.
+  har sparat feedback. När detaljfönstret snart slutar visar den knappen
+  **Skapa nästa 14 dagar**. Den behåller blockets mål och riktning men skapar
+  en ny detaljversion från ny Garmin-data och din registrerade återkoppling.
 - **Veckoreview** visar den senaste uttryckliga AI-snapshoten. Den skrivs inte
   om automatiskt när ny feedback tillkommer, så en gammal vecka får samma
   bedömning när du läser den igen.
@@ -273,6 +275,12 @@ veckotillgänglighet och sparade cykelpulszoner. Den synkar inte Garmin, anropar
 inte AI och ändrar inte planen. `pace plan checkpoint` säger när detaljfönstret
 håller på att ta slut eller ett lopp närmar sig. Den visar bara vilken ny plan
 eller revision du kan skapa; den startar aldrig en AI-körning själv.
+
+I appen behöver du inte använda `checkpoint` eller ett plan-id: öppna **Plan**
+när detaljfönstret närmar sig sitt slut och välj **Skapa nästa 14 dagar**.
+Knappen visas bara när Paces befintliga checkpoint rekommenderar en revision.
+Klicket är din uttryckliga begäran; Pace validerar den nya versionen innan den
+aktiveras och lämnar den nuvarande oförändrad om något misslyckas.
 
 Om ett pass missas eller blir begränsat registrerar du utfallet och skapar en
 kort revision. Ditt revisionskommando är ett uttryckligt beslut; en lyckat

@@ -16,7 +16,7 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="pace-csrf" content="{safe_csrf}">
   <title>Pace — Local Coach</title>
-  <link rel="stylesheet" href="/static/pace.css?v=20260729-3">
+  <link rel="stylesheet" href="/static/pace.css?v=20260820-1">
 </head>
 <body>
   <header class="masthead">
@@ -80,7 +80,7 @@ def render_web_onboarding(*, state: dict[str, object], csrf_token: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="pace-csrf" content="{safe_csrf}">
   <title>Pace — Första start</title>
-  <link rel="stylesheet" href="/static/pace.css?v=20260729-2">
+  <link rel="stylesheet" href="/static/pace.css?v=20260820-1">
 </head>
 <body>
   <header class="masthead">
@@ -164,7 +164,7 @@ def render_web_settings(*, state: dict[str, object], csrf_token: str) -> str:
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="pace-csrf" content="{safe_csrf}"><title>Pace — Inställningar</title>
-  <link rel="stylesheet" href="/static/pace.css?v=20260729-3">
+  <link rel="stylesheet" href="/static/pace.css?v=20260820-1">
 </head>
 <body>
   <header class="masthead">
@@ -191,6 +191,29 @@ def render_web_settings(*, state: dict[str, object], csrf_token: str) -> str:
 </body></html>"""
 
 
+def render_plan_revision_control(
+    *, plan_id: int, detailed_end_date: str, days_remaining: int
+) -> str:
+    """Render the single explicit action that extends only a due detail window."""
+
+    timing = (
+        "Detaljfönstret är slut."
+        if days_remaining == 0
+        else f"{days_remaining} dagar återstår i detaljfönstret."
+    )
+    return f"""
+<section class="report-section plan-revision-control" aria-labelledby="revision-heading">
+  <p class="kicker">NÄSTA DETALJFÖNSTER</p>
+  <h2 id="revision-heading">Planera nästa 14 dagar</h2>
+  <p>{escape(timing)} Det nuvarande fönstret slutar {escape(detailed_end_date)}.</p>
+  <p class="muted">Pace behåller blockets mål och riktning. Den använder ny Garmin-data och din registrerade återkoppling för att detaljera nästa 14 dagar. Den här planen ändras inte om valideringen misslyckas.</p>
+  <div class="plan-revision-actions">
+    <button class="primary" id="plan-revision-button" type="button" data-plan-id="{plan_id}">Skapa nästa 14 dagar</button>
+    <p id="plan-revision-status" class="notice" aria-live="polite" hidden></p>
+  </div>
+</section>"""
+
+
 def render_web_report_page(
     *,
     state: dict[str, object],
@@ -199,6 +222,9 @@ def render_web_report_page(
     title: str,
     subtitle: str,
     body_html: str,
+    csrf_token: str | None = None,
+    action_script: str | None = None,
+    footer_text: str | None = None,
 ) -> str:
     """Render an in-app report with the same persistent Pace navigation."""
 
@@ -216,13 +242,27 @@ def render_web_report_page(
         )
     )
     as_of_date = escape(str(state["as_of_date"]))
+    csrf_meta = (
+        f'<meta name="pace-csrf" content="{escape(csrf_token)}">'
+        if csrf_token is not None
+        else ""
+    )
+    action_script_tag = (
+        f'<script src="{escape(action_script)}" defer></script>'
+        if action_script is not None
+        else ""
+    )
+    safe_footer = escape(
+        footer_text or "PACE KÖRS PÅ DIN DATOR · VYN ÄR LÄSANDE OCH ÄNDRAR INTE DIN PLAN"
+    )
     return f"""<!doctype html>
 <html lang="sv">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  {csrf_meta}
   <title>Pace — {escape(title)}</title>
-  <link rel="stylesheet" href="/static/pace.css?v=20260729-3">
+  <link rel="stylesheet" href="/static/pace.css?v=20260820-1">
   <link rel="stylesheet" href="/static/reports.css?v=20260728-2">
 </head>
 <body>
@@ -239,8 +279,9 @@ def render_web_report_page(
     </header>
     {body_html}
   </main>
-  <footer>PACE KÖRS PÅ DIN DATOR · VYN ÄR LÄSANDE OCH ÄNDRAR INTE DIN PLAN</footer>
+  <footer>{safe_footer}</footer>
   <div id="tooltip" role="status"></div>
   <script src="/static/report.js" defer></script>
+  {action_script_tag}
 </body>
 </html>"""

@@ -20,6 +20,7 @@ class FakePlanService:
     plan: object
     feedback_calls: list[dict]
     draft_calls: list[dict] = field(default_factory=list)
+    revision_calls: list[dict] = field(default_factory=list)
 
     def list_plans(self):
         return self.plan if isinstance(self.plan, tuple) else (self.plan,)
@@ -30,6 +31,15 @@ class FakePlanService:
     def generate_draft(self, **kwargs):
         self.draft_calls.append(kwargs)
         return SimpleNamespace(id=18, goal_mode="general", race_id=kwargs["race_id"])
+
+    def generate_revision(self, **kwargs):
+        self.revision_calls.append(kwargs)
+        return SimpleNamespace(
+            id=19,
+            parent_plan_id=kwargs["plan_id"],
+            detailed_start_date=kwargs["as_of_date"],
+            detailed_end_date=date(2026, 8, 9),
+        )
 
 class FakeCoachService:
     def __init__(self):
@@ -134,13 +144,13 @@ def _web_client(tmp_path):
     sync = FakeSyncService()
     checkpoint = PlanCheckpoint(
         as_of_date=date(2026, 7, 27),
-        status="current",
+        status="revision_due",
         active_plan_id=7,
         detailed_end_date=date(2026, 8, 2),
-        detailed_days_remaining=6,
+        detailed_days_remaining=3,
         upcoming_races=(),
-        reasons=("detailed_window_current",),
-        recommended_command=None,
+        reasons=("detailed_window_ending",),
+        recommended_command="uv run pace plan revise --id 7 --days 14",
     )
     personalization = PersonalizationEvidence(
         as_of_date=date(2026, 7, 27),
@@ -403,6 +413,40 @@ def test_plan_draft_confirmation_uses_only_the_selected_race_or_general_mode(tmp
             "detailed_days": 14,
             "race_id": 3,
         },
+    ]
+
+
+def test_plan_page_creates_the_next_detailed_window_from_the_active_plan_only(tmp_path):
+    client, plans, _context, _coach, _sync, _review = _web_client(tmp_path)
+    csrf = _csrf(client)
+
+    page = client.get("/plan")
+    denied = client.post("/api/plan/revise/confirm", json={"plan_id": 7})
+    inactive = client.post(
+        "/api/plan/revise/confirm",
+        headers={"X-Pace-CSRF": csrf},
+        json={"plan_id": 999},
+    )
+    created = client.post(
+        "/api/plan/revise/confirm",
+        headers={"X-Pace-CSRF": csrf},
+        json={"plan_id": 7},
+    )
+
+    assert 'id="plan-revision-button"' in page.text
+    assert "Skapa nästa 14 dagar" in page.text
+    assert 'src="/static/plan.js?v=20260820-1"' in page.text
+    assert denied.status_code == 403
+    assert inactive.status_code == 409
+    assert created.status_code == 200
+    assert created.json()["plan"] == {
+        "id": 19,
+        "parent_plan_id": 7,
+        "detailed_start_date": "2026-07-27",
+        "detailed_end_date": "2026-08-09",
+    }
+    assert plans.revision_calls == [
+        {"plan_id": 7, "as_of_date": date(2026, 7, 27), "detailed_days": 14}
     ]
 
 

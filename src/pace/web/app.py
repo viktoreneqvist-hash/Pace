@@ -56,6 +56,7 @@ from pace.services.dashboard_service import DashboardService
 from pace.services.garmin_sync_service import GarminSyncService
 from pace.services.weekly_review_service import WeeklyReviewService
 from pace.web.presentation import (
+    render_plan_revision_control,
     render_web_home,
     render_web_onboarding,
     render_web_report_page,
@@ -105,6 +106,12 @@ class PlanDraftConfirmation(BaseModel):
     """One explicit browser choice of either a selected race or no race."""
 
     race_id: int | None = None
+
+
+class PlanRevisionConfirmation(BaseModel):
+    """Confirm a next-window revision of the plan currently active today."""
+
+    plan_id: int = Field(gt=0)
 
 
 class OpenAIKeySetup(BaseModel):
@@ -270,7 +277,7 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
 
     @app.get("/plan", response_class=HTMLResponse)
     def plan(request: Request) -> HTMLResponse:
-        _session_value(request, "csrf_token")
+        csrf_token = _session_value(request, "csrf_token")
         state = _home_state(dependencies)
         plans = dependencies.plan_service.list_plans()
         active_plan = _active_plan(plans, dependencies.today())
@@ -294,7 +301,8 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
             title = "Plan"
             kicker = "PLAN"
         else:
-            body_html = render_plan_fragment(active_plan)
+            body_html = _plan_revision_control(state=state, plan=active_plan)
+            body_html += render_plan_fragment(active_plan)
             subtitle = "Aktiv plan som gäller i dag. Feedback syns här efter att den har sparats."
             title = "Plan"
             kicker = "ACCEPTERAD PLAN"
@@ -306,6 +314,14 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
                 title=title,
                 subtitle=subtitle,
                 body_html=body_html,
+                csrf_token=csrf_token if active_plan is not None else None,
+                action_script="/static/plan.js?v=20260820-1" if active_plan is not None else None,
+                footer_text=(
+                    "PACE KÖRS PÅ DIN DATOR · EN NY PLANVERSION SKAPAS ENDAST "
+                    "NÄR DU UTTRYCKLIGEN BEKRÄFTAR DET"
+                    if active_plan is not None
+                    else None
+                ),
             )
         )
 
@@ -532,6 +548,47 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
                 "id": plan.id,
                 "goal_mode": plan.goal_mode,
                 "race_id": plan.race_id,
+            },
+        }
+
+    @app.post("/api/plan/revise/confirm")
+    def confirm_plan_revision(
+        request: Request, payload: PlanRevisionConfirmation
+    ) -> dict[str, object]:
+        """Create the next 14 detailed days only for today's active plan."""
+
+        _require_csrf(request)
+        as_of_date = dependencies.today()
+        active_plan = _active_plan(dependencies.plan_service.list_plans(), as_of_date)
+        if active_plan is None or active_plan.id != payload.plan_id:
+            raise HTTPException(
+                status_code=409,
+                detail="Den här planen är inte längre den aktiva planen för i dag.",
+            )
+        checkpoint = dependencies.checkpoint_service.get_checkpoint(as_of_date=as_of_date)
+        if (
+            checkpoint.status != "revision_due"
+            or checkpoint.active_plan_id != active_plan.id
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Nästa detaljfönster är inte aktuellt ännu.",
+            )
+        try:
+            plan = dependencies.plan_generation_service().generate_revision(
+                plan_id=active_plan.id,
+                as_of_date=as_of_date,
+                detailed_days=14,
+            )
+        except (ValueError, PaceAIError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {
+            "status": "accepted",
+            "plan": {
+                "id": plan.id,
+                "parent_plan_id": plan.parent_plan_id,
+                "detailed_start_date": plan.detailed_start_date.isoformat(),
+                "detailed_end_date": plan.detailed_end_date.isoformat(),
             },
         }
 
@@ -798,6 +855,27 @@ def _active_plan(plans, as_of_date: date):
             and plan.block_start_date <= as_of_date <= plan.block_end_date
         ),
         None,
+    )
+
+
+def _plan_revision_control(*, state: dict[str, object], plan) -> str:
+    """Expose a revision only when the read-only checkpoint says it is due."""
+
+    checkpoint = state.get("checkpoint")
+    if not isinstance(checkpoint, dict):
+        return ""
+    if checkpoint.get("status") != "revision_due":
+        return ""
+    if checkpoint.get("active_plan_id") != plan.id:
+        return ""
+    detailed_end_date = checkpoint.get("detailed_end_date")
+    days_remaining = checkpoint.get("detailed_days_remaining")
+    if not isinstance(detailed_end_date, str) or not isinstance(days_remaining, int):
+        return ""
+    return render_plan_revision_control(
+        plan_id=plan.id,
+        detailed_end_date=detailed_end_date,
+        days_remaining=days_remaining,
     )
 
 

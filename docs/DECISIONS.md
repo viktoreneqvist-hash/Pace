@@ -2633,6 +2633,53 @@ click after the exact same plan has already been requested.
 
 ---
 
+# Decision #59
+
+## Problem
+
+The existing checkpoint could correctly identify that a plan's detailed window
+was ending, but the athlete still had to find a plan ID and use a terminal
+command to request the next 14 days. That contradicted the local UI goal even
+though the underlying revision service was already safe and validated.
+
+## Options
+
+- Keep checkpoint guidance in the UI but require the terminal for revisions
+- Let the browser generate a revision whenever a page opens or a sync finishes
+- Show one explicit browser action only when the existing checkpoint marks the
+  currently active plan as revision-due
+
+## Chosen
+
+The Plan view now shows **Skapa nästa 14 dagar** only when the read-only
+checkpoint has status `revision_due` for the plan active on the current date.
+The button submits that active plan's ID with the local CSRF confirmation.
+The web route independently rechecks that the requested ID is still today's
+active plan, then calls the existing `TrainingPlanService.generate_revision`
+with the fixed existing 14-day window.
+
+The service retains the same block dates and outline, validates the complete
+AI response, creates the new accepted version, and supersedes the former
+version only after success. The browser refreshes Plan only after that result.
+
+## Reason
+
+This removes terminal-only friction without introducing a second planning
+implementation, arbitrary plan selection, automatic generation, or a new AI
+authority. The checkpoint remains deterministic guidance and the click remains
+the athlete's single, deliberate authorization.
+
+## Consequences
+
+- The action is absent while the current detailed window remains current.
+- A stale page or old button cannot revise a non-active plan.
+- A failed model call or validation error leaves the active plan untouched and
+  is shown in the Plan view instead of redirecting the athlete.
+- Terminal `pace plan revise` remains available for advanced/debug use and
+  uses the same service contract.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |
