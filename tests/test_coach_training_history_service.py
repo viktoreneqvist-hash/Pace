@@ -164,3 +164,78 @@ def test_planning_continuity_keeps_training_timeline_without_private_or_recovery
     assert "hrv_value" not in str(continuity)
     assert "must-not-reach-plan" not in str(continuity)
     assert "perceived_exertion" not in str(continuity)
+
+
+def test_planning_continuity_separates_recent_drop_from_established_baseline():
+    def week(*, start_date, end_date, activity_count, duration_seconds):
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "training": {
+                "run": {
+                    "activity_count": activity_count,
+                    "duration_seconds": duration_seconds,
+                    "known_distance_meters": 15_000,
+                    "missing_distance_activity_count": 0,
+                },
+                "ride": {
+                    "activity_count": 0,
+                    "duration_seconds": 0,
+                    "known_distance_meters": 0,
+                    "missing_distance_activity_count": 0,
+                },
+            },
+            "active_days": activity_count,
+        }
+
+    weekly_history = [
+        week(
+            start_date=f"2026-06-{day:02d}",
+            end_date=f"2026-06-{day + 6:02d}",
+            activity_count=3,
+            duration_seconds=6_000,
+        )
+        for day in (1, 8, 15, 22)
+    ] + [
+        week(
+            start_date="2026-07-01",
+            end_date="2026-07-07",
+            activity_count=3,
+            duration_seconds=6_000,
+        ),
+        week(
+            start_date="2026-07-08",
+            end_date="2026-07-14",
+            activity_count=3,
+            duration_seconds=6_000,
+        ),
+        week(
+            start_date="2026-07-15",
+            end_date="2026-07-21",
+            activity_count=1,
+            duration_seconds=1_800,
+        ),
+        week(
+            start_date="2026-07-22",
+            end_date="2026-07-28",
+            activity_count=1,
+            duration_seconds=1_800,
+        ),
+    ]
+
+    continuity = build_planning_continuity_facts(
+        {
+            "daily_history": [],
+            "weekly_history": weekly_history,
+            "limits": {"daily_history_days": 28, "weekly_history_days": 84},
+        }
+    )
+
+    baseline = continuity["established_baseline"]
+    run = baseline["sports"]["run"]
+    assert baseline["excluded_most_recent_days"] == 14
+    assert baseline["calendar_weeks"] == 6
+    assert run["weeks_with_activity"] == 6
+    assert run["activity_count_weekly_median"] == 3.0
+    assert run["duration_seconds_weekly_median"] == 6_000.0
+    assert continuity["weekly_training"][-1]["training"]["run"]["activity_count"] == 1

@@ -514,7 +514,12 @@ explicitly missing-distance counts; recovery values, feedback, context, private
 notes, activity names and raw Garmin payloads remain outside this fact.
 Python also supplies already calculated latest-7 and latest-14-day summaries,
 so the model reasons over the comparison rather than calculating training
-totals from daily rows.
+totals from daily rows. A separate `established_baseline` summarizes the six
+seven-day periods immediately before that recent 14-day window, including
+active-week count plus mean, median and highest observed weekly duration and
+activity count per sport. The baseline is historical evidence, not a Python
+session or volume ceiling: recent training sets a careful entry into a plan,
+while the baseline informs the later 7–14-day outlook.
 
 Revision drafts use their accepted parent as bounded context and preserve its
 block dates and outline. A sibling revision becomes stale when another

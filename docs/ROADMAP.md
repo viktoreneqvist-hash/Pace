@@ -554,6 +554,15 @@ until the library is large enough to need them.
   keep exact return-plan judgment with the model rather than imposing a fixed
   Python session or volume cap
 
+### Batch P2 — Two-horizon continuity reasoning
+
+- [x] Calculate an established, sport-specific six-week baseline that excludes
+  the latest 14 days and retains repeated historical training evidence
+- [x] Make latest 7/14-day activity guide the return entry while the established
+  baseline informs the remaining detailed-window outlook
+- [x] Keep both horizons factual and auditable; do not add a universal
+  post-interruption workload formula, medical inference or automatic plan change
+
 ### Batch K3 — Layered coach training history
 
 - [x] Give explicit coach calls three days of detailed normalized run/ride

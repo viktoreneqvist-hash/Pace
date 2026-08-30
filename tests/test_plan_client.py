@@ -206,3 +206,4 @@ def test_plan_client_instructs_a_direct_coach_tone_without_routine_care_referral
     assert "every-other-day" in SYSTEM_INSTRUCTIONS
     assert "training_continuity" in SYSTEM_INSTRUCTIONS
     assert "single high week" in SYSTEM_INSTRUCTIONS
+    assert "established_baseline" in SYSTEM_INSTRUCTIONS

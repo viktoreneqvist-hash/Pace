@@ -2736,6 +2736,58 @@ preserving model-owned choice of exact session mix, frequency and progression.
 
 ---
 
+# Decision #61
+
+## Problem
+
+Decision #60 correctly stopped a single high week from being mistaken for
+capacity, but its initial instruction made the recent low period control the
+whole detailed window. A short unreported interruption could then erase the
+useful evidence of earlier repeated training and make an A-race plan
+unnecessarily passive.
+
+## Options
+
+- Let the most recent 7–14 days set the whole new plan
+- Add a universal post-interruption volume or session-count formula in Python
+- Separate a current entry decision from an established historical baseline,
+  while leaving exact session progression to the coach model
+
+## Chosen
+
+`training_continuity` now also contains `established_baseline`: a
+Python-calculated six-week summary that ends before the most recent 14 days.
+For each sport it reports active weeks, total activity count and duration, plus
+weekly mean, median and highest observed values. The full chronological daily
+and weekly facts remain available beside this summary.
+
+The coach model must use the recent pattern for the first return sessions and
+avoid escalating quality from an isolated peak. It must use the established
+baseline for the later 7–14-day outlook when the historical pattern and other
+supplied Pace facts support controlled progression. A short interruption is
+therefore neither permission to jump directly to a peak nor an automatic reset
+of all prior capacity evidence.
+
+## Reason
+
+The athlete should not need to manipulate one week's training in order to get
+a reasonable plan. Separating acute entry from repeated historical capacity is
+more faithful to the data and handles an unreported short absence without
+guessing its cause. A universal workload formula would look safer but would
+incorrectly treat voluntary down-weeks, tapers and actual return periods alike.
+
+## Consequences
+
+- The first week can be controlled after a drop while the second week can move
+  toward demonstrated historical continuity.
+- A single productive week still cannot independently justify a sharp increase.
+- The model must explain both the entry decision and the later-window outlook
+  in its stored, reviewable assessment.
+- Python exposes facts and preserves existing validation boundaries; it does
+  not calculate a prescribed session count, workload score or medical status.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

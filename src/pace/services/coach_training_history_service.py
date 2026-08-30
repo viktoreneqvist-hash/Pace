@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from datetime import date, timedelta
+from statistics import median
 from typing import Any
 
 from pace.database.session import session_scope
@@ -16,6 +17,8 @@ RECENT_ACTIVITY_DAYS = 3
 DAILY_HISTORY_DAYS = 28
 WEEKLY_HISTORY_DAYS = 84
 WEEKLY_WINDOW_DAYS = 7
+ESTABLISHED_BASELINE_WEEKS = 6
+RECENT_BASELINE_EXCLUDED_WEEKS = 2
 INCLUDED_SPORTS = ("run", "ride")
 
 
@@ -167,10 +170,8 @@ def build_planning_continuity_facts(
         if isinstance(daily_history, list)
         else []
     )
-    return {
-        "daily_training": daily_training,
-        "recent_windows": _recent_training_windows(daily_training),
-        "weekly_training": [
+    weekly_training = (
+        [
             {
                 "start_date": item["start_date"],
                 "end_date": item["end_date"],
@@ -185,7 +186,13 @@ def build_planning_continuity_facts(
             and isinstance(item.get("active_days"), int)
         ]
         if isinstance(weekly_history, list)
-        else [],
+        else []
+    )
+    return {
+        "daily_training": daily_training,
+        "recent_windows": _recent_training_windows(daily_training),
+        "weekly_training": weekly_training,
+        "established_baseline": _established_training_baseline(weekly_training),
         "limits": {
             "daily_training_days": (
                 limits.get("daily_history_days") if isinstance(limits, dict) else None
@@ -209,6 +216,68 @@ def _recent_training_windows(
         _summarize_daily_training_window(daily_training[-days:], expected_days=days)
         for days in (7, 14)
     ]
+
+
+def _established_training_baseline(
+    weekly_training: list[dict[str, object]],
+) -> dict[str, object]:
+    """Describe prior repeated training without converting it into a plan cap."""
+
+    baseline_weeks = weekly_training[
+        -(ESTABLISHED_BASELINE_WEEKS + RECENT_BASELINE_EXCLUDED_WEEKS) : -RECENT_BASELINE_EXCLUDED_WEEKS
+    ]
+    return {
+        "excluded_most_recent_days": RECENT_BASELINE_EXCLUDED_WEEKS
+        * WEEKLY_WINDOW_DAYS,
+        "calendar_weeks": len(baseline_weeks),
+        "start_date": baseline_weeks[0]["start_date"] if baseline_weeks else None,
+        "end_date": baseline_weeks[-1]["end_date"] if baseline_weeks else None,
+        "sports": {
+            sport_type: _summarize_established_sport(
+                baseline_weeks, sport_type=sport_type
+            )
+            for sport_type in INCLUDED_SPORTS
+        },
+    }
+
+
+def _summarize_established_sport(
+    weekly_training: list[dict[str, object]], *, sport_type: str
+) -> dict[str, object]:
+    activity_counts: list[int] = []
+    durations: list[int] = []
+    active_days: list[int] = []
+    for week in weekly_training:
+        summaries = week.get("training")
+        summary = summaries.get(sport_type) if isinstance(summaries, dict) else None
+        activity_count = _nonnegative_int(
+            summary.get("activity_count") if isinstance(summary, dict) else None
+        )
+        activity_counts.append(activity_count)
+        durations.append(
+            _nonnegative_int(
+                summary.get("duration_seconds") if isinstance(summary, dict) else None
+            )
+        )
+        active_days.append(int(activity_count > 0))
+    return {
+        "weeks_with_activity": sum(day > 0 for day in active_days),
+        "activity_count_total": sum(activity_counts),
+        "activity_count_weekly_mean": _mean(activity_counts),
+        "activity_count_weekly_median": _median(activity_counts),
+        "duration_seconds_total": sum(durations),
+        "duration_seconds_weekly_mean": _mean(durations),
+        "duration_seconds_weekly_median": _median(durations),
+        "duration_seconds_highest_week": max(durations, default=0),
+    }
+
+
+def _mean(values: list[int]) -> float | None:
+    return None if not values else round(sum(values) / len(values), 1)
+
+
+def _median(values: list[int]) -> float | int | None:
+    return None if not values else median(values)
 
 
 def _summarize_daily_training_window(

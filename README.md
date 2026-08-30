@@ -184,7 +184,9 @@ Inför varje ny plan ser coachen även den faktiska träningsformen över tid: 2
 dagar dag-för-dag och tolv veckosammanfattningar per idrott. En enskilt hög
 vecka räcker därför inte som grund för ett hårdare program. Om den senaste
 träningen tydligt fallit ser Pace ett kontinuitetsavbrott, utan att gissa om
-orsaken var sjukdom, resa eller något annat.
+orsaken var sjukdom, resa eller något annat. Avbrottet styr hur försiktigt den
+börjar, men raderar inte automatiskt den tidigare hållbara träningsnivån för
+resten av det kommande detaljfönstret.
 
 Lägg till ett lopp när du har ett. `A` är huvudmålet, `B` är ett
 sekundärt lopp med partiell taper och `C` behandlas som ett hårt träningspass:

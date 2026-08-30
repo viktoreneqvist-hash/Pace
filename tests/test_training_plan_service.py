@@ -306,6 +306,7 @@ def test_initial_plan_is_activated_after_validation_with_selected_fact_catalog_o
     assert continuity["provenance"] == "garmin_verified"
     assert continuity["value"]["weekly_training"][-1]["active_days"] == 1
     assert continuity["value"]["recent_windows"][0]["training"]["run"]["activity_count"] == 5
+    assert continuity["value"]["established_baseline"]["excluded_most_recent_days"] == 14
     assert "recovery" not in str(continuity)
     assert "note" not in str(catalog["relevant_context"])
 
