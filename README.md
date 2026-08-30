@@ -180,6 +180,11 @@ Sportlägena är `run_only`, `run_primary`, `balanced`, `ride_primary` och
 `ride_only`. `run_only` och `ride_only` är hårda gränser: Pace föreslår aldrig
 det andra sportslaget. De två *primary*-lägena är bara din preferens; modellen
 väljer fortfarande passen utifrån fakta, återhämtning och planmålet.
+Inför varje ny plan ser coachen även den faktiska träningsformen över tid: 28
+dagar dag-för-dag och tolv veckosammanfattningar per idrott. En enskilt hög
+vecka räcker därför inte som grund för ett hårdare program. Om den senaste
+träningen tydligt fallit ser Pace ett kontinuitetsavbrott, utan att gissa om
+orsaken var sjukdom, resa eller något annat.
 
 Lägg till ett lopp när du har ett. `A` är huvudmålet, `B` är ett
 sekundärt lopp med partiell taper och `C` behandlas som ett hårt träningspass:

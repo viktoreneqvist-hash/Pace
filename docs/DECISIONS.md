@@ -2680,6 +2680,62 @@ the athlete's single, deliberate authorization.
 
 ---
 
+# Decision #60
+
+## Problem
+
+An aggregate capacity profile and a recent activity count can hide the shape
+of training. A single high week followed by a sharp drop could be interpreted
+as grounds for a harder plan, even though the current training pattern shows an
+interruption. This also happens when the athlete has not recorded a reason such
+as illness; Pace must not need a diagnosis in order to see an observed break.
+
+## Options
+
+- Keep aggregate history and let the coach infer continuity from it
+- Add a hard Python cap on session count or volume after every lower week
+- Give the coach an explicit chronological continuity fact and require it to
+  reason from that fact without a universal volume or session-count cap
+
+## Chosen
+
+Plan drafting and revisions receive a new `training_continuity` Pace fact. It
+contains 28 date-labelled daily run/ride summaries and twelve consecutive
+seven-day run/ride summaries covering 84 days. The fact includes activity
+counts, active days, duration and explicitly missing distance information, plus
+Python-calculated latest-7 and latest-14-day summaries. It
+contains no raw Garmin payloads, activity names, private notes, recovery
+values, feedback, or inferred health condition.
+
+The plan-model instruction now requires a chronological comparison of the most
+recent 7 and 14 days with preceding weeks, separately by sport. One high week
+cannot establish sustainable capacity by itself. When the current pattern is
+materially lower after a short high week, the coach must treat it as an observed
+continuity interruption, begin from the current return pattern, and explain the
+factual basis. It must not label the interruption illness or injury without a
+separate supplied Pace fact.
+
+## Reason
+
+The athlete chose a fact-led coach judgment rather than a universal Python
+ceiling. A hard cap would be more mechanically predictable but would confuse a
+planned down-week, taper, or deliberate recovery with lost capacity. The
+chronological fact prevents the model from seeing only an attractive peak while
+preserving model-owned choice of exact session mix, frequency and progression.
+
+## Consequences
+
+- A future plan can still be more demanding when the complete record supports
+  it, but it must not justify that increase from one high week alone.
+- A non-reported absence is visible as a continuity pattern, not silently
+  treated as proof of sickness or a completed training session.
+- The new fact is auditable in the stored plan context and may be cited in the
+  coach assessment.
+- There is deliberately no automatic plan replacement and no universal numeric
+  volume cap in this decision.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

@@ -1,7 +1,10 @@
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
-from pace.services.coach_training_history_service import build_coach_training_history
+from pace.services.coach_training_history_service import (
+    build_coach_training_history,
+    build_planning_continuity_facts,
+)
 from pace.trends.models import FeedbackTrendRecord
 
 
@@ -108,3 +111,56 @@ def test_daily_history_preserves_missing_distance_instead_of_converting_it_to_ze
 
     assert run["known_distance_meters"] == 0
     assert run["missing_distance_activity_count"] == 1
+
+
+def test_planning_continuity_keeps_training_timeline_without_private_or_recovery_data():
+    history = build_coach_training_history(
+        end_date=date(2026, 7, 27),
+        activities=(
+            _activity(
+                activity_date=date(2026, 7, 27),
+                sport_type="ride",
+                duration_seconds=3_000,
+                distance_meters=20_000.0,
+            ),
+        ),
+        daily_metrics=(
+            SimpleNamespace(
+                date=date(2026, 7, 27),
+                hrv_value=91.0,
+                resting_heart_rate=47,
+                sleep_duration_seconds=28_800,
+            ),
+        ),
+        feedback=(
+            FeedbackTrendRecord(
+                scheduled_date=date(2026, 7, 27),
+                sport_type="ride",
+                outcome="completed",
+                perceived_exertion=5,
+                reason_code=None,
+            ),
+        ),
+        context_events=(
+            SimpleNamespace(
+                event_type="travel",
+                start_date=date(2026, 7, 27),
+                end_date=None,
+                note="must-not-reach-plan",
+            ),
+        ),
+    )
+
+    continuity = build_planning_continuity_facts(history)
+
+    assert len(continuity["daily_training"]) == 28
+    assert len(continuity["weekly_training"]) == 12
+    assert continuity["daily_training"][-1]["training"]["ride"]["activity_count"] == 1
+    assert continuity["weekly_training"][-1]["active_days"] == 1
+    latest_week = continuity["recent_windows"][0]
+    assert latest_week["calendar_days"] == 7
+    assert latest_week["training"]["ride"]["duration_seconds"] == 3_000
+    assert latest_week["training"]["ride"]["active_days"] == 1
+    assert "hrv_value" not in str(continuity)
+    assert "must-not-reach-plan" not in str(continuity)
+    assert "perceived_exertion" not in str(continuity)

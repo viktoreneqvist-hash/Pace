@@ -139,6 +139,127 @@ def build_coach_training_history(
     }
 
 
+def build_planning_continuity_facts(
+    history: dict[str, object],
+) -> dict[str, object]:
+    """Select chronological training facts for an explicit plan decision.
+
+    The plan model needs the shape of recent training, not only an aggregate
+    capacity total. Keep this deliberately narrower than the coach-dialogue
+    history: recovery, feedback, context, private notes, and detailed activity
+    fields already have dedicated planning facts elsewhere in the catalog.
+    """
+
+    daily_history = history.get("daily_history")
+    weekly_history = history.get("weekly_history")
+    limits = history.get("limits")
+    daily_training = (
+        [
+            {
+                "date": item["date"],
+                "training": item["training"],
+            }
+            for item in daily_history
+            if isinstance(item, dict)
+            and isinstance(item.get("date"), str)
+            and isinstance(item.get("training"), dict)
+        ]
+        if isinstance(daily_history, list)
+        else []
+    )
+    return {
+        "daily_training": daily_training,
+        "recent_windows": _recent_training_windows(daily_training),
+        "weekly_training": [
+            {
+                "start_date": item["start_date"],
+                "end_date": item["end_date"],
+                "training": item["training"],
+                "active_days": item["active_days"],
+            }
+            for item in weekly_history
+            if isinstance(item, dict)
+            and isinstance(item.get("start_date"), str)
+            and isinstance(item.get("end_date"), str)
+            and isinstance(item.get("training"), dict)
+            and isinstance(item.get("active_days"), int)
+        ]
+        if isinstance(weekly_history, list)
+        else [],
+        "limits": {
+            "daily_training_days": (
+                limits.get("daily_history_days") if isinstance(limits, dict) else None
+            ),
+            "weekly_training_days": (
+                limits.get("weekly_history_days") if isinstance(limits, dict) else None
+            ),
+            "weekly_window_days": WEEKLY_WINDOW_DAYS,
+            "raw_garmin_payloads_included": False,
+            "private_note_text_included": False,
+        },
+    }
+
+
+def _recent_training_windows(
+    daily_training: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Calculate short current windows so the model never totals daily rows."""
+
+    return [
+        _summarize_daily_training_window(daily_training[-days:], expected_days=days)
+        for days in (7, 14)
+    ]
+
+
+def _summarize_daily_training_window(
+    daily_training: list[dict[str, object]], *, expected_days: int
+) -> dict[str, object]:
+    training = {
+        sport_type: {
+            "activity_count": 0,
+            "active_days": 0,
+            "duration_seconds": 0,
+            "known_distance_meters": 0,
+            "missing_distance_activity_count": 0,
+        }
+        for sport_type in INCLUDED_SPORTS
+    }
+    for item in daily_training:
+        summaries = item.get("training")
+        if not isinstance(summaries, dict):
+            continue
+        for sport_type in INCLUDED_SPORTS:
+            summary = summaries.get(sport_type)
+            if not isinstance(summary, dict):
+                continue
+            activity_count = _nonnegative_int(summary.get("activity_count"))
+            target = training[sport_type]
+            target["activity_count"] += activity_count
+            target["active_days"] += int(activity_count > 0)
+            target["duration_seconds"] += _nonnegative_int(summary.get("duration_seconds"))
+            target["known_distance_meters"] += _nonnegative_number(
+                summary.get("known_distance_meters")
+            )
+            target["missing_distance_activity_count"] += _nonnegative_int(
+                summary.get("missing_distance_activity_count")
+            )
+    return {
+        "calendar_days": expected_days,
+        "observed_daily_rows": len(daily_training),
+        "start_date": daily_training[0]["date"] if daily_training else None,
+        "end_date": daily_training[-1]["date"] if daily_training else None,
+        "training": training,
+    }
+
+
+def _nonnegative_int(value: object) -> int:
+    return value if isinstance(value, int) and value >= 0 else 0
+
+
+def _nonnegative_number(value: object) -> float | int:
+    return value if isinstance(value, (int, float)) and value >= 0 else 0
+
+
 def _detailed_activity(activity) -> dict[str, object]:
     """Use summary columns only; omit provider ID, name, GPS, and raw data."""
 

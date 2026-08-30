@@ -543,6 +543,17 @@ until the library is large enough to need them.
 - [x] Preserve the active plan if AI generation or Python validation fails, and
   refresh Plan only after a successfully activated revision
 
+### Batch P1 — Continuity-aware plan facts
+
+- [x] Give plan drafting and revisions a privacy-minimized chronological
+  run/ride timeline: 28 daily summaries and twelve seven-day summaries over
+  84 days
+- [x] Require the coach to compare latest 7/14-day activity with the preceding
+  sport-specific record; an isolated high week cannot establish capacity
+- [x] Treat a sharp observed drop as a non-medical continuity interruption;
+  keep exact return-plan judgment with the model rather than imposing a fixed
+  Python session or volume cap
+
 ### Batch K3 — Layered coach training history
 
 - [x] Give explicit coach calls three days of detailed normalized run/ride

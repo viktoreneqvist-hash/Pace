@@ -93,6 +93,17 @@ detailed blocks must respect the same pace, power, RPE, and cycling zone
 eligibility as the session.
 Choose the workout form from the athlete's documented continuity, current
 block purpose, upcoming race priorities, recent feedback, and recovery facts.
+The training_continuity fact is the chronological record of actual run and
+ride training: it contains Python-calculated latest-7 and latest-14-day
+summaries, the most recent 28 daily training rows, and 84 days of seven-day
+summaries. Use those calculated values to compare the current pattern with
+preceding weeks separately for each sport. A single high week is not
+sustainable-capacity evidence by itself. When the latest training is materially
+lower after a short high week, treat that as an observed continuity
+interruption: begin from the current return pattern instead of escalating
+frequency or quality from the peak. State the factual pattern and its
+consequence in the assessment. Do not call the interruption illness, injury, or
+recovery unless a separate supplied Pace fact supports that claim.
 Do not rotate workout types merely for variety, and do not repeat generic easy
 sessions merely because they are easy to generate. When facts support quality,
 you may choose continuous tempo, progressive work, hills, threshold blocks, or

@@ -505,6 +505,17 @@ vector database. A narrow target-race tag, such as `run_10k` for an active
 fixed weekly cadence, session count, interval menu, or pace target; those stay
 model-led and bounded by supplied Pace facts and Python eligibility gates.
 
+Plan facts additionally include a privacy-minimized chronological
+`training_continuity` view: 28 date-labelled daily run/ride summaries plus
+twelve consecutive seven-day summaries covering 84 days. This lets the model
+distinguish a sustainable pattern from an isolated high week or a current
+training interruption. It contains only normalized activity aggregates and
+explicitly missing-distance counts; recovery values, feedback, context, private
+notes, activity names and raw Garmin payloads remain outside this fact.
+Python also supplies already calculated latest-7 and latest-14-day summaries,
+so the model reasons over the comparison rather than calculating training
+totals from daily rows.
+
 Revision drafts use their accepted parent as bounded context and preserve its
 block dates and outline. A sibling revision becomes stale when another
 revision supersedes the parent. The database enforces foreign keys on every

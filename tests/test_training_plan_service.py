@@ -89,6 +89,53 @@ class StubPreferenceService:
         )
 
 
+class StubTrainingHistoryService:
+    def get_history(self, *, end_date: date) -> dict[str, object]:
+        return {
+            "daily_history": [
+                {
+                    "date": date(2026, 7, 25).isoformat(),
+                    "training": {
+                        "run": {"activity_count": 4, "duration_seconds": 7_200},
+                        "ride": {"activity_count": 0, "duration_seconds": 0},
+                    },
+                    "recovery": {"hrv_value": 80.0},
+                },
+                {
+                    "date": date(2026, 7, 26).isoformat(),
+                    "training": {
+                        "run": {"activity_count": 1, "duration_seconds": 1_800},
+                        "ride": {"activity_count": 0, "duration_seconds": 0},
+                    },
+                    "recovery": {"hrv_value": 70.0},
+                },
+            ],
+            "weekly_history": [
+                {
+                    "start_date": date(2026, 7, 19).isoformat(),
+                    "end_date": date(2026, 7, 25).isoformat(),
+                    "training": {
+                        "run": {"activity_count": 4, "duration_seconds": 7_200},
+                        "ride": {"activity_count": 0, "duration_seconds": 0},
+                    },
+                    "active_days": 4,
+                    "explicit_feedback": {"feedback_records": 4},
+                },
+                {
+                    "start_date": date(2026, 7, 26).isoformat(),
+                    "end_date": date(2026, 8, 1).isoformat(),
+                    "training": {
+                        "run": {"activity_count": 1, "duration_seconds": 1_800},
+                        "ride": {"activity_count": 0, "duration_seconds": 0},
+                    },
+                    "active_days": 1,
+                    "explicit_feedback": {"feedback_records": 0},
+                },
+            ],
+            "limits": {"daily_history_days": 28, "weekly_history_days": 84},
+        }
+
+
 class StubPerformanceService:
     def __init__(self, *, run_intensity_allowed: bool) -> None:
         self.run_intensity_allowed = run_intensity_allowed
@@ -235,6 +282,7 @@ def _service(
         performance_service=performance_service
         or StubPerformanceService(run_intensity_allowed=run_intensity_allowed),
         preference_service=StubPreferenceService(available_days),
+        training_history_service=StubTrainingHistoryService(),
     )
 
 
@@ -254,6 +302,11 @@ def test_initial_plan_is_activated_after_validation_with_selected_fact_catalog_o
     catalog = generator.requests[0].context["fact_catalog"]
     assert catalog["training_preference"]["value"]["sport_role"] == "run_primary"
     assert catalog["training_preference"]["value"]["coaching_ambition"] == "balanced"
+    continuity = catalog["training_continuity"]
+    assert continuity["provenance"] == "garmin_verified"
+    assert continuity["value"]["weekly_training"][-1]["active_days"] == 1
+    assert continuity["value"]["recent_windows"][0]["training"]["run"]["activity_count"] == 5
+    assert "recovery" not in str(continuity)
     assert "note" not in str(catalog["relevant_context"])
 
 

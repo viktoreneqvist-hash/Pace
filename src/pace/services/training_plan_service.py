@@ -34,6 +34,10 @@ from pace.repositories.training_plan_repository import (
     upsert_session_feedback,
 )
 from pace.services.capacity_service import CapacityService
+from pace.services.coach_training_history_service import (
+    CoachTrainingHistoryService,
+    build_planning_continuity_facts,
+)
 from pace.services.plan_readiness_service import PlanReadinessService
 from pace.services.performance_history_service import PerformanceHistoryService
 from pace.services.race_service import resolved_taper
@@ -70,6 +74,7 @@ class TrainingPlanService:
         performance_service: PerformanceHistoryService | None = None,
         preference_service: TrainingPreferenceService | None = None,
         training_response_trend_service: TrainingResponseTrendService | None = None,
+        training_history_service: CoachTrainingHistoryService | None = None,
     ) -> None:
         self._generator = generator
         self._plan_readiness_service = plan_readiness_service or PlanReadinessService()
@@ -78,6 +83,9 @@ class TrainingPlanService:
         self._preference_service = preference_service or TrainingPreferenceService()
         self._training_response_trend_service = (
             training_response_trend_service or TrainingResponseTrendService()
+        )
+        self._training_history_service = (
+            training_history_service or CoachTrainingHistoryService()
         )
 
     def generate_draft(
@@ -361,6 +369,9 @@ class TrainingPlanService:
         training_response_trends = self._training_response_trend_service.get_trends(
             end_date=as_of_date
         )
+        training_continuity = build_planning_continuity_facts(
+            self._training_history_service.get_history(end_date=as_of_date)
+        )
         active_principles = tuple(
             {"id": item.id, "statement": item.statement, "source_plan_id": item.source_plan_id}
             for item, review_due in CoachingPrincipleService().list_active(as_of_date=as_of_date)
@@ -386,10 +397,11 @@ class TrainingPlanService:
             feedback=feedback,
             parent_plan=parent_plan,
             training_response_trends=training_response_trends,
+            training_continuity=training_continuity,
             active_principles=active_principles,
             personalization_evidence=personalization_evidence,
         )
-        context = _json_safe({"schema_version": 5, "fact_catalog": fact_catalog})
+        context = _json_safe({"schema_version": 6, "fact_catalog": fact_catalog})
         knowledge_library = load_knowledge_library()
         selected_briefs = select_for_plan_context(knowledge_library, context=context)
         context["knowledge_briefs"] = serialize_selected_briefs(
@@ -735,6 +747,7 @@ def _fact_catalog(
     feedback,
     parent_plan,
     training_response_trends,
+    training_continuity,
     active_principles,
     personalization_evidence,
 ) -> dict[str, dict[str, object]]:
@@ -779,6 +792,9 @@ def _fact_catalog(
         "feedback": _catalog_entry("athlete_reported", list(feedback)),
         "training_response_trends": _catalog_entry(
             "athlete_reported_python_derived", asdict(training_response_trends)
+        ),
+        "training_continuity": _catalog_entry(
+            "garmin_verified", training_continuity
         ),
         "athlete_confirmed_coach_principles": _catalog_entry(
             "explicit_athlete_confirmation", active_principles
