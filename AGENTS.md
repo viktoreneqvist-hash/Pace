@@ -1,7 +1,8 @@
 # Pace contributor instructions
 
-Pace is a private, local-first, single-user Garmin system for running and
-cycling. Keep the implementation small, explicit, and understandable.
+Pace is an open-source, local-first, single-athlete Garmin system for running
+and cycling. Keep the implementation explicit, understandable, and safe for
+unknown users to clone without weakening its local-only runtime boundary.
 
 ## Read before changing code
 
@@ -28,7 +29,9 @@ Garmin provider
     -> context memory
     -> athlete state
     -> rules
-    -> AI later
+    -> explicitly requested AI coaching over selected facts
+    -> Python validation
+    -> local web UI or CLI
 ```
 
 - Only the Garmin integration may know Garmin client APIs and payload shapes.
@@ -84,11 +87,13 @@ Garmin provider
   and explains its reasoning. Never derive zones from observed heart rate or
   prescribe cycling pace. These are eligibility gates, never target
   calculations or fitness scores.
-- Plan generation is an explicit, stateless AI call that can create only a
-  local `draft` plan version. It must not change an accepted plan. Acceptance,
-  session feedback, and a subsequent revision draft are separate athlete
-  actions; feedback text is included in an AI revision only when the athlete
-  marked that individual note as shareable.
+- Plan generation is an explicit, stateless AI call. The athlete's create or
+  revise action is the authorization; Python must validate the complete result
+  before atomically storing it as the accepted version and superseding an
+  overlapping active version. A failed model call or validation changes
+  nothing. Legacy drafts remain historical only. Session feedback is a
+  separate athlete action; feedback text is included in an AI revision only
+  when the athlete marked that individual note as shareable.
 - Every new plan uses the current structured plan contract. Its coaching
   assessment must cite one or more IDs from the selected, provenance-labelled
   fact catalog and must contain explicit inference, rationale, uncertainty,
@@ -102,9 +107,9 @@ Garmin provider
   distance, duration, and an allowed Garmin zone target. Its additional
   primary target is a structured RPE, verified run pace, verified cycling
   power, or none — never free text. Cycling pace is forbidden.
-- Revisions preserve the accepted parent's block dates and block outline. A
-  revision remains a draft until accepted; once one sibling revision is
-  accepted, other siblings are stale and cannot be accepted.
+- Revisions preserve the accepted parent's block dates and block direction.
+  The explicit revision action creates a fully validated accepted version;
+  older and overlapping versions are superseded atomically.
 - SQLite foreign keys are enabled on every application connection. `pace db
   init` checks existing SQLite foreign-key integrity before an upgrade. Plan
   readiness also blocks drafting when otherwise-contiguous Garmin history is
@@ -132,8 +137,8 @@ Garmin provider
   Pace facts. Its in-terminal dialogue history exists only in process memory
   and is discarded on exit; it is not application memory. A same-day
   replacement or skip is only a validated, unsaved draft. It must never alter,
-  accept, or overwrite a plan; persistent changes remain a separate revision
-  draft and explicit athlete acceptance.
+  accept, or overwrite a plan; persistent changes require a separate explicit
+  plan-revision action.
 - Coaching ambition is a stored athlete preference: `cautious`, `balanced`, or
   `ambitious`. It is supplied to plan drafting and coach dialogue as intent,
   never a numerical volume/intensity rule or permission to bypass factual,
@@ -191,13 +196,14 @@ Garmin provider
 - Garmin workout export is deferred. Do not add calendar/device writes or other
   externally mutating plan delivery without a new product and safety decision.
 - `pace serve` is a loopback-only local presentation layer. Bind it only to
-  `127.0.0.1`; do not add hosted access, accounts, remote listeners, or API
-  keys/tokens in browser-delivered HTML or JavaScript without a new decision.
+  `127.0.0.1`, restrict accepted Host headers, and retain restrictive browser
+  security headers; do not add hosted access, accounts, remote listeners, or
+  API keys/tokens in browser-delivered HTML or JavaScript without a new decision.
   Browser coach dialogue is bounded in process memory only. Every durable UI
   write requires same-origin CSRF confirmation and must call the existing
   validated service; an LLM may prepare a card but must never write context,
-  feedback, preferences, races, or plans directly. Plan adjustments remain
-  review-only until an explicit revision workflow is designed.
+  feedback, preferences, races, or plans directly. Plan changes require the
+  existing explicit, validated create or revision workflow.
 - Explicit coach calls receive only the bounded normalized history contract:
   three detailed activity days, 28 daily rows, and 84 rolling weekly summaries.
   It may include summary activity fields, current Garmin status facts,

@@ -45,39 +45,39 @@ def render_home_html(
     ride_zone_profile,
 ) -> str:
     next_session = _next_session(plan, checkpoint.as_of_date)
-    action = checkpoint.recommended_command or "Ingen planrevision behövs i dag."
+    action = checkpoint.recommended_command or "No plan revision is needed today."
     plan_link = (
-        f'<a class="button" href="plan-{plan.id}.html">Öppna aktiv plan</a>'
+        f'<a class="button" href="plan-{plan.id}.html">Open active plan</a>'
         if plan is not None
         else ""
     )
     return f"""<!doctype html>
-<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Pace home</title><style>{_STYLE}</style></head><body><main>
-<header><p class="eyebrow">PACE · COACH HOME</p><h1>{escape(checkpoint.as_of_date.isoformat())}</h1><p>Din lokala väg från plan till pass, feedback och nästa utkast.</p></header>
+<header><p class="eyebrow">PACE · COACH HOME</p><h1>{escape(checkpoint.as_of_date.isoformat())}</h1><p>Your local path from plan to session, feedback, and the next draft.</p></header>
 <section class="cards">
 <article><small>Planstatus</small><strong>{escape(checkpoint.status)}</strong><span>{escape(' · '.join(checkpoint.reasons))}</span></article>
-<article><small>Nästa pass</small><strong>{escape(next_session)}</strong></article>
-<article><small>Detaljfönster</small><strong>{_detail_window(checkpoint)}</strong></article>
-<article><small>Personalisering</small><strong>{escape(personalization.status)}</strong><span>{personalization.feedback_records}/{personalization.required_feedback_records} feedbackposter</span></article>
+<article><small>Next session</small><strong>{escape(next_session)}</strong></article>
+<article><small>Detailed window</small><strong>{_detail_window(checkpoint)}</strong></article>
+<article><small>Personalization</small><strong>{escape(personalization.status)}</strong><span>{personalization.feedback_records}/{personalization.required_feedback_records} feedback records</span></article>
 </section>
-<section><h2>Nästa åtgärd</h2><code>{escape(action)}</code></section>
-<section><h2>Kommande lopp</h2>{_race_list(races, checkpoint.as_of_date)}</section>
-<section><h2>Inställningar</h2>{_settings(preference, ride_zone_profile)}</section>
-<section><h2>Observerade mönster</h2>{_patterns(personalization)}</section>
-<section><h2>Rapporter</h2><div class="actions"><a class="button" href="dashboard.html">Öppna dashboard</a>{plan_link}<a class="button secondary" href="weekly-review.html">Öppna senaste veckoreview</a></div><p class="muted">En länk kan saknas tills rapporten har skapats första gången.</p></section>
-<footer>Pace Home är lokal och läsande. Den synkar inte Garmin, anropar inte AI och ändrar aldrig planen.</footer>
+<section><h2>Next action</h2><code>{escape(action)}</code></section>
+<section><h2>Upcoming races</h2>{_race_list(races, checkpoint.as_of_date)}</section>
+<section><h2>Settings</h2>{_settings(preference, ride_zone_profile)}</section>
+<section><h2>Observed patterns</h2>{_patterns(personalization)}</section>
+<section><h2>Reports</h2><div class="actions"><a class="button" href="dashboard.html">Open dashboard</a>{plan_link}<a class="button secondary" href="weekly-review.html">Open latest weekly review</a></div><p class="muted">A link may be unavailable until its report has been created once.</p></section>
+<footer>Pace Home is local and read-only. It does not sync Garmin, call AI, or change the plan.</footer>
 </main></body></html>"""
 
 
 def _next_session(plan, as_of_date) -> str:
     if plan is None:
-        return "Ingen accepterad aktiv plan"
+        return "No active plan"
     session = next(
         (item for item in plan.sessions if item.scheduled_date >= as_of_date), None
     )
     if session is None:
-        return "Inga detaljerade pass kvar"
+        return "No detailed sessions remain"
     return f"{session.scheduled_date.isoformat()} · {session.purpose}"
 
 
@@ -85,29 +85,29 @@ def _detail_window(checkpoint) -> str:
     if checkpoint.detailed_end_date is None:
         return "—"
     return (
-        f"{checkpoint.detailed_days_remaining} dagar kvar"
-        f"<span>till {checkpoint.detailed_end_date.isoformat()}</span>"
+        f"{checkpoint.detailed_days_remaining} days remaining"
+        f"<span>through {checkpoint.detailed_end_date.isoformat()}</span>"
     )
 
 
 def _race_list(races, as_of_date) -> str:
     future = [race for race in races if race.race_date >= as_of_date]
     if not future:
-        return '<p class="muted">Inga kommande lopp.</p>'
+        return '<p class="muted">No upcoming races.</p>'
     return "<div class=\"race-list\">" + "".join(
         '<article class="race">'
         f'<strong>{escape(race.name)}</strong>'
-        f'<span>{race.race_date.isoformat()} · prioritet {escape(race.priority)} · '
-        f'{(race.race_date - as_of_date).days} dagar kvar</span></article>'
+        f'<span>{race.race_date.isoformat()} · priority {escape(race.priority)} · '
+        f'{(race.race_date - as_of_date).days} days remaining</span></article>'
         for race in future
     ) + "</div>"
 
 
 def _patterns(personalization) -> str:
     if not personalization.observed_patterns:
-        return '<p class="muted">För lite explicit feedback för stabila observationer.</p>'
+        return '<p class="muted">Too little explicit feedback for stable observations.</p>'
     return "<ul>" + "".join(
-        f'<li>{escape(item.observation)} <small>({item.data_points} datapunkter)</small></li>'
+        f'<li>{escape(item.observation)} <small>({item.data_points} data points)</small></li>'
         for item in personalization.observed_patterns
     ) + "</ul>"
 
@@ -115,36 +115,38 @@ def _patterns(personalization) -> str:
 def _settings(preference, ride_zone_profile) -> str:
     if preference is None:
         preference_html = (
-            '<article class="setting wide"><small>Planpreferenser</small>'
-            '<strong>Inte konfigurerade</strong>'
-            '<span>Kör pace preferences set innan nästa planutkast.</span></article>'
+            '<article class="setting wide"><small>Planning preferences</small>'
+            '<strong>Not configured</strong>'
+            '<span>Configure them in the web Settings page before the next plan draft.</span></article>'
         )
         availability_html = ""
     else:
         ambition = {
-            "cautious": "Försiktig",
-            "balanced": "Balanserad",
-            "ambitious": "Offensiv",
+            "cautious": "Cautious",
+            "balanced": "Balanced",
+            "ambitious": "Ambitious",
         }.get(preference.coaching_ambition, preference.coaching_ambition)
         sport_role = {
-            "run_primary": "Löpning primär",
-            "ride_primary": "Cykling primär",
-            "balanced": "Balanserad löpning/cykling",
+            "run_only": "Running only",
+            "run_primary": "Running primary",
+            "ride_primary": "Cycling primary",
+            "ride_only": "Cycling only",
+            "balanced": "Balanced running/cycling",
         }.get(preference.sport_role, preference.sport_role)
         preference_html = (
-            '<article class="setting"><small>Ambitionsläge</small>'
+            '<article class="setting"><small>Coaching ambition</small>'
             f"<strong>{escape(ambition)}</strong></article>"
-            '<article class="setting"><small>Sportroll</small>'
+            '<article class="setting"><small>Sport role</small>'
             f"<strong>{escape(sport_role)}</strong></article>"
         )
         availability_html = (
-            '<article class="setting wide"><small>Veckotillgänglighet</small>'
+            '<article class="setting wide"><small>Weekly availability</small>'
             f'<div class="chips">{_availability(preference.available_days)}</div>'
-            '<span>”Ingen tidsgräns” betyder att du inte har angett ett tak; '
-            "det är inte tillstånd för obegränsad träning.</span></article>"
+            '<span>“No time limit” means you have not set a cap; '
+            "it is not permission for unlimited training.</span></article>"
         )
     zones_html = (
-        '<article class="setting wide"><small>Cykelpulszoner</small>'
+        '<article class="setting wide"><small>Cycling heart-rate zones</small>'
         f'<div class="chips">{_zones(ride_zone_profile)}</div></article>'
     )
     return (
@@ -155,34 +157,34 @@ def _settings(preference, ride_zone_profile) -> str:
 
 def _availability(available_days) -> str:
     day_labels = {
-        "mon": "Mån",
-        "tue": "Tis",
-        "wed": "Ons",
-        "thu": "Tor",
-        "fri": "Fre",
-        "sat": "Lör",
-        "sun": "Sön",
+        "mon": "Mon",
+        "tue": "Tue",
+        "wed": "Wed",
+        "thu": "Thu",
+        "fri": "Fri",
+        "sat": "Sat",
+        "sun": "Sun",
     }
     if not isinstance(available_days, list) or not available_days:
-        return '<span class="chip muted-chip">Ingen tillgänglighet sparad</span>'
+        return '<span class="chip muted-chip">No availability saved</span>'
     items = []
     for item in available_days:
         if not isinstance(item, dict):
             continue
         day = day_labels.get(str(item.get("day")), str(item.get("day") or "—"))
         minutes = item.get("minutes")
-        limit = "ingen tidsgräns" if minutes is None else f"{minutes} min"
+        limit = "no time limit" if minutes is None else f"{minutes} min"
         items.append(
             f'<span class="chip"><b>{escape(day)}</b> · {escape(limit)}</span>'
         )
     return "".join(items) or (
-        '<span class="chip muted-chip">Ingen tillgänglighet sparad</span>'
+        '<span class="chip muted-chip">No availability saved</span>'
     )
 
 
 def _zones(ride_zone_profile) -> str:
     if ride_zone_profile is None or not isinstance(ride_zone_profile.zones, list):
-        return '<span class="chip muted-chip">Inga cykelzoner sparade</span>'
+        return '<span class="chip muted-chip">No cycling zones saved</span>'
     return "".join(
         '<span class="chip">'
         f'<b>Z{int(item["zone"])}</b> · {int(item["lower_bpm"])}–'

@@ -51,7 +51,7 @@ def _patterns(records) -> tuple[ObservedPersonalizationPattern, ...]:
             value=completion_percent,
             data_points=len(records),
             observation=(
-                f"{completion_percent:g}% av pass med explicit feedback registrerades som fullt genomförda."
+                f"{completion_percent:g}% of sessions with explicit feedback were reported as fully completed."
             ),
         )
     )
@@ -65,7 +65,7 @@ def _patterns(records) -> tuple[ObservedPersonalizationPattern, ...]:
                 metric="reported_rpe_average",
                 value=average,
                 data_points=len(rpe_values),
-                observation=f"Rapporterad RPE var i genomsnitt {average:g}/10.",
+                observation=f"Reported RPE averaged {average:g}/10.",
             )
         )
     reason_counts = Counter(
@@ -81,7 +81,7 @@ def _patterns(records) -> tuple[ObservedPersonalizationPattern, ...]:
                     metric="reason_code",
                     value=reason,
                     data_points=count,
-                    observation=f"{reason} registrerades som orsak vid {count} pass.",
+                    observation=f"{reason} was reported as the reason for {count} sessions.",
                 )
             )
     for sport_type in sorted({item.sport_type for item in records}):
@@ -98,7 +98,7 @@ def _patterns(records) -> tuple[ObservedPersonalizationPattern, ...]:
                 value=sport_percent,
                 data_points=len(sport_records),
                 observation=(
-                    f"{sport_percent:g}% av {sport_type}-pass med feedback registrerades som fullt genomförda."
+                    f"{sport_percent:g}% of {sport_type} sessions with feedback were reported as fully completed."
                 ),
             )
         )

@@ -29,6 +29,19 @@ from pace.performance.models import (
 from pace.services.performance_history_service import PerformanceSyncResult
 
 
+def test_version_comes_from_the_installed_package_metadata(capsys):
+    parser = app.build_parser()
+
+    try:
+        parser.parse_args(["--version"])
+    except SystemExit as error:
+        assert error.code == 0
+    else:
+        raise AssertionError("The version action should exit after printing.")
+
+    assert capsys.readouterr().out == f"pace {app.__version__}\n"
+
+
 def test_login_prompts_for_credentials_and_uses_local_token_directory(
     monkeypatch, capsys
 ):
@@ -56,8 +69,8 @@ def test_login_prompts_for_credentials_and_uses_local_token_directory(
     assert captured["password"] == "password"
     assert captured["mfa"] == "123456"
     assert captured["token_dir"] == app.settings.garmin_token_dir
-    assert prompts == ["Garmin-lösenord: ", "Garmin MFA-kod: "]
-    assert "Garmin är anslutet" in capsys.readouterr().out
+    assert prompts == ["Garmin password: ", "Garmin MFA code: "]
+    assert "Garmin is connected" in capsys.readouterr().out
 
 
 def test_sync_uses_last_seven_calendar_days_and_reports_result(monkeypatch, capsys):
@@ -98,7 +111,7 @@ def test_sync_uses_last_seven_calendar_days_and_reports_result(monkeypatch, caps
     assert exit_code == 0
     assert captured["start_date"] == date(2026, 7, 19)
     assert captured["end_date"] == date(2026, 7, 25)
-    assert "3 hämtade, 2 nya, 1 uppdaterade aktiviteter" in capsys.readouterr().out
+    assert "3 fetched, 2 new, 1 updated activities" in capsys.readouterr().out
 
 
 def test_sync_uses_an_explicit_end_date_for_a_bounded_history_batch(
@@ -204,7 +217,7 @@ def test_partial_rate_limit_returns_retryable_exit_code(monkeypatch, capsys):
     )
 
     assert exit_code == 3
-    assert "vänta och kör samma batch igen" in capsys.readouterr().out
+    assert "wait and run the same batch again" in capsys.readouterr().out
 
 
 def test_db_init_applies_migrations_to_a_new_private_database(
@@ -230,7 +243,7 @@ def test_db_init_applies_migrations_to_a_new_private_database(
         "sync_runs",
     }.issubset(inspect(create_engine(database_url)).get_table_names())
     assert database_path.stat().st_mode & 0o777 == 0o600
-    assert "senaste schema" in capsys.readouterr().out
+    assert "latest schema" in capsys.readouterr().out
 
 
 def test_metrics_summary_prints_structured_local_facts(monkeypatch, capsys):
@@ -330,7 +343,7 @@ def test_note_add_and_list_use_the_context_service(monkeypatch, capsys):
     assert captured["input"].event_type == "poor_sleep"
     assert captured["range"] == (date(2026, 7, 19), date(2026, 7, 25))
     output = capsys.readouterr().out
-    assert "Context-not sparad" in output
+    assert "Context note saved" in output
     assert "[]" in output
 
 
@@ -517,9 +530,9 @@ def test_ask_uses_the_read_only_service_and_marks_context_drafts_as_unsaved(
     assert captured["question"] == "Varför är HRV lägre?"
     assert captured["end_date"] == date(2026, 7, 25)
     output = capsys.readouterr().out
-    assert "Context-utkast — inte sparat" in output
-    assert "AI:n kan inte spara dem" in output
-    assert "Kopiera detta om uppgifterna stämmer:" in output
+    assert "Context draft — not saved" in output
+    assert "the AI cannot save them" in output
+    assert "Copy this if the details are correct:" in output
     assert (
         "uv run pace note add --type alcohol --date 2026-07-24 'Sen kväll.'"
         in output
@@ -544,7 +557,7 @@ def test_knowledge_commands_read_the_local_curated_library_without_an_ai_call(ca
     assert list_exit_code == 0
     assert "hrv_training_context" in list_output
     assert show_exit_code == 0
-    assert "Begränsningar:" in show_output
+    assert "Limitations:" in show_output
     assert "pubmed.ncbi.nlm.nih.gov" in show_output
 
 
@@ -637,7 +650,7 @@ def test_coach_renderer_marks_a_replacement_as_unsaved():
 
     rendered = app._render_coach_answer(answer, plan_id=3, as_of_date=date(2026, 7, 25))
 
-    assert "Planjusteringsutkast — inte sparat" in rendered
+    assert "Plan adjustment draft — not saved" in rendered
     assert "pace plan revise --id 3 --days 7" in rendered
 
 

@@ -255,6 +255,9 @@ Initial user interface.
 
 CLI first.
 
+**Status: superseded by Decision #50.** The CLI remains a supported adapter,
+but the loopback web application is now the primary normal-use interface.
+
 ## Reason
 
 The first goal is understanding and building the system.
@@ -2213,7 +2216,9 @@ The coach dialogue is held only in process memory and retains at most four
 turns. A model can propose context or session feedback, but the browser must
 show a separate confirmation card and call the existing service layer only
 after the athlete clicks save. The coach view shows only the accepted active
-plan; plan drafting and acceptance remain separate explicit workflows.
+plan. **The separate plan-acceptance statement here was superseded by Decision
+#58:** an explicit create or revise action now authorizes an atomic accepted
+version after complete Python validation.
 Dashboard, accepted-plan, and weekly-review reports can be opened through a
 strict local report catalog, never arbitrary files.
 
@@ -2519,8 +2524,9 @@ turning their softer preference into a hidden training prescription.
 
 - The first-run history import still consists only of bounded seven-day syncs.
 - API keys remain locally owner-only; no browser response contains the key.
-- A created draft must still be explicitly accepted in the UI before becoming
-  the active plan.
+- An explicit plan-creation action becomes active only after the complete model
+  result passes Python validation; Decision #58 removed the redundant second
+  acceptance click.
 - Existing CLI commands continue to work for debugging and advanced users.
 - Future settings editing belongs in the same UI, rather than requiring a
   terminal-only parallel workflow.
@@ -2788,11 +2794,107 @@ incorrectly treat voluntary down-weeks, tapers and actual return periods alike.
 
 ---
 
+# Decision #62
+
+## Problem
+
+The repository was built for a known local user and is now being prepared for
+unknown external users. Loopback binding and Git ignores were useful but did
+not by themselves document the security model, prevent hostile Host headers,
+or give contributors a safe reporting path.
+
+## Options
+
+- Publish the existing private-project structure unchanged
+- Delay all sharing until Pace has a hosted-product security architecture
+- Add a public-alpha repository baseline while retaining the local-only,
+  single-athlete runtime boundary
+
+## Chosen
+
+Prepare Pace as openly reviewable alpha source without turning it into a hosted
+service. The local FastAPI application continues to bind only to `127.0.0.1`
+and now restricts accepted Host headers and sends a restrictive content
+security policy, frame, referrer, content-type, and cross-origin resource
+headers. CSRF and service-layer validation remain required for persistent UI
+actions.
+
+The repository includes an explicit security policy, contribution guide, issue
+and pull-request templates, package metadata, a single installed version source,
+and expanded ignore rules for local editors, builds, coverage, secrets, data,
+tokens, and reports. Public documentation must state the real Garmin, OpenAI,
+privacy, and medical limitations.
+
+Changing GitHub visibility and creating a tagged release remain separate owner
+decisions after the clean-clone, secret-history, dependency, and external-user
+release gates pass.
+
+## Reason
+
+Source visibility and network deployment are different risk decisions. Pace can
+benefit from review and contribution while every installation remains local and
+owns its own credentials and athlete data. The added controls address realistic
+local-browser and repository mistakes without implying that the loopback server
+is safe for public exposure.
+
+## Consequences
+
+- `pace serve` must reject untrusted Host headers and retain the documented
+  browser headers.
+- Tests may explicitly allow the synthetic `testserver` host; production
+  defaults may not.
+- Maintainers must use private security advisories for sensitive reports and
+  must keep real athlete artifacts out of issues and fixtures.
+- Public hosting, accounts, telemetry, payments, and cloud data require new
+  decisions and are not authorized by open-source publication.
+- Repository visibility and the first alpha tag are intentionally not changed
+  by this decision.
+
+---
+
+# Decision 63: English Is the v0.1 Product Language
+
+## Problem
+
+Pace had Swedish user-interface text, generated reports, CLI fallback output,
+and model instructions. A public release needs one coherent language instead
+of a mixture that makes screenshots, support, testing, and contributions harder.
+
+## Options
+
+1. Keep Swedish as the only alpha language.
+2. Make English the single v0.1 product language.
+3. Build a complete localization framework before release.
+
+## Chosen solution
+
+English is the single product language for v0.1. This includes the loopback UI,
+onboarding, settings, reports, CLI fallback, deterministic explanations, AI
+coach responses, plan drafts, weekly reviews, and user-facing errors. Stable
+internal enum values, database fields, and old stored content are not rewritten.
+
+## Reason
+
+English makes the first public release easier to understand, test, document,
+and support internationally. A localization framework would add substantial
+surface area before Pace has validated its core product with external users.
+
+## Future consequences
+
+- New user-facing strings and model output instructions must be English.
+- Previously stored Swedish AI output may remain visible in archived plans.
+- Swedish athlete input remains valid free text; language choice does not alter
+  the underlying fact model.
+- Localization can be designed after v0.1 if real users justify the complexity.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |
 |---|---|
 | Language | Python |
+| Product language | English for v0.1 |
 | Package management | uv |
 | Data source | Garmin only |
 | Database | SQLite |
@@ -2800,12 +2902,13 @@ incorrectly treat voluntary down-weeks, tapers and actual return periods alike.
 | Architecture style | Layered application |
 | Metrics | Deterministic Python |
 | Memory | Structured context events |
-| AI | Explicit, stateless, read-only `pace ask` over selected facts |
+| AI | Explicit stateless questions, plans, dialogue, and weekly reviews over selected facts; no direct writes |
 | Product | Persistent coach |
-| Deployment | Local-first |
+| Deployment | Open-source, local-first, single-athlete; never internet-facing in v0.1 |
 | Athlete timezone | Europe/Stockholm |
 | Included sports | Run and ride only |
 | Sync batch | Maximum seven days, repeatable by end date |
 | Recovery merge | Latest successful snapshot per endpoint |
 | Local privacy | Owner-only files; no application encryption |
 | Provider deletions | Local append/update archive; no inferred deletes |
+| Plan activation | Explicit create/revise action, complete Python validation, atomic accepted version |

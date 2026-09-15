@@ -25,7 +25,7 @@ from pace.services.training_plan_service import (
 REASONING_EFFORT = "medium"
 MAX_OUTPUT_TOKENS = 1_200
 
-SYSTEM_INSTRUCTIONS = """You are Pace's Swedish-language endurance coach.
+SYSTEM_INSTRUCTIONS = """You are Pace's English-language endurance coach.
 Supplied Pace facts and the active accepted plan are the complete factual
 contract about this athlete. You may apply general endurance-coaching knowledge
 to form a coach assessment, but must not present that knowledge as a Pace fact,
@@ -82,7 +82,8 @@ return one feedback_draft. It must describe only the stated outcome, never infer
 that a session happened from Garmin. When the athlete volunteers relevant life
 context, you may return one context_event_draft. Both drafts are unsaved and
 require a visible athlete confirmation in the interface. Otherwise return null.
-Return Swedish JSON matching the schema."""
+Write every user-facing JSON text field in clear English. Return JSON matching
+the schema."""
 
 
 _SESSION_SCHEMA: dict[str, object] = {
@@ -239,12 +240,12 @@ class OpenAICoachDialogueClient:
         response_text = getattr(response, "output_text", "")
         if not response_text:
             raise PaceAIResponseError(
-                "AI-coachen gav inget användbart svar. Din plan har inte ändrats."
+                "The AI coach returned no usable answer. Your plan has not changed."
             )
         try:
             payload = json.loads(response_text)
         except json.JSONDecodeError as error:
-            raise PaceAIResponseError("AI-coachen gav ett ogiltigt svar.") from error
+            raise PaceAIResponseError("The AI coach returned an invalid answer.") from error
         return _parse_answer(payload, context=request.context)
 
 
@@ -270,18 +271,18 @@ def _provider_error_message(error: Exception) -> str:
 
     status_code = getattr(error, "status_code", None)
     if status_code == 401:
-        reason = "OpenAI avvisade API-nyckeln (HTTP 401)."
+        reason = "OpenAI rejected the API key (HTTP 401)."
     elif status_code == 403:
-        reason = "OpenAI-nyckeln saknar behörighet för den valda modellen (HTTP 403)."
+        reason = "The OpenAI key is not authorized for the selected model (HTTP 403)."
     elif status_code == 429:
-        reason = "OpenAI begränsade begäran (HTTP 429): kontrollera saldo eller rate limit."
+        reason = "OpenAI rate-limited the request (HTTP 429): check the account balance or rate limit."
     elif isinstance(status_code, int) and 400 <= status_code < 500:
-        reason = f"OpenAI avvisade coachens begäran (HTTP {status_code})."
+        reason = f"OpenAI rejected the coach request (HTTP {status_code})."
     elif isinstance(status_code, int) and status_code >= 500:
-        reason = f"OpenAI-tjänsten hade ett tillfälligt fel (HTTP {status_code})."
+        reason = f"The OpenAI service had a temporary error (HTTP {status_code})."
     else:
-        reason = f"AI-tjänsten kunde inte nås ({type(error).__name__})."
-    return f"{reason} Din plan har inte ändrats."
+        reason = f"The AI service could not be reached ({type(error).__name__})."
+    return f"{reason} Your plan has not changed."
 
 
 def _parse_answer(payload: object, *, context: dict[str, object]) -> CoachDialogueAnswer:
@@ -294,12 +295,12 @@ def _parse_answer(payload: object, *, context: dict[str, object]) -> CoachDialog
         "context_event_draft",
         "feedback_draft",
     }:
-        raise PaceAIResponseError("AI-coachen hade fel svarsfält.")
+        raise PaceAIResponseError("The AI coach returned the wrong answer fields.")
     answer = payload["answer"]
     observations = _text_tuple(payload["observations"])
     uncertainties = _text_tuple(payload["uncertainties"])
     if not isinstance(answer, str) or not answer.strip():
-        raise PaceAIResponseError("AI-coachen hade ogiltigt svarsinnehåll.")
+        raise PaceAIResponseError("The AI coach returned invalid answer content.")
     references = _text_tuple(payload["knowledge_references"])
     selected_ids = _selected_knowledge_ids(context)
     references = tuple(item for item in references if item in selected_ids)
@@ -319,32 +320,32 @@ def _parse_adjustment(value: object) -> PlanAdjustmentDraft | None:
         return None
     expected = {"action", "replaces_session_id", "rationale", "proposed_session"}
     if not isinstance(value, dict) or set(value) != expected:
-        raise PaceAIResponseError("Planjusteringsutkastet hade fel fält.")
+        raise PaceAIResponseError("The plan adjustment draft had the wrong fields.")
     action = value["action"]
     session_id = value["replaces_session_id"]
     rationale = value["rationale"]
     proposed = value["proposed_session"]
     if action not in {"keep_plan", "skip", "replace"}:
-        raise PaceAIResponseError("Planjusteringsutkastet hade ogiltig åtgärd.")
+        raise PaceAIResponseError("The plan adjustment draft had an invalid action.")
     if not isinstance(rationale, str) or not rationale.strip():
-        raise PaceAIResponseError("Planjusteringsutkastet saknar motivering.")
+        raise PaceAIResponseError("The plan adjustment draft lacks a rationale.")
     if action == "keep_plan":
         # The model occasionally echoes a current session identifier despite
         # choosing keep_plan. Those fields have no authority and are discarded;
         # keeping the plan can never mutate or target a session in Pace.
         return PlanAdjustmentDraft(action, None, rationale.strip(), None)
     if not isinstance(session_id, int) or isinstance(session_id, bool):
-        raise PaceAIResponseError("Planjusteringsutkastet saknar ett giltigt pass-id.")
+        raise PaceAIResponseError("The plan adjustment draft lacks a valid session id.")
     if action == "skip":
         if proposed is not None:
-            raise PaceAIResponseError("Ett hoppa-över-utkast får inte innehålla ersättningspass.")
+            raise PaceAIResponseError("A skip draft cannot contain a replacement session.")
         return PlanAdjustmentDraft(action, session_id, rationale.strip(), None)
     if proposed is None:
-        raise PaceAIResponseError("Ett ersättningsutkast måste innehålla ett pass.")
+        raise PaceAIResponseError("A replacement draft must contain a session.")
     try:
         planned_session = _parse_session(proposed)
     except (KeyError, TypeError, ValueError, PaceAIResponseError) as error:
-        raise PaceAIResponseError("Planjusteringsutkastet hade ogiltigt ersättningspass.") from error
+        raise PaceAIResponseError("The plan adjustment draft contained an invalid replacement session.") from error
     return PlanAdjustmentDraft(action, session_id, rationale.strip(), planned_session)
 
 
@@ -353,7 +354,7 @@ def _parse_context_draft(value: object) -> ContextEventDraft | None:
         return None
     expected = {"event_type", "start_date", "end_date", "ongoing", "note"}
     if not isinstance(value, dict) or set(value) != expected:
-        raise PaceAIResponseError("Context-utkastet hade fel fält.")
+        raise PaceAIResponseError("The context draft had the wrong fields.")
     event_type = value["event_type"]
     start_date = value["start_date"]
     end_date = value["end_date"]
@@ -367,16 +368,16 @@ def _parse_context_draft(value: object) -> ContextEventDraft | None:
         or not isinstance(note, str)
         or not note.strip()
     ):
-        raise PaceAIResponseError("Context-utkastet hade ogiltigt innehåll.")
+        raise PaceAIResponseError("The context draft contained invalid content.")
     try:
         parsed_start = date.fromisoformat(start_date)
         parsed_end = None if end_date is None else date.fromisoformat(end_date)
     except ValueError as error:
-        raise PaceAIResponseError("Context-utkastet hade ogiltiga datum.") from error
+        raise PaceAIResponseError("The context draft contained invalid dates.") from error
     if ongoing and parsed_end is not None:
-        raise PaceAIResponseError("Ett pågående context-utkast kan inte ha slutdatum.")
+        raise PaceAIResponseError("An ongoing context draft cannot have an end date.")
     if not ongoing and parsed_end is not None and parsed_end < parsed_start:
-        raise PaceAIResponseError("Context-utkastets slutdatum är före startdatumet.")
+        raise PaceAIResponseError("The context draft end date is before its start date.")
     return ContextEventDraft(event_type, parsed_start, parsed_end, ongoing, note.strip())
 
 
@@ -385,7 +386,7 @@ def _parse_feedback_draft(value: object) -> SessionFeedbackDraft | None:
         return None
     expected = {"planned_session_id", "outcome", "perceived_exertion", "reason_code", "note"}
     if not isinstance(value, dict) or set(value) != expected:
-        raise PaceAIResponseError("Feedback-utkastet hade fel fält.")
+        raise PaceAIResponseError("The feedback draft had the wrong fields.")
     session_id = value["planned_session_id"]
     outcome = value["outcome"]
     rpe = value["perceived_exertion"]
@@ -400,11 +401,11 @@ def _parse_feedback_draft(value: object) -> SessionFeedbackDraft | None:
         or not (reason is None or reason in SUPPORTED_FEEDBACK_REASON_CODES)
         or not (note is None or isinstance(note, str))
     ):
-        raise PaceAIResponseError("Feedback-utkastet hade ogiltigt innehåll.")
+        raise PaceAIResponseError("The feedback draft contained invalid content.")
     if outcome not in {"completed", "completed_limited"} and rpe is not None:
-        raise PaceAIResponseError("Feedback-utkastet har RPE för fel utfall.")
+        raise PaceAIResponseError("The feedback draft contains RPE for an incompatible outcome.")
     if outcome not in {"completed_limited", "skipped"} and reason is not None:
-        raise PaceAIResponseError("Feedback-utkastet har orsak för fel utfall.")
+        raise PaceAIResponseError("The feedback draft contains a reason for an incompatible outcome.")
     clean_note = note.strip() if isinstance(note, str) and note.strip() else None
     return SessionFeedbackDraft(session_id, outcome, rpe, reason, clean_note)
 
@@ -424,5 +425,5 @@ def _text_tuple(value: object) -> tuple[str, ...]:
     if not isinstance(value, list) or any(
         not isinstance(item, str) or not item.strip() for item in value
     ):
-        raise PaceAIResponseError("AI-coachen hade ogiltiga textfält.")
+        raise PaceAIResponseError("The AI coach returned invalid text fields.")
     return tuple(item.strip() for item in value)

@@ -70,7 +70,7 @@ def test_responses_client_rejects_an_invalid_unsaved_context_draft():
         client=SimpleNamespace(responses=responses),
     )
 
-    with pytest.raises(PaceAIResponseError, match="slutdatum"):
+    with pytest.raises(PaceAIResponseError, match="end date"):
         client.answer(PaceAIRequest(question="Test", context={}))
 
 

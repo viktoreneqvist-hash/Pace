@@ -55,12 +55,12 @@ def test_home_is_a_read_only_entry_point_with_report_links():
     assert "uv run pace plan revise --id 5 --days 14" in html
     assert 'href="dashboard.html"' in html
     assert 'href="plan-5.html"' in html
-    assert "Offensiv" in html
-    assert "Cykling primär" in html
-    assert "Mån</b> · ingen tidsgräns" in html
-    assert "Ons</b> · 90 min" in html
+    assert "Ambitious" in html
+    assert "Cycling primary" in html
+    assert "Mon</b> · no time limit" in html
+    assert "Wed</b> · 90 min" in html
     assert "Z2</b> · 119–138 bpm" in html
-    assert "synkar inte Garmin" in html
+    assert "does not sync Garmin" in html
 
 
 def test_home_handles_missing_optional_settings():
@@ -94,6 +94,6 @@ def test_home_handles_missing_optional_settings():
         ride_zone_profile=None,
     )
 
-    assert "Planpreferenser" in html
-    assert "Inte konfigurerade" in html
-    assert "Inga cykelzoner sparade" in html
+    assert "Planning preferences" in html
+    assert "Not configured" in html
+    assert "No cycling zones saved" in html

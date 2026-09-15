@@ -12,30 +12,30 @@ async function api(path, payload = {}) {
     body: JSON.stringify(payload),
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.detail || "Pace kunde inte slutföra åtgärden.");
+  if (!response.ok) throw new Error(data.detail || "Pace could not complete the action.");
   return data;
 }
 
 function pendingRequirements() {
   const setup = state.onboarding;
   const pending = [];
-  if (!setup.openai_configured) pending.push("AI-nyckel");
+  if (!setup.openai_configured) pending.push("AI key");
   if (!setup.garmin_connected) pending.push("Garmin");
-  if (!setup.preferences_configured) pending.push("träningsram");
-  if (setup.ride_zones_required && !setup.ride_zones_configured) pending.push("cykelpulszoner");
-  if (!setup.history_ready) pending.push("Garmin-historik");
+  if (!setup.preferences_configured) pending.push("training setup");
+  if (setup.ride_zones_required && !setup.ride_zones_configured) pending.push("cycling heart-rate zones");
+  if (!setup.history_ready) pending.push("Garmin history");
   return pending;
 }
 
 function render() {
   const setup = state.onboarding;
   const rows = [
-    ["AI-nyckel", setup.openai_configured], ["Garmin", setup.garmin_connected],
-    ["Träningsram", setup.preferences_configured],
-    ["Cykelpulszoner", !setup.ride_zones_required || setup.ride_zones_configured],
-    ["Planeringsunderlag", setup.history_ready],
+    ["AI key", setup.openai_configured], ["Garmin", setup.garmin_connected],
+    ["Training setup", setup.preferences_configured],
+    ["Cycling heart-rate zones", !setup.ride_zones_required || setup.ride_zones_configured],
+    ["Planning data", setup.history_ready],
   ];
-  document.getElementById("setup-status").innerHTML = rows.map(([label, done]) => `<span class="setup-state ${done ? "done" : ""}"><b>${done ? "KLAR" : "ÅTERSTÅR"}</b>${esc(label)}</span>`).join("");
+  document.getElementById("setup-status").innerHTML = rows.map(([label, done]) => `<span class="setup-state ${done ? "done" : ""}"><b>${done ? "DONE" : "PENDING"}</b>${esc(label)}</span>`).join("");
   document.getElementById("setup-openai").classList.toggle("is-complete", setup.openai_configured);
   document.getElementById("setup-garmin").classList.toggle("is-complete", setup.garmin_connected);
   document.getElementById("setup-preferences").classList.toggle("is-complete", setup.preferences_configured);
@@ -45,28 +45,28 @@ function render() {
   const pending = pendingRequirements();
   const planActions = document.getElementById("setup-plan-actions");
   if (pending.length) {
-    planActions.innerHTML = `<p class="notice">Återstår innan Pace kan planera: ${esc(pending.join(", "))}.</p>`;
+    planActions.innerHTML = `<p class="notice">Required before Pace can plan: ${esc(pending.join(", "))}.</p>`;
     return;
   }
   const choices = [
-    `<button class="primary" type="button" data-draft="general">Skapa generell plan</button>`,
-    ...state.races.map(race => `<button class="secondary" type="button" data-draft="${race.id}">Planera mot ${esc(race.name)} · ${esc(race.priority)}</button>`),
+    `<button class="primary" type="button" data-draft="general">Create general plan</button>`,
+    ...state.races.map(race => `<button class="secondary" type="button" data-draft="${race.id}">Plan for ${esc(race.name)} · ${esc(race.priority)}</button>`),
   ];
-  planActions.innerHTML = `<p class="notice">Välj exakt ett planmål. Sparade lopp påverkar ingenting förrän du väljer dem här.</p><div class="plan-action-list">${choices.join("")}</div>`;
+  planActions.innerHTML = `<p class="notice">Choose exactly one plan goal. Saved races have no effect until you select one here.</p><div class="plan-action-list">${choices.join("")}</div>`;
 }
 
-function start(button) { button.disabled = true; button.dataset.originalLabel = button.textContent; button.textContent = "Sparar…"; }
-function stop(button) { button.disabled = false; button.textContent = button.dataset.originalLabel || "Försök igen"; }
+function start(button) { button.disabled = true; button.dataset.originalLabel = button.textContent; button.textContent = "Saving…"; }
+function stop(button) { button.disabled = false; button.textContent = button.dataset.originalLabel || "Try again"; }
 function showError(error) { errorBox.textContent = error.message; errorBox.hidden = false; }
 function clearError() { errorBox.hidden = true; errorBox.textContent = ""; }
 function update(nextState) { state = nextState.state || nextState; render(); }
 
 async function streamHistory(button) {
-  start(button); button.textContent = "Startar Garmin-synk…";
+  start(button); button.textContent = "Starting Garmin sync…";
   const response = await fetch("/api/setup/history/stream", {method:"POST",headers:{"Content-Type":"application/json","X-Pace-CSRF":csrf},body:JSON.stringify({days:80})});
-  if (!response.ok) { const data = await response.json(); throw new Error(data.detail || "Historikimporten kunde inte starta."); }
+  if (!response.ok) { const data = await response.json(); throw new Error(data.detail || "The history import could not start."); }
   const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let complete = false;
-  const slow = window.setTimeout(() => { button.textContent = "Garmin arbetar fortfarande med aktuell batch…"; }, 45_000);
+  const slow = window.setTimeout(() => { button.textContent = "Garmin is still processing the current batch…"; }, 45_000);
   try {
     while (true) {
       const chunk = await reader.read(); if (chunk.done) break;
@@ -74,13 +74,13 @@ async function streamHistory(button) {
       for (const part of parts) {
         const event = part.match(/^event: (.+)$/m)?.[1]; const raw = part.match(/^data: (.+)$/m)?.[1]; if (!event || !raw) continue;
         const payload = JSON.parse(raw);
-        if (event === "progress") button.textContent = payload.phase === "started" ? `Batch ${payload.completed_batches + 1} av ${payload.total_batches} körs…` : `Batch ${payload.completed_batches} av ${payload.total_batches} klar`;
+        if (event === "progress") button.textContent = payload.phase === "started" ? `Running batch ${payload.completed_batches + 1} of ${payload.total_batches}…` : `Batch ${payload.completed_batches} of ${payload.total_batches} complete`;
         if (event === "error") throw new Error(payload.message);
-        if (event === "completed") { update(payload.state); button.disabled = false; button.textContent = "Historik hämtad"; complete = true; }
+        if (event === "completed") { update(payload.state); button.disabled = false; button.textContent = "History imported"; complete = true; }
       }
     }
   } finally { window.clearTimeout(slow); }
-  if (!complete) throw new Error("Synkanslutningen avslutades innan Pace fick ett slutresultat. Redan färdiga batcher är sparade.");
+  if (!complete) throw new Error("The sync connection closed before Pace received a final result. Completed batches have been saved.");
 }
 
 document.getElementById("setup-openai").addEventListener("submit", async event => {

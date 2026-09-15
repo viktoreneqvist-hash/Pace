@@ -1,1246 +1,311 @@
 # Pace — Architecture
 
-## Architectural Goal
+## Architectural goal
 
-Pace should begin as a small, local Python system.
+Pace is a local, layered Python application for one athlete. External data
+collection, persistence, deterministic analysis, coaching judgment, and user
+presentation must remain separate so that each can be tested and reviewed.
 
-The architecture should separate:
+The application is not a generic autonomous agent and not an internet-facing
+web service.
 
-- external data collection
-- data persistence
-- numerical calculations
-- athlete context
-- athlete state
-- interpretation rules
-- natural-language explanation
-
-Each layer should have a clear responsibility.
-
-Coaching logic must not be hidden inside the Garmin integration or database layer.
-
----
-
-## High-Level Architecture
+## System overview
 
 ```text
-Garmin Connect
-      |
-      v
-Garmin Integration
-      |
-      v
-Normalization and Validation
-      |
-      v
-SQLite Database
-      |
-      +--------------------+
-      |                    |
-      v                    v
-Deterministic Metrics   Context Memory
-      |                    |
-      +---------+----------+
-                |
-                v
-         Athlete State
-                |
-                v
-           Rule Engine
-                |
-                v
-      Explanation Engine
-                |
-                v
-        AI Coach — later
-                |
-                v
-               CLI
+                         explicit request
+Garmin Connect ──> Garmin integration ──> normalization
+                                              │
+                                              v
+                                      SQLite repositories
+                                              │
+                         ┌────────────────────┼───────────────────┐
+                         v                    v                   v
+                 deterministic facts   structured context   stored plans
+                         │                    │                   │
+                         └────────────────────┼───────────────────┘
+                                              v
+                                    application services
+                                      │               │
+                                      v               v
+                              local web UI / CLI   selected fact catalog
+                                                      │
+                                               explicit AI request
+                                                      │
+                                                      v
+                                                   OpenAI
+                                                      │
+                                              structured response
+                                                      │
+                                            Python validation + write
 ```
 
-The initial system should work through the CLI without an AI model.
+The arrows matter. Garmin code does not coach, repositories do not calculate
+metrics, the model does not query the database, and the web layer does not own
+training rules.
 
----
+## Layer responsibilities
 
-## Core Data Flow
+### Configuration
+
+`pace.config` resolves project paths, local secrets, model choice, time zone,
+and database settings. The athlete calendar currently uses
+`Europe/Stockholm`; activity instants are stored in UTC.
+
+### Garmin integration
+
+`pace.integrations.garmin` wraps the community `garminconnect` library behind a
+small Pace-owned interface. It handles authentication, MFA, reusable tokens,
+bounded API calls, and provider-specific errors.
+
+Provider dictionaries are normalized before they reach business logic:
+
+```text
+Garmin dictionary
+    -> validation and unit conversion
+    -> Pace normalized model
+    -> repository upsert
+```
+
+Only explicit Garmin requests contact the provider. Ordinary reads, dashboards,
+and tests use local data.
+
+### Persistence and repositories
+
+SQLite is the local system of record. SQLAlchemy defines storage models;
+Alembic owns forward-only schema migrations. Repository classes own queries,
+upserts, and database-specific behavior.
+
+Important stored concepts include:
+
+- activities and privacy-minimized performance detail;
+- daily recovery metrics;
+- context events;
+- synchronization audit records;
+- races and verified performance evidence;
+- athlete preferences and cycling heart-rate zones;
+- immutable training-plan versions, structured sessions, workout steps, and
+  explicit feedback;
+- athlete-confirmed coaching principles.
+
+Key identities remain deterministic, including
+`UNIQUE(provider, provider_activity_id)` for activities and one daily metric
+row per date. Foreign keys are enabled for every SQLite connection.
+
+Repositories do not interpret recovery, generate prose, or call Garmin or an
+LLM.
+
+### Deterministic analysis
+
+`pace.analysis`, `pace.capacity`, `pace.trends`, `pace.rules`, and their
+services calculate facts from normalized rows. These layers own date windows,
+training totals, continuity, recovery baselines, data coverage, and transparent
+rule outcomes.
+
+Pace deliberately does not hide the inputs behind a proprietary training-load
+score. Missing distance is `null`, not zero. Unsupported activities are not
+counted as run or ride.
+
+### Application services
+
+`pace.services` is the workflow boundary. Services coordinate repositories,
+deterministic analysis, integrations, and optional model clients. Both the CLI
+and web app call these services so there is one implementation of each
+operation.
+
+Representative services:
+
+- `GarminSyncService` — the only Garmin activity/recovery write path;
+- `AthleteStateService` — a compact dated view of facts and context;
+- `TransparentTrainingAnalysisService` — multi-horizon training evidence;
+- `TrainingPlanService` — plan generation, validation, versioning, feedback,
+  and revisions;
+- `CoachDialogueService` — bounded plan-aware conversation and unsaved action
+  proposals;
+- `DashboardService` and `WeeklyReviewService` — read models and explicit
+  review generation.
+
+### AI clients and contracts
+
+OpenAI clients receive a deliberately selected fact catalog, not direct
+database access or raw provider data. Separate structured contracts exist for
+questions, dialogue, plan generation, and weekly review.
+
+Appropriate model work:
+
+- coaching interpretation and explanation;
+- session and block design;
+- proposing structured context or feedback from natural language;
+- weekly synthesis;
+- choosing relevant coaching principles.
+
+Inappropriate model work:
+
+- metric calculation;
+- credential handling;
+- SQL or repository access;
+- unbounded raw-history ingestion;
+- silent persistent writes;
+- medical diagnosis;
+- claiming unsupported athlete facts.
+
+The local knowledge library provides versioned, source-linked coaching support.
+It helps trace principles but does not prevent the model from applying general
+endurance knowledge. Any statement about this athlete must still be grounded in
+the selected Pace facts.
+
+### Presentation
+
+The primary interface is `pace.web`: a server-rendered FastAPI application with
+small same-origin JavaScript and CSS assets. `pace serve` binds Uvicorn to
+`127.0.0.1` only. Accepted host names are restricted, state-changing requests
+require a session CSRF token, and responses add restrictive browser headers.
+
+The web layer may compose read models and call services. It must not contain
+training calculations, arbitrary file access, arbitrary command execution, raw
+provider payloads, or credentials. Coach conversation is bounded process
+memory and disappears when the server stops.
+
+The CLI remains a supported adapter for diagnostics and advanced reproducible
+workflows. It may parse arguments, call services, format results, and return
+useful exit codes; it must not contain SQL, Garmin normalization, or coaching
+rules.
+
+## Main data flows
 
 ### Garmin synchronization
 
 ```text
-Garmin Connect
-    ->
-authenticated Garmin client
-    ->
-provider payloads
-    ->
-normalization
-    ->
-validation
-    ->
-database upsert
-    ->
-sync result
+explicit UI/CLI request
+    -> maximum seven-day service batch
+    -> authenticated Garmin client
+    -> independent activity and recovery endpoint reads
+    -> normalization
+    -> endpoint-aware merge and idempotent upsert
+    -> sync audit result
+    -> refreshed local read models
 ```
 
-### Deterministic analysis
+An 80-day import is a sequence of bounded batches, not one oversized provider
+request. Authentication or rate limiting stops the remaining range while
+preserving batches already completed.
+
+### Plan generation and revision
 
 ```text
-activities + daily metrics
-    ->
-metric functions
-    ->
-structured metric results
-    ->
-athlete-state update
-```
-
-### Context-aware interpretation
-
-```text
-metric result
-    +
-relevant context events
-    +
-current athlete state
-    ->
-rule evaluation
-    ->
-structured explanation
-```
-
-### Future AI flow
-
-```text
-current question
-    +
-compact metric summary
-    +
-relevant activities
-    +
-relevant context events
-    +
-athlete state
-    +
-rule-engine output
-    ->
-LLM
-    ->
-coaching explanation
-```
-
-The LLM should not receive the complete raw Garmin history by default.
-
----
-
-# Current Coaching Loop
-
-```text
-Garmin summaries + privacy-minimized performance splits
-    + explicit context and session feedback
-    -> deterministic Pace facts and readiness gates
-    -> stateless coach draft with structured workout blocks
+explicit athlete goal selection
+    + current preferences and constraints
+    + multi-horizon history and recovery facts
+    + selected race and knowledge support
+    -> structured model request
+    -> complete structured plan response
     -> Python validation
-    -> local immutable draft
-    -> explicit athlete acceptance
-    -> explicit feedback and read-only workout comparison
-    -> checkpoint recommends the next bounded revision
+    -> atomic accepted plan version
+    -> previous overlapping version marked superseded
 ```
 
-The model chooses the useful workout form from the selected facts and block
-purpose. Python does not rotate templates to manufacture variety. Python still
-owns the hard contract: dates, availability, supported sports, target evidence,
-cycling zones, the explicitly selected target-race presence inside the detailed
-window, and draft-only writes. Other stored races are not implicit plan inputs.
+The explicit create or revise action is the authorization. There is no second
+normal acceptance click. If generation or validation fails, no partial plan is
+stored and the active version remains unchanged.
 
-Garmin splits can support a transparent planned-versus-observed comparison, but
-they do not prove that an interval prescription was followed. Explicit athlete
-feedback remains the durable session outcome.
+Plans describe a longer block direction while detailing only 7–14 days.
+Checkpoint logic can recommend another explicit revision as the detailed window
+ends; it cannot invoke the model automatically.
 
-`pace home` is a static local composition layer over existing reports and
-services. `pace analysis show` exposes duration, known distance, frequency,
-feedback/RPE, and recovery coverage directly; Pace deliberately has no opaque
-proprietary training-load score.
-
-Coach evaluation has two boundaries:
-
-- the normal test suite runs a fake generator against reviewed synthetic facts
-- a real model is tested only by an explicit live command using the same
-  synthetic scenarios, never real athlete history
-
----
-
-# Layers
-
-## 1. Garmin Integration Layer
-
-### Responsibilities
-
-- authenticate with Garmin Connect
-- reuse stored session tokens
-- fetch activities
-- fetch daily health and recovery data
-- handle date ranges
-- return provider payloads
-- handle endpoint-specific failures
-- respect rate limits
-- produce clear integration errors
-
-### Initial library
-
-Use:
+### Dialogue and feedback
 
 ```text
-python-garminconnect
+athlete message
+    + active plan
+    + bounded normalized history
+    + current deterministic facts
+    -> model response
+    -> optional unsaved proposal card
+    -> athlete confirmation
+    -> service validation and persistence
 ```
 
-The exact dependency may change later if maintenance or compatibility becomes a problem.
-
-### Authentication
-
-The local application may use the user's normal Garmin Connect credentials during login.
-
-The Garmin password must not be:
-
-- stored in SQLite
-- committed to Git
-- printed
-- written to normal logs
-- sent to an AI model
-
-Stored Garmin session tokens should be reused to avoid repeated login attempts.
-
-Suggested token path:
-
-```text
-.local/garmin_tokens/
-```
-
-The path must be ignored by Git.
-
-### Rate limiting
-
-Garmin may return HTTP 429 or other temporary failures.
-
-The integration must:
-
-- avoid aggressive retries
-- reuse valid tokens
-- use bounded backoff
-- stop after a small retry limit
-- report the failure clearly
-- allow partial synchronization when appropriate
-
-### Non-responsibilities
-
-The Garmin integration must not:
-
-- calculate coaching metrics
-- infer fatigue
-- generate recommendations
-- store context events
-- call an LLM
-- contain user-interface formatting
-
----
-
-## 2. Normalization and Validation Layer
-
-Garmin payloads may use inconsistent names, missing values, and provider-specific structures.
-
-This layer converts Garmin data into Pace's internal models.
-
-### Responsibilities
-
-- map Garmin sport types to internal sport types
-- convert units
-- parse timestamps and dates
-- handle optional values
-- validate required identifiers
-- preserve the original raw payload
-- create normalized records for persistence
-
-Activity-list and recovery payloads retain their local raw snapshots for
-debugging and re-normalization. The separate J2B performance-detail path is
-more restrictive: it normalizes only approved scalar facts and split summaries
-and never persists route coordinates, polylines, chart samples, or a raw
-activity-detail payload.
-
-### Internal sport examples
-
-```text
-run
-ride
-other
-```
-
-Provider values should not be used directly throughout the application.
-
-V1 uses a deliberately strict classification. Only explicitly recognized
-Garmin running profiles normalize to `run`, and only explicitly recognized
-cycling profiles normalize to `ride`. Every unknown or unrelated profile
-normalizes to `other` and is excluded from every training metric.
-
-Activity timestamps are normalized to UTC instants. Repository date queries
-and metric windows derive calendar dates in the fixed athlete timezone
-`Europe/Stockholm`; v1 does not model travel or timezone changes.
-
-### Reason for normalization
-
-Without normalization, Garmin-specific details leak into:
-
-- metrics
-- database queries
-- rules
-- tests
-- future interfaces
-
-Normalization creates a stable internal contract.
-
----
-
-## 3. Persistence Layer
-
-## Database choice
-
-Use SQLite for version 1.
-
-Suggested database path:
-
-```text
-data/pace.db
-```
-
-The path should be configurable.
-
-SQLite is suitable because the first version is:
-
-- local
-- private
-- single-user
-- low-concurrency
-- relatively small
-
-SQLAlchemy may be used to keep database access explicit and testable.
-
-### Core tables
-
-#### `activities`
-
-Stores normalized Garmin activities.
-
-Suggested fields:
-
-```text
-id
-provider
-provider_activity_id
-name
-sport_type
-start_time
-duration_seconds
-distance_meters
-elevation_gain_meters
-average_heart_rate
-maximum_heart_rate
-average_speed_mps
-average_cadence
-average_power
-training_effect_aerobic
-training_effect_anaerobic
-raw_payload
-created_at
-updated_at
-```
-
-Constraints:
-
-```text
-UNIQUE(provider, provider_activity_id)
-```
-
-#### `daily_metrics`
-
-Stores date-based Garmin recovery and health data.
-
-Suggested fields:
-
-```text
-id
-date
-hrv_value
-hrv_status
-resting_heart_rate
-sleep_duration_seconds
-sleep_score
-average_stress
-body_battery_high
-body_battery_low
-training_readiness
-recovery_time_hours
-raw_payload
-created_at
-updated_at
-```
-
-Constraint:
-
-```text
-UNIQUE(date)
-```
-
-If multiple daily records are later needed, the uniqueness strategy can be revised.
-
-#### `activity_performance_details`
-
-Stores the small, privacy-minimized subset of a detailed Garmin activity that
-later performance analysis may need.
-
-```text
-id
-activity_id
-duration_seconds
-distance_meters
-average_heart_rate
-maximum_heart_rate
-average_speed_mps
-average_cadence
-average_power
-splits
-created_at
-updated_at
-```
-
-Constraint:
-
-```text
-UNIQUE(activity_id)
-```
-
-`splits` contains only Pace-normalized numeric split summaries. It never holds
-coordinates, a route, chart samples, or an untouched Garmin detail response.
-
-#### `performance_evidence`
-
-Stores an athlete-confirmed relationship between a locally imported Garmin
-activity and an evidence type. A race link requires a matching stored race,
-sport, and Stockholm-local date. A benchmark link requires an approved,
-deterministically validated Pace protocol. All observed time, distance, pace,
-heart-rate, and power facts remain Garmin-derived.
-
-Race goals have an explicit lifecycle. An `active` race is available to future
-planning and athlete-confirmed Garmin race linking. A `cancelled` race remains
-local audit history but is excluded from those new uses. Race facts may change
-only before any plan or evidence reference exists; deletes have the same
-unused-future restriction. This prevents a correction from silently rewriting
-the meaning of a plan or observed result.
-
-The J2C readiness service consumes these evidence rows together with the
-existing capacity/history gate. It returns a sport-specific eligibility result
-for future intensity proposals; it does not calculate a pace, power, fitness
-score, workout, or plan. The narrow cycling exception is an athlete-confirmed
-Garmin heart-rate-zone profile: with two current rides, zone 1–5 targets are
-eligible. The coach model decides their distribution from selected facts and
-must present its reasoning and uncertainty. Power still requires an explicit
-20-minute power test; cycling pace is never an output.
-
-#### `performance_sync_runs`
-
-Audits every bounded detailed-activity import independently from normal
-activity/recovery syncs. It records the requested window, eligible run/ride
-count, successful stored details, status, and a short error summary.
-
-#### `training_preferences`
-
-Stores a single athlete-confirmed feasibility profile: available weekday/time
-slots and the desired sport role (`run_primary`, `ride_primary`, or
-`balanced`). It does not store self-reported volume, personal bests, or an
-unreviewed training target. Sport role informs the coach; it does not impose a
-fixed session ratio in Python.
-
-#### `heart_rate_zone_profiles`
-
-Stores five athlete-confirmed Garmin heart-rate boundaries for cycling. Pace
-does not infer them from max heart rate, workout data, or an LLM. The plan
-validator stores the numeric zone separately from its display text; the coach
-model decides zone distribution and records its rationale separately.
-
-#### `training_plans`, `planned_sessions`, and `session_feedback`
-
-Store reviewable plan versions. An explicit AI call can create a `draft`, but
-only the athlete can accept it. A revision is another draft with a parent plan
-reference; accepting it marks only that parent version `superseded` and never
-deletes it. Each planned session may have one structured outcome. Its free-text
-note remains local unless the athlete explicitly marks that note shareable for
-the specific AI revision request.
-
-The same feedback row can optionally store athlete-reported RPE (1–10) for a
-completed or limited session and one structured reason for a limited or skipped
-session. `TrainingResponseTrendService` reads only these text-free, explicit
-records into two fixed 28-day windows. It does not infer outcomes for sessions
-without feedback. The derived profile is read-only evidence for plan drafting,
-revision drafting, and plan-aware dialogue; it cannot mutate a plan, generate
-a context event, or explain a causal relationship.
-
-Each plan version has a contract version. Current drafts store a structured
-`heart_rate_zone` separately from a structured primary `target` (`rpe`,
-verified running `pace`, verified cycling `power`, or `none`). Pace renders
-the display text locally, so a model cannot hide a pace or watt value in a
-free-text target. A cycling session can combine its required Garmin zone with
-a verified power target; cycling pace remains impossible.
-
-Each current plan also stores a `coach_assessment`: fact-catalog reference
-IDs, locally rendered observed facts with provenance, coach inferences,
-rationale, uncertainties, and named general coaching principles. The model
-may reference only the selected, minimal fact catalog; these are AI reasoning,
-not new Pace facts. The model may additionally apply general endurance-coaching
-knowledge, but must frame it as a coach assessment rather than athlete data or
-an external source. K1 adds an optional `knowledge_references` list: Python
-deterministically selects at most five local curated briefs and retains only
-references to those IDs. A brief contains supported claims, limitations,
-applicability, and source metadata; it supports the assessment but does not
-override local facts or Python safety gates. Private context-note text, raw
-Garmin payloads, and unbounded plan history are absent. The library is
-checked-in Markdown and JSON, with no runtime web retrieval, embeddings, or
-vector database. A narrow target-race tag, such as `run_10k` for an active
-8–12 km running race, may prioritize relevant local briefs. It never creates a
-fixed weekly cadence, session count, interval menu, or pace target; those stay
-model-led and bounded by supplied Pace facts and Python eligibility gates.
-
-Plan facts additionally include a privacy-minimized chronological
-`training_continuity` view: 28 date-labelled daily run/ride summaries plus
-twelve consecutive seven-day summaries covering 84 days. This lets the model
-distinguish a sustainable pattern from an isolated high week or a current
-training interruption. It contains only normalized activity aggregates and
-explicitly missing-distance counts; recovery values, feedback, context, private
-notes, activity names and raw Garmin payloads remain outside this fact.
-Python also supplies already calculated latest-7 and latest-14-day summaries,
-so the model reasons over the comparison rather than calculating training
-totals from daily rows. A separate `established_baseline` summarizes the six
-seven-day periods immediately before that recent 14-day window, including
-active-week count plus mean, median and highest observed weekly duration and
-activity count per sport. The baseline is historical evidence, not a Python
-session or volume ceiling: recent training sets a careful entry into a plan,
-while the baseline informs the later 7–14-day outlook.
-
-Revision drafts use their accepted parent as bounded context and preserve its
-block dates and outline. A sibling revision becomes stale when another
-revision supersedes the parent. The database enforces foreign keys on every
-connection, and plan readiness blocks drafting if the otherwise-contiguous
-Garmin history is more than one day old.
-
-`pace plan review`, `pace plan today`, and `pace plan report` are presentation
-views over these persisted plan facts. The HTML report is a self-contained
-local file under `reports/`, not a web service: it has no external assets,
-does not invoke an LLM, and cannot modify the plan. It deliberately omits raw
-Garmin data and private feedback/context-note text.
-
-#### Coach dialogue
-
-`pace coach ask` and `pace coach chat` read one accepted plan together with a
-fresh athlete-state, rules, explanation, and selected knowledge contract. The
-chat command retains at most four turns in process memory and sends that
-bounded history with the next explicit request; Pace does not save it locally
-or ask the provider to store it. A response may contain a structured same-day
-keep, skip, or replacement draft. Python verifies that the referenced session
-belongs to that accepted plan and date, and verifies a replacement's
-availability, sport, zone, and target eligibility. The draft is not persisted
-or applied. A separate revision draft and explicit acceptance remain required
-for a durable plan change. In every response, Pace facts remain constrained to
-the supplied contract while coach reasoning may use general endurance knowledge;
-local brief references are optional support, never a hard allowlist.
-
-#### Coaching ambition
-
-The single local training-preference profile also stores athlete intent as
-`cautious`, `balanced`, or `ambitious`. This is supplied as an explicit fact to
-plan drafting and coach dialogue. It is not a Python workload formula, target,
-or override: the model may propose more margin or a more assertive progression,
-volume, or quality decision only when the selected facts support it, and must
-make that reasoning reviewable. All availability, data-quality, target-
-eligibility, draft, and acceptance boundaries remain unchanged.
-
-#### `context_events`
-
-Stores structured athlete explanations and life events.
-
-Suggested fields:
-
-```text
-id
-event_type
-start_date
-end_date
-note
-affected_metrics
-severity
-confidence
-status
-created_at
-updated_at
-```
-
-Initial event types:
-
-```text
-social_event
-alcohol
-late_night
-illness
-injury
-pain
-travel
-work_stress
-poor_sleep
-schedule_constraint
-training_feedback
-race
-equipment_change
-```
-
-#### `sync_runs`
-
-Stores synchronization history.
-
-Suggested fields:
-
-```text
-id
-provider
-started_at
-completed_at
-status
-requested_start_date
-requested_end_date
-activities_fetched
-activities_inserted
-activities_updated
-daily_metrics_fetched
-daily_metrics_inserted
-daily_metrics_updated
-error_summary
-```
-
-### Later tables
-
-Possible later additions:
-
-```text
-athlete_state
-training_goals
-training_blocks
-workout_plans
-workout_steps
-plan_versions
-analysis_runs
-coach_messages
-coach_interpretations
-```
-
-Do not create these until their use cases are clear.
-
----
-
-## 4. Repository Layer
-
-Repositories isolate database operations from business logic.
-
-Examples:
-
-```text
-ActivityRepository
-DailyMetricRepository
-ContextEventRepository
-SyncRunRepository
-```
-
-### Responsibilities
-
-- insert records
-- update records
-- perform upserts
-- query date ranges
-- query by sport
-- retrieve relevant context events
-- enforce database-specific operations
-
-### Non-responsibilities
-
-Repositories should not:
-
-- calculate training metrics
-- interpret HRV
-- generate prose
-- call Garmin
-- contain CLI formatting
-
----
-
-## 5. Service Layer
-
-Services coordinate application workflows.
-
-Examples:
-
-```text
-GarminSyncService
-ActivityService
-MetricService
-ContextService
-ExplanationService
-```
-
-### Example: Garmin sync service
-
-```text
-Garmin client
-    ->
-normalizer
-    ->
-repositories
-    ->
-sync-run record
-```
-
-The service decides how components are combined.
-
-It should not contain low-level SQL or provider-specific parsing.
-
----
-
-## 6. Deterministic Metrics Layer
-
-This layer calculates numerical values in Python.
-
-### Initial metrics
-
-- running/cycling activity count
-- weekly running distance
-- weekly cycling duration
-- total running/cycling duration
-- longest run
-- longest ride
-- training frequency
-- HRV rolling baseline
-- HRV deviation from baseline
-- resting heart-rate baseline
-- resting heart-rate deviation
-- sleep-duration baseline and recent average
-
-### Output format
-
-Metric functions should return structured objects or typed models.
-
-Example:
-
-```python
-RecoveryMetricSummary(
-    metric="hrv",
-    unit="ms",
-    baseline_start_date=...,
-    baseline_end_date=...,
-    baseline_value=...,
-    baseline_data_points=...,
-    expected_baseline_days=28,
-    recent_start_date=...,
-    recent_end_date=...,
-    recent_value=...,
-    recent_data_points=...,
-    latest_value=...,
-    latest_date=...,
-    latest_deviation_percent=...,
-)
-```
-
-Metric functions should not return coaching prose.
-Thresholds such as "low HRV" and confidence labels belong to later athlete
-state and rule layers, not to this factual metric output.
-
-### Requirements
-
-Metrics must be:
-
-- deterministic
-- tested
-- independent of an LLM
-- explicit about missing data
-- explicit about calculation windows
-- reproducible from stored records
-
-Missing source values remain missing. A distance total or longest-distance fact
-is `null` when a relevant source activity lacks distance; Pace does not silently
-turn an unknown value into zero. Recovery summaries always expose observed
-data-point counts beside the expected 28-day baseline length.
-
----
-
-## 7. Context Memory Layer
-
-Context memory stores information that Garmin cannot observe.
-
-Examples:
-
-- illness
-- pain
-- alcohol
-- social events
-- travel
-- work stress
-- schedule restrictions
-- athlete feedback
-- explanation for poor sleep
-- correction of a previous interpretation
-
-### Temporal linking
-
-Context events should be queried by:
-
-- overlap with a date
-- proximity to a date
-- active status
-- event type
-- affected metric
-- severity
-
-Example query:
-
-```text
-Find context events occurring zero to two days before an HRV deviation.
-```
-
-### Why chat history is insufficient
-
-Chat history alone cannot reliably answer:
-
-- Which injuries are active?
-- Which dates were affected by travel?
-- What context overlaps this HRV anomaly?
-- Which schedule constraints apply this week?
-- Which earlier interpretation did the athlete correct?
-
-These require structured records.
-
----
-
-## 8. Athlete State Layer
-
-The athlete-state layer represents the system's current understanding of the athlete.
-
-It is derived from:
-
-- recent activities
-- daily metrics
-- active context events
-- current goals
-- training phase
-- recent adherence
-- prior interpretations
-
-### Example state
-
-```text
-current_goal: improve 10 km performance
-training_phase: base
-recovery_status: uncertain
-active_pain: left Achilles
-schedule_constraint: no training Thursday
-recent_run_consistency: moderate
-current_hrv_signal: below baseline
-hrv_interpretation_confidence: low
-```
-
-### Purpose
-
-A state layer avoids forcing every rule or AI call to reconstruct the athlete's situation from raw records.
-
-### Important distinction
-
-Athlete state is not:
-
-- raw Garmin data
-- a single context event
-- an AI-generated paragraph
-- an activity record
-
-It is a structured and updateable summary of the current situation.
-
-The first version may calculate state dynamically instead of storing it in a table.
-
----
-
-## 9. Rule Engine
-
-The rule engine produces transparent interpretations from metrics, context, and state.
-
-### Initial HRV rule
-
-If:
-
-- HRV is below its defined baseline
-- and a `social_event`, `alcohol`, `late_night`, or `poor_sleep` event occurred within the previous zero to two days
-
-Then:
-
-- reduce confidence that training fatigue is the sole explanation
-- mention the relevant alternative context
-- continue monitoring the trend
-- do not advise ignoring HRV
-
-### Initial pain rule
-
-If:
-
-- an active pain event concerns Achilles, knee, calf, foot, shin, hip, or hamstring
-- and running volume or intensity is planned to increase
-
-Then:
-
-- flag the planned increase
-- recommend conservative progression
-- request symptom monitoring
-- avoid medical diagnosis
-
-### Rule output
-
-Rules should return structured results.
-
-Example:
-
-```python
-Interpretation(
-    signal="hrv_below_baseline",
-    confidence="low",
-    contributing_factors=["late_night", "alcohol"],
-    message_key="hrv_alternative_explanation",
-    monitoring_days=3,
-)
-```
-
-The explanation layer can then turn this into user-facing text.
-
----
-
-## 10. Explanation Engine
-
-The first explanation engine should be rule-based and template-driven.
-
-It converts structured metrics and rule results into concise output.
-
-Example:
-
-```text
-HRV was below its recent baseline on 19 and 20 July.
-
-A late social event was recorded on 18 July. This provides a plausible
-non-training explanation, so confidence that the HRV decline was caused only
-by training fatigue is lower.
-
-Continue monitoring the following days rather than ignoring the signal.
-```
-
-The engine must:
-
-- distinguish observation from interpretation
-- state uncertainty
-- avoid causal overclaiming
-- avoid medical diagnosis
-- identify relevant supporting context
-
----
-
-## 11. AI Coach Layer — Later
-
-AI should be added only after:
-
-- Garmin synchronization works
-- database persistence works
-- duplicate prevention works
-- metrics are tested
-- context events are queryable
-- athlete state exists
-- basic rules work
-
-### Appropriate AI uses
-
-- parse natural-language notes into structured context
-- improve explanation wording
-- answer coaching questions
-- generate detailed workouts
-- produce weekly reviews
-- adjust plans with athlete confirmation
-- summarize relevant scientific evidence
-
-### Inappropriate AI uses
-
-- calculating metrics
-- handling Garmin credentials
-- storing raw application state
-- replacing database queries
-- receiving all raw history by default
-- making unsupported medical diagnoses
-- silently changing training plans
-
-### Cost levels
-
-#### Level 0: no AI
-
-Use for:
-
-- synchronization
-- database writes
-- metrics
-- anomaly detection
-- state updates
-- rules
-- basic explanations
-
-#### Level 1: inexpensive AI
-
-Use for:
-
-- parsing context notes
-- short explanations
-- simple coach conversation
-
-#### Level 2: strong AI
-
-Use for:
-
-- weekly review
-- plan adjustment
-- workout generation
-
-#### Level 3: frontier AI
-
-Use only with explicit confirmation for:
-
-- deep baseline analysis
-- monthly or block-level review
-- major goal changes
-
----
-
-## 12. CLI Layer
-
-The CLI is the first user interface.
-
-Initial target commands:
-
-```bash
-pace --help
-pace db init
-pace sync --days 7
-pace sync --days 7 --end-date 2026-07-18
-pace activities
-pace activities --sport run
-pace metrics summary --end-date 2026-07-25
-pace note add --date 2026-07-18 --type social_event "Var ute sent"
-pace note list
-pace explain hrv --days 14
-pace preferences set --sport-role ride_primary --day mon:any
-pace plan readiness
-pace plan draft --days 14
-pace plan review --id 3
-pace plan report --id 3
-pace plan accept --id 2
-pace plan today
-pace plan feedback --session-id 5 --outcome completed
-pace plan feedback --session-id 5 --outcome completed_limited --rpe 8 --reason fatigue
-pace trends show
-pace plan revise --id 2 --days 7
-```
-
-The CLI should:
-
-- call services
-- format results
-- return useful exit codes
-- display clear errors
-
-The CLI should not:
-
-- contain SQL
-- parse Garmin payloads
-- calculate metrics directly
-- contain coaching rules
-
----
-
-## 13. Local Web Layer
-
-`pace serve` is a local convenience interface, not a hosted product API. The
-CLI starts a FastAPI process on `127.0.0.1`; it renders a small HTML/JavaScript
-application in the athlete's browser.
-
-```text
-Browser on same computer
-    -> loopback HTTP + CSRF confirmation
-    -> web presentation layer
-    -> existing Pace services
-    -> SQLite / optional explicit AI request
-```
-
-The web layer may compose read models, ask the existing coach dialogue service,
-and ask existing persistence services to save an athlete-confirmed card. It
-must not contain business rules, open a remote listener, store chat history,
-leak credentials or raw payloads, or let an LLM mutate data directly.
-
----
-
-# Current Package Structure
+Dialogue can propose context, feedback, or a same-day adjustment. It cannot
+replace a plan directly. Explicit feedback is the durable statement of whether
+a session was completed; Garmin activity matching is supporting evidence, not
+an automatic claim of compliance.
+
+### Weekly review
+
+A weekly review is an explicit, dated AI snapshot. The generated result is
+stored locally and rendered unchanged later so an old week does not receive a
+different retrospective story each time it is opened.
+
+## Failure and integrity behavior
+
+- Sync is idempotent. Repeating identical data reports zero changes.
+- Recovery endpoints merge independently; one unavailable endpoint cannot
+  erase valid values from another or from an earlier sync.
+- Malformed provider data becomes a partial result or explicit error rather
+  than an invented zero.
+- Plan writes are atomic and versioned.
+- SQLite files and containing directories receive owner-only permissions.
+- Local Garmin deletion is not inferred from absence in a later response;
+  v0.1 is an append/update archive.
+- Default tests cannot contact Garmin or OpenAI.
+
+## Package map
 
 ```text
 src/pace/
-├── analysis/
-│   ├── models.py
-│   ├── recovery_metrics.py
-│   └── training_metrics.py
-├── cli/
-│   └── app.py
-├── config/
-│   └── settings.py
-├── database/
-│   ├── engine.py
-│   ├── session.py
-│   └── models/
-│       ├── activity.py
-│       ├── base.py
-│       ├── daily_metric.py
-│       ├── context_event.py
-│       └── sync_run.py
-├── integrations/
-│   └── garmin/
-│       ├── client.py
-│       ├── daily_metrics.py
-│       └── normalizers.py
-├── repositories/
-│   ├── activity_repository.py
-│   ├── daily_metric_repository.py
-│   ├── context_event_repository.py
-│   └── sync_run_repository.py
-├── services/
-│   ├── athlete_state_service.py
-│   ├── context_service.py
-│   ├── garmin_sync_service.py
-│   ├── activity_service.py
-│   └── metric_service.py
-├── rules/
-│   ├── hrv.py
-│   ├── recovery.py
-│   └── models.py
-├── explanations/
-│   ├── hrv.py
-│   ├── recovery.py
-│   └── models.py
-├── state/
-│   └── models.py
-└── timezones.py
+├── integrations/garmin/   provider boundary and normalization
+├── database/              engine, sessions, models, initialization
+├── repositories/          persistence operations
+├── analysis/              deterministic training and recovery metrics
+├── capacity/              historical capacity evidence
+├── trends/                explicit multi-period trends
+├── rules/                 transparent rule evaluations
+├── state/                 athlete-state contracts
+├── performance/           verified result and benchmark contracts
+├── planning/              plan and checkpoint contracts
+├── workouts/              structured workout-step contracts
+├── personalization/       explicit feedback-derived evidence
+├── knowledge/             reviewed coaching references and selection
+├── ai/                    general question and plan clients
+├── coach/                 dialogue client contracts
+├── weekly_review/         weekly-review model contracts
+├── services/              application workflows
+├── presentation/          reusable report rendering
+├── web/                   loopback HTTP adapter and UI assets
+└── cli/                   command-line adapter
 ```
 
-Context, state, rules, and explanation modules are added only when their
-roadmap batch has a concrete contract. Do not create empty future layers.
+The large `TrainingPlanService`, web router, and CLI adapter are current
+maintenance hotspots. They should be split only through behavior-preserving,
+tested refactors, not during unrelated feature work.
 
----
+## Security boundary
 
-# Failure Handling
+Sensitive local paths are Git-ignored and owner-only where Pace creates them.
+Garmin passwords are never persisted by Pace. Reusable session tokens and the
+OpenAI key must not be logged or returned to the browser.
 
-## Partial Garmin failures
+Loopback binding, host validation, CSRF, content-security policy, and related
+headers reduce local browser risk. They do not make the application safe to
+bind to `0.0.0.0` or publish behind a public URL. Hosted or multi-user operation
+requires a new identity, authorization, secret-management, isolation, and data
+retention design.
 
-Daily Garmin endpoints may fail independently.
+## Test strategy
 
-A failed endpoint should not always cancel the entire synchronization.
-
-The sync service should:
-
-- record which endpoint failed
-- continue when safe
-- store successful data
-- preserve the last successful values and raw snapshot for an endpoint that failed
-- stop the remaining recovery range on authentication or rate-limit errors
-- mark the sync as partial
-- show a clear summary
-
-## Duplicate protection
-
-Synchronization must be idempotent.
-
-Running:
-
-```bash
-pace sync --days 7
-pace sync --days 7
-```
-
-should not create duplicate activities or daily metrics.
-
-V1 treats the local database as an append/update archive. A record missing from
-a later Garmin response is not deleted automatically because absence alone is
-not a sufficiently safe deletion signal. Garmin deletion reconciliation is a
-separate future feature with its own audit requirements.
-
-## Missing data
-
-Missing Garmin metrics should be represented as missing values, not converted to zero unless zero is semantically correct.
-
-## Logging
-
-Logs may include:
-
-- endpoint name
-- requested date range
-- record counts
-- retry attempts
-- exception type
-
-Logs must not include:
-
-- Garmin password
-- session-token contents
-- full raw Garmin payloads
-- full sensitive context notes by default
-
----
-
-# Testing Strategy
-
-Tests should be separated by layer.
+The default quality gate is:
 
 ```text
-tests/
-├── unit/
-│   ├── metrics/
-│   ├── rules/
-│   ├── normalization/
-│   └── state/
-├── integration/
-│   ├── database/
-│   └── repositories/
-└── services/
-    └── test_garmin_sync_service.py
+Ruff
+    +
+synthetic pytest suite
+    +
+blank-database Alembic upgrade
+    +
+CLI and local-web smoke checks
+    +
+secret and dependency review before release
 ```
 
-Use temporary or in-memory SQLite databases in tests.
-
-Tests must never operate on the real development database or Garmin token directory.
-
----
-
-# Architectural Constraints
-
-The following constraints apply until an explicit decision changes them:
-
-- Garmin is the only external training-data provider.
-- The system is single-user.
-- The system runs locally.
-- SQLite is the version 1 database.
-- The CLI is the first interface.
-- Numerical metrics are calculated in Python.
-- Calendar-day analysis uses the fixed `Europe/Stockholm` athlete timezone.
-- Only normalized `run` and `ride` activities count in training metrics.
-- Garmin synchronization uses idempotent batches of at most seven days.
-- Context memory is structured and persistent.
-- Athlete state precedes advanced coaching logic.
-- Rule-based interpretation precedes AI interpretation.
-- AI is optional and introduced later.
-- Credentials and tokens are never sent to AI.
-- The optional web interface is loopback-only and reuses the CLI service
-  boundaries; it is not a public or multi-user API.
-- Cloud infrastructure is not required for version 1.
+Garmin fixtures and coaching scenarios must be synthetic. Live Garmin tests and
+live model evaluations are always explicit, separate operations and must never
+run in CI with personal credentials.

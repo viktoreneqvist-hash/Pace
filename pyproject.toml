@@ -4,6 +4,18 @@ version = "0.1.0"
 description = "A private, local-first endurance coaching system."
 readme = "README.md"
 license = "MIT"
+authors = [{ name = "Viktor Eneqvist" }]
+keywords = ["garmin", "running", "cycling", "endurance", "ai-coach", "local-first"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Framework :: FastAPI",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.18.5",
@@ -27,6 +39,12 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 pace = "pace.cli.app:main"
+
+[project.urls]
+Homepage = "https://github.com/viktoreneqvist-hash/Pace"
+Repository = "https://github.com/viktoreneqvist-hash/Pace.git"
+Issues = "https://github.com/viktoreneqvist-hash/Pace/issues"
+Documentation = "https://github.com/viktoreneqvist-hash/Pace/tree/main/docs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pace"]

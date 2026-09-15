@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AliasChoices, BaseModel, Field, SecretStr
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from pace.ai.client import PaceAIError
 from pace.ai.plan_client import OpenAIPlanClient
@@ -179,7 +180,7 @@ class WebServices:
             return self.coach_service_factory()
         api_key = resolve_openai_api_key(settings)
         if not api_key:
-            raise ValueError("OPENAI_API_KEY saknas; coachchatten kan inte startas.")
+            raise ValueError("OPENAI_API_KEY is missing; coach chat cannot start.")
         return CoachDialogueService(
             client=OpenAICoachDialogueClient(
                 api_key=api_key,
@@ -198,7 +199,7 @@ class WebServices:
             return self.weekly_review_service_factory()
         api_key = resolve_openai_api_key(settings)
         if not api_key:
-            raise ValueError("OPENAI_API_KEY saknas; veckoreview kan inte startas.")
+            raise ValueError("OPENAI_API_KEY is missing; weekly review cannot start.")
         return WeeklyReviewService(
             client=WeeklyReviewClient(api_key=api_key, model=settings.openai_model)
         )
@@ -210,13 +211,17 @@ class WebServices:
             return self.plan_generation_service_factory()
         api_key = resolve_openai_api_key(settings)
         if not api_key:
-            raise ValueError("OPENAI_API_KEY saknas; ingen plan har skapats.")
+            raise ValueError("OPENAI_API_KEY is missing; no plan was created.")
         return TrainingPlanService(
             generator=OpenAIPlanClient(api_key=api_key, model=settings.openai_model)
         )
 
 
-def create_app(*, services: WebServices | None = None) -> FastAPI:
+def create_app(
+    *,
+    services: WebServices | None = None,
+    allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost"),
+) -> FastAPI:
     """Create a same-origin UI, bound by the CLI command to loopback only."""
 
     dependencies = services or WebServices()
@@ -228,6 +233,39 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
         same_site="lax",
         https_only=False,
     )
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
+
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        """Keep the local UI isolated from framing and injected remote assets."""
+
+        response = await call_next(request)
+        script_source = "'self'"
+        style_source = "'self'"
+        if request.url.path.startswith("/reports/"):
+            # Legacy owner-only reports are complete generated HTML documents.
+            # Their styles and chart tooltip script are embedded in the file.
+            script_source += " 'unsafe-inline'"
+            style_source += " 'unsafe-inline'"
+        response.headers["Content-Security-Policy"] = "; ".join(
+            (
+                "default-src 'self'",
+                f"script-src {script_source}",
+                f"style-src {style_source}",
+                "img-src 'self' data:",
+                "connect-src 'self'",
+                "object-src 'none'",
+                "base-uri 'none'",
+                "frame-ancestors 'none'",
+                "form-action 'self'",
+            )
+        )
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        return response
+
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/", response_class=HTMLResponse)
@@ -262,9 +300,9 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
             render_web_report_page(
                 state=state,
                 active_page="dashboard",
-                kicker="AKTUELL FAKTAVY",
+                kicker="CURRENT FACT VIEW",
                 title="Dashboard",
-                subtitle="Aktuella lokala tränings- och återhämtningsfakta. Ingen AI körs här.",
+                subtitle="Current local training and recovery facts. No AI runs here.",
                 body_html=render_dashboard_fragment(
                     state=data.state,
                     trends=data.trends,
@@ -286,26 +324,26 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
         if draft_plan is not None:
             body_html = render_plan_fragment(draft_plan)
             subtitle = (
-                f"Äldre utkast {draft_plan.id}. Nya planer aktiveras direkt efter "
-                "lyckad validering."
+                f"Archived draft {draft_plan.id}. New plans are activated immediately after "
+                "successful validation."
             )
-            title = "Tidigare planutkast"
-            kicker = "ARKIV"
+            title = "Previous plan draft"
+            kicker = "ARCHIVE"
         elif active_plan is None:
             if draft_plan is None:
                 body_html = (
-                    '<section class="report-section"><h2>Ingen aktiv plan</h2>'
-                    '<p>Öppna Coach för att skapa en plan när underlaget är klart.</p></section>'
+                    '<section class="report-section"><h2>No active plan</h2>'
+                    '<p>Open Coach to create a plan when the planning data is ready.</p></section>'
                 )
-                subtitle = "Den här vyn visar din aktiva plan och tidigare planversioner."
+                subtitle = "This view shows your active plan and previous plan versions."
             title = "Plan"
             kicker = "PLAN"
         else:
             body_html = _plan_revision_control(state=state, plan=active_plan)
             body_html += render_plan_fragment(active_plan)
-            subtitle = "Aktiv plan som gäller i dag. Feedback syns här efter att den har sparats."
+            subtitle = "The active plan in effect today. Saved feedback appears here."
             title = "Plan"
-            kicker = "ACCEPTERAD PLAN"
+            kicker = "ACTIVE PLAN"
         return _html_response(
             render_web_report_page(
                 state=state,
@@ -315,10 +353,10 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
                 subtitle=subtitle,
                 body_html=body_html,
                 csrf_token=csrf_token if active_plan is not None else None,
-                action_script="/static/plan.js?v=20260820-1" if active_plan is not None else None,
+                action_script="/static/plan.js?v=20260915-1" if active_plan is not None else None,
                 footer_text=(
-                    "PACE KÖRS PÅ DIN DATOR · EN NY PLANVERSION SKAPAS ENDAST "
-                    "NÄR DU UTTRYCKLIGEN BEKRÄFTAR DET"
+                    "PACE RUNS ON YOUR COMPUTER · A NEW PLAN VERSION IS CREATED ONLY "
+                    "WHEN YOU EXPLICITLY REQUEST IT"
                     if active_plan is not None
                     else None
                 ),
@@ -334,16 +372,16 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
         )
         if snapshot is None:
             body_html = (
-                '<section class="report-section"><h2>Ingen kompatibel veckoreview ännu</h2>'
-                '<p>Skapa en ny explicit review i terminalen för att visa den här. '
-                'Pace gör inte ett AI-anrop automatiskt när du öppnar sidan.</p>'
-                '<p class="notice">Kör: uv run pace review weekly</p></section>'
+                '<section class="report-section"><h2>No compatible weekly review yet</h2>'
+                '<p>Create a new explicit review to display it here. '
+                'Pace does not make an AI call automatically when you open this page.</p>'
+                '<p class="notice">Use /review weekly in Coach.</p></section>'
             )
-            subtitle = "Veckoreview sparas som en uttrycklig AI-snapshot."
+            subtitle = "A weekly review is saved as an explicit AI snapshot."
         else:
             body_html = render_weekly_review_fragment(snapshot)
             subtitle = (
-                "Senaste uttryckliga AI-snapshoten för veckan som slutar "
+                "Latest explicit AI snapshot for the week ending "
                 f"{snapshot.end_date.isoformat()}."
             )
         return _html_response(
@@ -351,7 +389,7 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
                 state=state,
                 active_page="weekly_review",
                 kicker="EXPLICIT AI-REVIEW",
-                title="Veckoreview",
+                title="Weekly review",
                 subtitle=subtitle,
                 body_html=body_html,
             )
@@ -363,7 +401,7 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
         if report_path is None or not report_path.is_file():
             raise HTTPException(
                 status_code=404,
-                detail="Rapporten finns inte ännu. Skapa den från Pace-terminalen först.",
+                detail="The report does not exist yet. Create it in Pace first.",
             )
         return FileResponse(
             report_path,
@@ -381,9 +419,9 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
         if normalized == "/help":
             return {
                 "answer": (
-                    "Kommandon: /today visar nästa planerade pass, /state visar "
-                    "aktuell Pace-status, /analysis visar 28-dagarsfakta, /sync "
-                    "förbereder Garmin-synk och /review weekly förbereder en AI-review."
+                    "Commands: /today shows the next planned session, /state shows "
+                    "the current Pace status, /analysis shows 28-day facts, /sync "
+                    "prepares a Garmin sync, and /review weekly prepares an AI review."
                 )
             }
         if normalized == "/today":
@@ -394,29 +432,29 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
             return {"answer": _analysis_command_answer(state)}
         if normalized == "/sync":
             return {
-                "answer": "Garmin-synk är förberedd men har inte startat.",
+                "answer": "The Garmin sync is ready but has not started.",
                 "confirmation": {
                     "action": "sync",
-                    "title": "Synka Garmin",
-                    "body": "Hämtar de senaste sju kalenderdagarna till din lokala Pace-databas.",
-                    "label": "Starta synk",
+                    "title": "Sync Garmin",
+                    "body": "Imports the latest seven calendar days into your local Pace database.",
+                    "label": "Start sync",
                     "values": [["Period", _sync_window_label(dependencies.today())]],
                 },
             }
         if normalized == "/review weekly":
             return {
-                "answer": "Veckoreview är förberedd men AI-anropet har inte startat.",
+                "answer": "The weekly review is ready but the AI call has not started.",
                 "confirmation": {
                     "action": "weekly_review",
-                    "title": "Skapa veckoreview",
-                    "body": "Skapar en ny daterad AI-review av lokala Pace-fakta. Det använder din OpenAI-nyckel och kan kosta pengar.",
-                    "label": "Skapa veckoreview",
-                    "values": [["Vecka slutar", dependencies.today().isoformat()]],
+                    "title": "Create weekly review",
+                    "body": "Creates a dated AI review of local Pace facts. It uses your OpenAI key and may incur API charges.",
+                    "label": "Create weekly review",
+                    "values": [["Week ending", dependencies.today().isoformat()]],
                 },
             }
         raise HTTPException(
             status_code=422,
-            detail="Okänt kommando. Skriv /help för tillgängliga kommandon.",
+            detail="Unknown command. Enter /help to see the available commands.",
         )
 
     @app.post("/api/command/confirm")
@@ -434,15 +472,15 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
                 )
             except GarminAuthenticationRequiredError as error:
                 raise HTTPException(
-                    status_code=422, detail=f"Synken kan inte starta: {error}"
+                    status_code=422, detail=f"The sync could not start: {error}"
                 ) from error
             except GarminRateLimitError as error:
                 raise HTTPException(
-                    status_code=429, detail=f"Garmin begränsade synken: {error}"
+                    status_code=429, detail=f"Garmin rate-limited the sync: {error}"
                 ) from error
             except (GarminIntegrationError, ValueError) as error:
                 raise HTTPException(
-                    status_code=422, detail=f"Synken misslyckades: {error}"
+                    status_code=422, detail=f"The sync failed: {error}"
                 ) from error
             return {
                 "status": "completed",
@@ -461,10 +499,10 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
             return {
                 "status": "completed",
                 "action": "weekly_review",
-                "message": "Veckoreview skapad. Öppna fliken Veckoreview för att läsa den.",
+                "message": "Weekly review created. Open the Weekly Review tab to read it.",
                 "path": str(path.name),
             }
-        raise HTTPException(status_code=422, detail="Otillåtet Pace-kommando.")
+        raise HTTPException(status_code=422, detail="Unsupported Pace command.")
 
     @app.post("/api/chat")
     def chat(request: Request, payload: ChatRequest) -> dict[str, object]:
@@ -474,7 +512,7 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
         if plan is None:
             raise HTTPException(
                 status_code=409,
-                detail="Coachchatten kräver en accepterad aktiv plan.",
+                detail="Coach chat requires an active plan.",
             )
         session_id = _session_value(request, "conversation_id")
         conversation = tuple(conversations.get(session_id, ()))
@@ -563,7 +601,7 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
         if active_plan is None or active_plan.id != payload.plan_id:
             raise HTTPException(
                 status_code=409,
-                detail="Den här planen är inte längre den aktiva planen för i dag.",
+                detail="This plan is no longer the active plan for today.",
             )
         checkpoint = dependencies.checkpoint_service.get_checkpoint(as_of_date=as_of_date)
         if (
@@ -572,7 +610,7 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
         ):
             raise HTTPException(
                 status_code=409,
-                detail="Nästa detaljfönster är inte aktuellt ännu.",
+                detail="The next detailed window is not due yet.",
             )
         try:
             plan = dependencies.plan_generation_service().generate_revision(
@@ -713,11 +751,11 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
                     )
                 )
         except GarminAuthenticationRequiredError as error:
-            raise HTTPException(status_code=422, detail=f"Historikimporten kan inte starta: {error}") from error
+            raise HTTPException(status_code=422, detail=f"The history import could not start: {error}") from error
         except GarminRateLimitError as error:
-            raise HTTPException(status_code=429, detail=f"Garmin begränsade historikimporten: {error}") from error
+            raise HTTPException(status_code=429, detail=f"Garmin rate-limited the history import: {error}") from error
         except (GarminIntegrationError, ValueError) as error:
-            raise HTTPException(status_code=422, detail=f"Historikimporten misslyckades: {error}") from error
+            raise HTTPException(status_code=422, detail=f"The history import failed: {error}") from error
         return {
             "status": "completed",
             "batches": [_sync_command_result(item) for item in results],
@@ -763,18 +801,18 @@ def create_app(*, services: WebServices | None = None) -> FastAPI:
                         },
                     )
             except GarminRateLimitError as error:
-                yield _sse("error", {"message": f"Garmin begränsade synken: {error}"})
+                yield _sse("error", {"message": f"Garmin rate-limited the sync: {error}"})
                 return
             except GarminAuthenticationRequiredError as error:
-                yield _sse("error", {"message": f"Synken kan inte fortsätta: {error}"})
+                yield _sse("error", {"message": f"The sync cannot continue: {error}"})
                 return
             except (GarminIntegrationError, ValueError) as error:
-                yield _sse("error", {"message": f"Synken misslyckades: {error}"})
+                yield _sse("error", {"message": f"The sync failed: {error}"})
                 return
             yield _sse(
                 "completed",
                 {
-                    "message": f"{payload.days} dagars Garmin-data är synkad i säkra batcher.",
+                    "message": f"{payload.days} days of Garmin data were synced in safe batches.",
                     "state": _home_state(dependencies),
                 },
             )
@@ -805,7 +843,7 @@ def _require_csrf(request: Request) -> None:
     expected = _session_value(request, "csrf_token")
     supplied = request.headers.get("X-Pace-CSRF")
     if not supplied or not secrets.compare_digest(supplied, expected):
-        raise HTTPException(status_code=403, detail="Ogiltig lokal bekräftelse.")
+        raise HTTPException(status_code=403, detail="Invalid local confirmation.")
 
 
 def _home_state(services: WebServices) -> dict[str, object]:
@@ -976,12 +1014,12 @@ def _reports_payload(reports_directory: Path, active_plan) -> dict[str, dict[str
         "weekly_review": (
             "/weekly-review",
             load_weekly_review_snapshot(reports_directory=reports_directory) is not None,
-            "Kör: uv run pace review weekly",
+            "Use /review weekly in Coach.",
         ),
         "plan": (
             "/plan",
             active_plan is not None,
-            "Skapa eller öppna en aktiv plan först.",
+            "Create or open an active plan first.",
         ),
     }
     result: dict[str, dict[str, object]] = {}
@@ -997,14 +1035,14 @@ def _reports_payload(reports_directory: Path, active_plan) -> dict[str, dict[str
 def _today_command_answer(state: dict[str, object]) -> str:
     plan = state["active_plan"]
     if not isinstance(plan, dict):
-        return "Ingen accepterad aktiv plan finns för i dag."
+        return "There is no active plan for today."
     as_of_date = str(state["as_of_date"])
     sessions = plan["sessions"]
     upcoming = [item for item in sessions if item["scheduled_date"] >= as_of_date]
     if not upcoming:
-        return "Inga detaljerade pass återstår i den accepterade planen."
+        return "No detailed sessions remain in the active plan."
     session = upcoming[0]
-    when = "I dag" if session["scheduled_date"] == as_of_date else session["scheduled_date"]
+    when = "Today" if session["scheduled_date"] == as_of_date else session["scheduled_date"]
     return (
         f"{when}: {session['sport_type']} · {session['purpose']} · "
         f"{session['target_display']}."
@@ -1014,11 +1052,11 @@ def _today_command_answer(state: dict[str, object]) -> str:
 def _state_command_answer(state: dict[str, object]) -> str:
     checkpoint = state["checkpoint"]
     plan = state["active_plan"]
-    plan_label = "ingen accepterad aktiv plan" if plan is None else f"plan {plan['id']}"
+    plan_label = "no active plan" if plan is None else f"plan {plan['id']}"
     return (
-        f"Pace-status {state['as_of_date']}: {plan_label}; "
-        f"planstatus {checkpoint['status']}; "
-        f"{checkpoint['detailed_days_remaining']} dagar kvar i detaljfönstret."
+        f"Pace status {state['as_of_date']}: {plan_label}; "
+        f"plan status {checkpoint['status']}; "
+        f"{checkpoint['detailed_days_remaining']} days remain in the detailed window."
     )
 
 
@@ -1028,16 +1066,16 @@ def _analysis_command_answer(state: dict[str, object]) -> str:
     run = sports.get("run", {})
     ride = sports.get("ride", {})
     return (
-        f"Senaste 28 dagarna: {analysis['total_duration_hours']:.1f} h totalt · "
-        f"löpning {run.get('activity_count', 0)} pass / "
-        f"{run.get('duration_hours', 0):.1f} h · cykel "
-        f"{ride.get('activity_count', 0)} pass / "
+        f"Last 28 days: {analysis['total_duration_hours']:.1f} h total · "
+        f"running {run.get('activity_count', 0)} sessions / "
+        f"{run.get('duration_hours', 0):.1f} h · cycling "
+        f"{ride.get('activity_count', 0)} sessions / "
         f"{ride.get('duration_hours', 0):.1f} h."
     )
 
 
 def _sync_window_label(end_date: date) -> str:
-    return f"{end_date - timedelta(days=6)} till {end_date}"
+    return f"{end_date - timedelta(days=6)} to {end_date}"
 
 
 def _history_batches(*, end_date: date, days: int) -> tuple[tuple[date, date], ...]:
@@ -1059,10 +1097,10 @@ def _sse(event: str, payload: dict[str, object]) -> str:
 
 def _sync_command_result(result) -> str:
     return (
-        f"Garmin-synk klar ({result.start_date} till {result.end_date}): "
-        f"{result.activities_fetched} hämtade, {result.activities_inserted} nya och "
-        f"{result.activities_updated} uppdaterade aktiviteter; "
-        f"{result.daily_metrics_fetched} recovery-dagar."
+        f"Garmin sync complete ({result.start_date} to {result.end_date}): "
+        f"{result.activities_fetched} fetched, {result.activities_inserted} new and "
+        f"{result.activities_updated} updated activities; "
+        f"{result.daily_metrics_fetched} recovery days."
     )
 
 

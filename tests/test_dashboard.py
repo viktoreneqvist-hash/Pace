@@ -35,17 +35,17 @@ def test_dashboard_is_self_contained_and_owner_only(tmp_path, monkeypatch):
 
     assert output.name == "dashboard.html"
     assert output.stat().st_mode & 0o777 == 0o600
-    assert "Träning · 28 dagar" in html
-    assert "Cykling" in html
-    assert "Löpning" in html
+    assert "Training · 28 days" in html
+    assert "Cycling" in html
+    assert "Running" in html
     assert "0 h" in html
     assert "https://" not in html
-    assert "Ingen accepterad aktiv plan" in html
+    assert "No active plan" in html
 
 
 def test_dashboard_renders_without_raw_notes_or_external_assets():
     trends = build_training_response_trends(as_of_date=date(2026, 7, 26), records=())
     html = render_dashboard_html(state=_state(), trends=trends, plan=None, activities=())
 
-    assert "LOKAL DASHBOARD" in html
-    assert "Dashboarden är läsande" in html
+    assert "LOCAL DASHBOARD" in html
+    assert "This read-only dashboard" in html

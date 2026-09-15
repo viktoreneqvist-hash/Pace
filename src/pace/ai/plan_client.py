@@ -63,7 +63,7 @@ _WORKOUT_STEP_SCHEMA: dict[str, object] = {
     },
 }
 
-SYSTEM_INSTRUCTIONS = """You are Pace's Swedish-language plan-drafting assistant.
+SYSTEM_INSTRUCTIONS = """You are Pace's English-language plan-drafting assistant.
 Return a reviewable plan draft, never medical advice. Treat the supplied Pace
 facts as the complete factual contract about this athlete: do not invent
 capacity, prior volume, dates, recovery facts, races, availability, or targets.
@@ -155,14 +155,15 @@ unreported sessions and do not prove why a pattern occurred. Athlete-confirmed
 coach principles are explicit preferences with an expiry review; follow only
 those supplied as active facts and explain any material effect.
 
-Tone: write like a direct, unsentimental Swedish endurance coach. Be concrete
+Tone: write like a direct, unsentimental endurance coach. Be concrete
 about what the athlete should do, what the facts support, and what is unknown.
 Do not praise, soothe, use therapy language, pad the answer with generic
 wellness phrases, or add routine care-provider referrals for ordinary fatigue,
 poor sleep, or discomfort. Do not turn toughness into recklessness: when the
 facts justify backing off, say to skip or reduce the session plainly and do not
 try to compensate with extra intensity later. Do not diagnose or give medical
-advice. Return only JSON matching the schema."""
+advice. Write every user-facing text field in clear English. Return only JSON
+matching the schema."""
 
 PLAN_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -316,7 +317,7 @@ class OpenAIPlanClient:
                 )
             except Exception as error:
                 raise PaceAIUnavailableError(
-                    "AI-tjänsten kunde inte skapa ett planutkast. Dina Pace-data har inte ändrats."
+                    "The AI service could not create a plan draft. Your Pace data has not changed."
                 ) from error
             try:
                 return _parse_response(response)
@@ -324,8 +325,8 @@ class OpenAIPlanClient:
                 last_error = error
 
         raise PaceAIResponseError(
-            "AI-tjänsten kunde inte leverera ett komplett planutkast efter två försök. "
-            "Dina Pace-data har inte ändrats."
+            "The AI service could not produce a complete plan draft after two attempts. "
+            "Your Pace data has not changed."
         ) from last_error
 
 
@@ -334,7 +335,7 @@ def _schema_for_request(request: PlanGenerationRequest) -> dict[str, object]:
 
     fact_catalog = request.context.get("fact_catalog")
     if not isinstance(fact_catalog, dict) or not fact_catalog:
-        raise PaceAIResponseError("Planutkastet saknar en giltig Pace-faktakatalog.")
+        raise PaceAIResponseError("The plan draft lacks a valid Pace fact catalog.")
     knowledge_briefs = request.context.get("knowledge_briefs")
     briefs = knowledge_briefs.get("briefs") if isinstance(knowledge_briefs, dict) else None
     knowledge_ids = (
@@ -366,11 +367,11 @@ def _schema_for_request(request: PlanGenerationRequest) -> dict[str, object]:
 def _parse_response(response: object) -> GeneratedPlanDraft:
     response_text = getattr(response, "output_text", "")
     if not response_text:
-        raise PaceAIResponseError("AI-tjänsten gav inget användbart planutkast.")
+        raise PaceAIResponseError("The AI service returned no usable plan draft.")
     try:
         payload = json.loads(response_text)
     except json.JSONDecodeError as error:
-        raise PaceAIResponseError("AI-planen hade fel format.") from error
+        raise PaceAIResponseError("The AI plan had the wrong format.") from error
     return _parse_plan(payload)
 
 
@@ -380,9 +381,9 @@ def _parse_plan(payload: object) -> GeneratedPlanDraft:
         "block_outline",
         "sessions",
     }:
-        raise PaceAIResponseError("AI-planen hade fel fält.")
+        raise PaceAIResponseError("The AI plan had the wrong fields.")
     if not isinstance(payload["block_outline"], list) or not isinstance(payload["sessions"], list):
-        raise PaceAIResponseError("AI-planen hade fel innehåll.")
+        raise PaceAIResponseError("The AI plan contained invalid content.")
     try:
         block_outline = tuple(
             BlockOutlineItem(
@@ -396,9 +397,9 @@ def _parse_plan(payload: object) -> GeneratedPlanDraft:
         sessions = tuple(_parse_session(item) for item in payload["sessions"])
         coach_assessment = _parse_coach_assessment(payload["coach_assessment"])
     except (KeyError, TypeError, ValueError) as error:
-        raise PaceAIResponseError("AI-planen hade ogiltigt innehåll.") from error
+        raise PaceAIResponseError("The AI plan contained invalid content.") from error
     if len(block_outline) != len(payload["block_outline"]):
-        raise PaceAIResponseError("AI-planen hade ogiltig blocköversikt.")
+        raise PaceAIResponseError("The AI plan contained an invalid block outline.")
     return GeneratedPlanDraft(
         block_outline=block_outline,
         sessions=sessions,
@@ -416,7 +417,7 @@ def _parse_coach_assessment(item: object) -> CoachAssessmentDraft:
         "knowledge_references",
     }
     if not isinstance(item, dict) or set(item) != required_fields:
-        raise PaceAIResponseError("AI-planen hade fel coachbedömning.")
+        raise PaceAIResponseError("The AI plan contained an invalid coach assessment.")
     return CoachAssessmentDraft(
         fact_references=_text_tuple(item["fact_references"], require_nonempty=True),
         inferences=_text_tuple(item["inferences"], require_nonempty=True),
@@ -433,20 +434,20 @@ def _parse_session(item: object) -> PlannedSessionDraft:
     if not isinstance(item, dict) or set(item) != {
         "scheduled_date", "sport_type", "purpose", "distance_meters", "duration_seconds", "heart_rate_zone", "target", "workout_steps"
     }:
-        raise PaceAIResponseError("AI-planen hade ogiltiga passfält.")
+        raise PaceAIResponseError("The AI plan contained invalid session fields.")
     distance = item["distance_meters"]
     duration = item["duration_seconds"]
     if distance is not None and (not isinstance(distance, (int, float)) or distance <= 0):
-        raise PaceAIResponseError("AI-planen hade ogiltig passdistans.")
+        raise PaceAIResponseError("The AI plan contained an invalid session distance.")
     if duration is not None and (not isinstance(duration, int) or duration <= 0):
-        raise PaceAIResponseError("AI-planen hade ogiltig passtid.")
+        raise PaceAIResponseError("The AI plan contained an invalid session duration.")
     if item["sport_type"] not in {"run", "ride"}:
-        raise PaceAIResponseError("AI-planen hade ogiltig sport.")
+        raise PaceAIResponseError("The AI plan contained an invalid sport.")
     heart_rate_zone = item["heart_rate_zone"]
     if heart_rate_zone is not None and (
         not isinstance(heart_rate_zone, int) or isinstance(heart_rate_zone, bool)
     ):
-        raise PaceAIResponseError("AI-planen hade ogiltig pulszon.")
+        raise PaceAIResponseError("The AI plan contained an invalid heart-rate zone.")
     return PlannedSessionDraft(
         scheduled_date=date.fromisoformat(item["scheduled_date"]),
         sport_type=item["sport_type"],
@@ -466,32 +467,32 @@ def _parse_workout_step(item: object) -> WorkoutStepDraft:
         "instruction",
     }
     if not isinstance(item, dict) or set(item) != required_fields:
-        raise PaceAIResponseError("AI-planen hade ogiltiga passblocks-fält.")
+        raise PaceAIResponseError("The AI plan contained invalid workout-block fields.")
     kind = item["kind"]
     repetitions = item["repetitions"]
     if kind not in WORKOUT_STEP_KINDS or not isinstance(repetitions, int) or isinstance(repetitions, bool):
-        raise PaceAIResponseError("AI-planen hade ogiltigt passblock.")
+        raise PaceAIResponseError("The AI plan contained an invalid workout block.")
     distance = item["distance_meters"]
     duration = item["duration_seconds"]
     recovery_distance = item["recovery_distance_meters"]
     recovery_duration = item["recovery_duration_seconds"]
     for value in (distance, recovery_distance):
         if value is not None and (not isinstance(value, (int, float)) or value <= 0):
-            raise PaceAIResponseError("AI-planen hade ogiltig blockdistans.")
+            raise PaceAIResponseError("The AI plan contained an invalid block distance.")
     for value in (duration, recovery_duration):
         if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value <= 0):
-            raise PaceAIResponseError("AI-planen hade ogiltig blocktid.")
+            raise PaceAIResponseError("The AI plan contained an invalid block duration.")
     if distance is None and duration is None:
-        raise PaceAIResponseError("AI-planen hade ett block utan omfattning.")
+        raise PaceAIResponseError("The AI plan contained a block with no scope.")
     recovery_target = item["recovery_target"]
     if kind == "interval":
         if repetitions < 2 or (recovery_distance is None and recovery_duration is None) or recovery_target is None:
-            raise PaceAIResponseError("AI-planens intervallblock saknar återhämtning.")
+            raise PaceAIResponseError("The AI plan interval block lacks recovery.")
     elif repetitions != 1 or any(value is not None for value in (recovery_distance, recovery_duration, recovery_target)):
-        raise PaceAIResponseError("AI-planens vanliga block har ogiltig återhämtning.")
+        raise PaceAIResponseError("The AI plan non-interval block has invalid recovery.")
     instruction = item["instruction"]
     if not isinstance(instruction, str) or not instruction.strip():
-        raise PaceAIResponseError("AI-planen saknar blockinstruktion.")
+        raise PaceAIResponseError("The AI plan lacks a workout-block instruction.")
     return WorkoutStepDraft(
         kind=kind,
         repetitions=repetitions,
@@ -515,22 +516,22 @@ def _parse_target(item: object) -> SessionTargetDraft:
         "evidence_reference_id",
     }
     if not isinstance(item, dict) or set(item) != required_fields:
-        raise PaceAIResponseError("AI-planen hade ogiltigt målfält.")
+        raise PaceAIResponseError("The AI plan contained invalid target fields.")
     kind = item["kind"]
     if kind not in TARGET_KINDS:
-        raise PaceAIResponseError("AI-planen hade ogiltig måltyp.")
+        raise PaceAIResponseError("The AI plan contained an invalid target type.")
     values = {
         field_name: item[field_name]
         for field_name in ("rpe_min", "rpe_max", "pace_seconds_per_km", "power_watts")
     }
     for value in values.values():
         if value is not None and (not isinstance(value, int) or isinstance(value, bool)):
-            raise PaceAIResponseError("AI-planen hade ogiltigt numeriskt mål.")
+            raise PaceAIResponseError("The AI plan contained an invalid numeric target.")
     evidence_reference_id = item["evidence_reference_id"]
     if evidence_reference_id is not None and (
         not isinstance(evidence_reference_id, str) or not evidence_reference_id.strip()
     ):
-        raise PaceAIResponseError("AI-planen hade ogiltig faktareferens.")
+        raise PaceAIResponseError("The AI plan contained an invalid fact reference.")
     return SessionTargetDraft(
         kind=kind,
         rpe_min=values["rpe_min"],

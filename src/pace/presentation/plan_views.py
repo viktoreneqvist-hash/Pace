@@ -17,61 +17,61 @@ from pace.planning.plan_models import PlanSessionFact, TrainingPlanFact
 REPORTS_DIRECTORY = PROJECT_ROOT / "reports"
 
 _STATUS_LABELS = {
-    "draft": "Utkast — inte accepterat",
-    "accepted": "Accepterad",
-    "superseded": "Tidigare version",
+    "draft": "Draft — not active",
+    "accepted": "Active",
+    "superseded": "Previous version",
 }
 _OUTCOME_LABELS = {
-    "completed": "Genomfört",
-    "completed_limited": "Genomfört, begränsat",
-    "skipped": "Inte genomfört",
+    "completed": "Completed",
+    "completed_limited": "Completed, limited",
+    "skipped": "Skipped",
 }
 _FEEDBACK_REASON_LABELS = {
-    "schedule": "Schema",
-    "fatigue": "Trötthet",
-    "pain": "Smärta",
-    "illness": "Sjukdom",
-    "travel": "Resa",
-    "other": "Annat",
+    "schedule": "Schedule",
+    "fatigue": "Fatigue",
+    "pain": "Pain",
+    "illness": "Illness",
+    "travel": "Travel",
+    "other": "Other",
 }
 _FACT_REFERENCE_LABELS = {
-    "as_of_date": "Planeringsdatum",
-    "goal": "Mål och block",
-    "detailed_window": "Detaljerat planeringsfönster",
-    "planning_readiness": "Garmin-historik och planeringsberedskap",
-    "capacity_profile": "Faktisk träningshistorik och kontinuitet",
-    "performance_readiness": "Verifierad prestationsberedskap",
-    "training_preference": "Dina tillgängliga dagar och sportroll",
-    "relevant_context": "Vald strukturerad kontext",
-    "feedback": "Delad passåterkoppling",
-    "training_response_trends": "Strukturerade återkopplingstrender",
-    "parent_plan": "Accepterad föregående plan",
+    "as_of_date": "Planning date",
+    "goal": "Goal and block",
+    "detailed_window": "Detailed planning window",
+    "planning_readiness": "Garmin history and planning readiness",
+    "capacity_profile": "Observed training history and continuity",
+    "performance_readiness": "Verified performance readiness",
+    "training_preference": "Your available days and sport role",
+    "relevant_context": "Selected structured context",
+    "feedback": "Shared session feedback",
+    "training_response_trends": "Structured feedback trends",
+    "parent_plan": "Previous active plan",
 }
 
 
 def render_plan_review(plan: TrainingPlanFact, *, on_date: date | None = None) -> str:
-    """Return a compact Swedish terminal review without raw fact JSON."""
+    """Return a compact English terminal review without raw fact JSON."""
 
     reference_date = on_date or plan.as_of_date
     sessions = _sorted_sessions(plan)
     lines = [
         f"Pace plan {plan.id} — {_status_label(plan.status)}",
         _plan_period_line(plan),
-        f"Detaljerat fönster: {_format_date(plan.detailed_start_date)}–{_format_date(plan.detailed_end_date)}",
+        f"Detailed window: {_format_date(plan.detailed_start_date)}–{_format_date(plan.detailed_end_date)}",
         "",
         _next_session_heading(plan, sessions=sessions, on_date=reference_date),
         "",
-        "Pass",
+        "Sessions",
         *[_terminal_session_line(session) for session in sessions],
         "",
-        "Coachens bedömning",
-        plan.coach_assessment.rationale or "Ingen coachbedömning finns för denna äldre planversion.",
-        *_terminal_section("Slutsatser", plan.coach_assessment.inferences),
-        *_terminal_section("Osäkerheter", plan.coach_assessment.uncertainties),
-        *_terminal_section("Principer", plan.coach_assessment.coaching_principles),
+        "Coach assessment",
+        plan.coach_assessment.rationale or "No coach assessment exists for this older plan version.",
+        *_terminal_section("Inferences", plan.coach_assessment.inferences),
+        *_terminal_section("Uncertainties", plan.coach_assessment.uncertainties),
+        *_terminal_section("Principles", plan.coach_assessment.coaching_principles),
         *_knowledge_reference_lines(plan),
         "",
-        "Faktaunderlag",
+        "Fact sources",
         *_fact_reference_lines(plan),
         "",
         _next_action_line(plan),
@@ -91,12 +91,12 @@ def render_plan_today(
         session for session in sessions if session.scheduled_date == on_date
     )
     lines = [
-        f"Pace idag — {_format_date(on_date)}",
+        f"Pace today — {_format_date(on_date)}",
         f"Plan {plan.id}: {_status_label(plan.status)}",
         "",
     ]
     if today_sessions:
-        lines.extend(["Dagens pass", *[_terminal_session_line(item) for item in today_sessions]])
+        lines.extend(["Today's sessions", *[_terminal_session_line(item) for item in today_sessions]])
     else:
         future_sessions = tuple(
             session for session in sessions if session.scheduled_date > on_date
@@ -105,13 +105,13 @@ def render_plan_today(
             next_session = future_sessions[0]
             lines.extend(
                 [
-                    "Inget pass är planerat i dag.",
-                    "Nästa pass",
+                    "No session is planned today.",
+                    "Next session",
                     _terminal_session_line(next_session),
                 ]
             )
         else:
-            lines.append("Inga kommande pass finns i den här planens detaljerade fönster.")
+            lines.append("No upcoming sessions exist in this plan's detailed window.")
     lines.extend(["", _next_action_line(plan)])
     return "\n".join(lines)
 
@@ -167,7 +167,7 @@ def render_plan_html(plan: TrainingPlanFact) -> str:
     run_count = sum(session.sport_type == "run" for session in sessions)
     assessment = plan.coach_assessment
     return f"""<!doctype html>
-<html lang="sv">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -177,44 +177,44 @@ def render_plan_html(plan: TrainingPlanFact) -> str:
 <body>
   <main>
     <header>
-      <p class="eyebrow">PACE · LOKAL PLANRAPPORT</p>
+      <p class="eyebrow">PACE · LOCAL PLAN REPORT</p>
       <h1>Plan {plan.id}</h1>
       <p class="status {_status_class(plan.status)}">{escape(_status_label(plan.status))}</p>
       <p class="subtitle">{escape(_plan_period_line(plan))}</p>
     </header>
-    <section class="metrics" aria-label="Planöversikt">
-      {_metric_card("Detaljerat fönster", f"{_format_date(plan.detailed_start_date)}–{_format_date(plan.detailed_end_date)}")}
-      {_metric_card("Planerade pass", str(len(sessions)))}
-      {_metric_card("Cykel / löpning", f"{ride_count} / {run_count}")}
-      {_metric_card("Registrerade utfall", f"{feedback_count} av {len(sessions)}")}
+    <section class="metrics" aria-label="Plan overview">
+      {_metric_card("Detailed window", f"{_format_date(plan.detailed_start_date)}–{_format_date(plan.detailed_end_date)}")}
+      {_metric_card("Planned sessions", str(len(sessions)))}
+      {_metric_card("Cycling / running", f"{ride_count} / {run_count}")}
+      {_metric_card("Reported outcomes", f"{feedback_count} of {len(sessions)}")}
     </section>
     <section>
-      <h2>Nästa steg</h2>
+      <h2>Next step</h2>
       <p>{escape(_next_action_line(plan))}</p>
     </section>
     <section>
-      <h2>Detaljerade pass</h2>
-      <p class="muted">Varje block är en faktisk del av passet. Ett enkelt distanspass visas som ett enda block.</p>
+      <h2>Detailed sessions</h2>
+      <p class="muted">Each block is an actual part of the session. A simple steady session is shown as a single block.</p>
       <div class="session-list">{''.join(_html_session_card(session) for session in sessions)}</div>
     </section>
     <section>
-      <h2>Blocköversikt</h2>
+      <h2>Block overview</h2>
       <ol class="outline">{''.join(_html_outline_item(item) for item in plan.block_outline)}</ol>
     </section>
     <section class="assessment">
-      <h2>Coachens bedömning</h2>
-      <p class="rationale">{escape(assessment.rationale or 'Ingen coachbedömning finns för denna äldre planversion.')}</p>
-      {_html_text_section('Slutsatser', assessment.inferences)}
-      {_html_text_section('Osäkerheter', assessment.uncertainties)}
-      {_html_text_section('Allmänna coachprinciper', assessment.coaching_principles)}
+      <h2>Coach assessment</h2>
+      <p class="rationale">{escape(assessment.rationale or 'No coach assessment exists for this older plan version.')}</p>
+      {_html_text_section('Inferences', assessment.inferences)}
+      {_html_text_section('Uncertainties', assessment.uncertainties)}
+      {_html_text_section('General coaching principles', assessment.coaching_principles)}
       {_html_knowledge_section(plan)}
     </section>
     <section>
-      <h2>Faktaunderlag</h2>
-      <p class="muted">Rapporten visar vilka lokala faktakategorier som användes. Den innehåller inte rå Garmin-data eller privata noteringstexter.</p>
-      <ul>{''.join(f'<li>{escape(_fact_reference_label(reference))}</li>' for reference in assessment.fact_references) or '<li>Ingen faktakatalog finns för denna äldre planversion.</li>'}</ul>
+      <h2>Fact sources</h2>
+      <p class="muted">The report shows which local fact categories were used. It contains no raw Garmin data or private note text.</p>
+      <ul>{''.join(f'<li>{escape(_fact_reference_label(reference))}</li>' for reference in assessment.fact_references) or '<li>No fact catalog exists for this older plan version.</li>'}</ul>
     </section>
-    <footer>Skapad lokalt av Pace. Rapporten är en läsvy och ändrar inte planen.</footer>
+    <footer>Created locally by Pace. This read-only report does not change the plan.</footer>
   </main>
 </body>
 </html>
@@ -230,29 +230,29 @@ def render_plan_fragment(plan: TrainingPlanFact) -> str:
     run_count = sum(session.sport_type == "run" for session in sessions)
     assessment = plan.coach_assessment
     return f"""
-<section class="report-metrics" aria-label="Planöversikt">
-  {_metric_card("Detaljerat fönster", f"{_format_date(plan.detailed_start_date)}–{_format_date(plan.detailed_end_date)}")}
-  {_metric_card("Planerade pass", str(len(sessions)))}
-  {_metric_card("Cykel / löpning", f"{ride_count} / {run_count}")}
-  {_metric_card("Registrerade utfall", f"{feedback_count} av {len(sessions)}")}
+<section class="report-metrics" aria-label="Plan overview">
+  {_metric_card("Detailed window", f"{_format_date(plan.detailed_start_date)}–{_format_date(plan.detailed_end_date)}")}
+  {_metric_card("Planned sessions", str(len(sessions)))}
+  {_metric_card("Cycling / running", f"{ride_count} / {run_count}")}
+  {_metric_card("Reported outcomes", f"{feedback_count} of {len(sessions)}")}
 </section>
 <section class="report-section">
-  <h2>Nästa steg</h2>
-  <p>Registrera utfallet i Coach-fliken efter passet. Pace ändrar aldrig planen automatiskt.</p>
+  <h2>Next step</h2>
+  <p>Report the outcome in Coach after the session. Pace never changes the plan automatically.</p>
 </section>
 <section class="report-section">
-  <h2>Detaljerade pass</h2>
-  <p class="muted">Varje block är en faktisk del av passet. Ett enkelt distanspass visas som ett enda block.</p>
+  <h2>Detailed sessions</h2>
+  <p class="muted">Each block is an actual part of the session. A simple steady session is shown as a single block.</p>
   <div class="session-list">{''.join(_html_session_card(session) for session in sessions)}</div>
 </section>
 <section class="report-grid two">
-  <article><h2>Blocköversikt</h2><ol class="outline">{''.join(_html_outline_item(item) for item in plan.block_outline)}</ol></article>
-  <article class="assessment"><h2>Coachens bedömning</h2><p class="rationale">{escape(assessment.rationale or 'Ingen coachbedömning finns för denna äldre planversion.')}</p>{_html_text_section('Slutsatser', assessment.inferences)}{_html_text_section('Osäkerheter', assessment.uncertainties)}{_html_text_section('Allmänna coachprinciper', assessment.coaching_principles)}{_html_knowledge_section(plan)}</article>
+  <article><h2>Block overview</h2><ol class="outline">{''.join(_html_outline_item(item) for item in plan.block_outline)}</ol></article>
+  <article class="assessment"><h2>Coach assessment</h2><p class="rationale">{escape(assessment.rationale or 'No coach assessment exists for this older plan version.')}</p>{_html_text_section('Inferences', assessment.inferences)}{_html_text_section('Uncertainties', assessment.uncertainties)}{_html_text_section('General coaching principles', assessment.coaching_principles)}{_html_knowledge_section(plan)}</article>
 </section>
 <section class="report-section">
-  <h2>Faktaunderlag</h2>
-  <p class="muted">Visar vilka lokala faktakategorier som användes. Vyn innehåller inte rå Garmin-data eller privata noteringstexter.</p>
-  <ul>{''.join(f'<li>{escape(_fact_reference_label(reference))}</li>' for reference in assessment.fact_references) or '<li>Ingen faktakatalog finns för denna äldre planversion.</li>'}</ul>
+  <h2>Fact sources</h2>
+  <p class="muted">Shows which local fact categories were used. This view contains no raw Garmin data or private note text.</p>
+  <ul>{''.join(f'<li>{escape(_fact_reference_label(reference))}</li>' for reference in assessment.fact_references) or '<li>No fact catalog exists for this older plan version.</li>'}</ul>
 </section>"""
 
 
@@ -261,7 +261,7 @@ def _sorted_sessions(plan: TrainingPlanFact) -> tuple[PlanSessionFact, ...]:
 
 
 def _plan_period_line(plan: TrainingPlanFact) -> str:
-    goal = "Allmänt träningsmål" if plan.goal_mode == "general" else "Tävlingsblock"
+    goal = "General training goal" if plan.goal_mode == "general" else "Race block"
     return f"{goal} · {_format_date(plan.block_start_date)}–{_format_date(plan.block_end_date)}"
 
 
@@ -273,8 +273,8 @@ def _next_session_heading(
 ) -> str:
     matching = tuple(session for session in sessions if session.scheduled_date >= on_date)
     if not matching:
-        return "Inga återstående pass finns i det detaljerade fönstret."
-    prefix = "Dagens första pass" if matching[0].scheduled_date == on_date else "Nästa pass"
+        return "No remaining sessions exist in the detailed window."
+    prefix = "Today's first session" if matching[0].scheduled_date == on_date else "Next session"
     return f"{prefix}: {_terminal_session_line(matching[0])}"
 
 
@@ -291,21 +291,21 @@ def _session_scope(session: PlanSessionFact) -> str:
         _format_distance(session.distance_meters),
         _format_duration(session.duration_seconds),
     ]
-    return " · ".join(item for item in details if item) or "Ingen omfattning angiven"
+    return " · ".join(item for item in details if item) or "No scope specified"
 
 
 def _workout_outline(session: PlanSessionFact) -> str:
     if not session.workout_steps:
-        return "Inget detaljerat upplägg (äldre plan)"
+        return "No detailed structure (older plan)"
     return " → ".join(_workout_step_outline(step) for step in session.workout_steps)
 
 
 def _workout_step_outline(step) -> str:
     label = {
-        "warmup": "Uppvärmning",
-        "steady": "Jämn del",
-        "interval": "Intervall",
-        "cooldown": "Nedjogg",
+        "warmup": "Warm-up",
+        "steady": "Steady",
+        "interval": "Intervals",
+        "cooldown": "Cool-down",
     }.get(step.kind, step.kind)
     scope = " · ".join(
         value
@@ -323,10 +323,10 @@ def _workout_step_outline(step) -> str:
             if value
         )
         if recovery_scope:
-            scope = f"{scope}, vila {recovery_scope}"
+            scope = f"{scope}, recovery {recovery_scope}"
     target = _target_fact_display(step.target)
     recovery_target = (
-        f", vila {_target_fact_display(step.recovery_target)}"
+        f", recovery {_target_fact_display(step.recovery_target)}"
         if step.recovery_target is not None
         else ""
     )
@@ -342,7 +342,7 @@ def _target_fact_display(target) -> str:
         return f"{minutes}:{seconds:02d} min/km"
     if target.kind == "power" and target.power_watts is not None:
         return f"{target.power_watts} W"
-    return "ingen separat intensitet"
+    return "no separate intensity target"
 
 
 def _format_date(value: date) -> str:
@@ -367,7 +367,7 @@ def _format_duration(value: int | None) -> str:
 
 
 def _sport_label(sport_type: str) -> str:
-    return {"ride": "Cykel", "run": "Löpning"}.get(sport_type, sport_type)
+    return {"ride": "Cycling", "run": "Running"}.get(sport_type, sport_type)
 
 
 def _status_label(status: str) -> str:
@@ -377,7 +377,7 @@ def _status_label(status: str) -> str:
 def _feedback_suffix(session: PlanSessionFact) -> str:
     if session.feedback_outcome is None:
         return ""
-    return f" · Utfall: {_feedback_display(session)}"
+    return f" · Outcome: {_feedback_display(session)}"
 
 
 def _terminal_section(title: str, items: tuple[str, ...]) -> list[str]:
@@ -389,7 +389,7 @@ def _terminal_section(title: str, items: tuple[str, ...]) -> list[str]:
 def _fact_reference_lines(plan: TrainingPlanFact) -> list[str]:
     references = plan.coach_assessment.fact_references
     if not references:
-        return ["- Ingen faktakatalog finns för denna äldre planversion."]
+        return ["- No fact catalog exists for this older plan version."]
     return [f"- {_fact_reference_label(reference)}" for reference in references]
 
 
@@ -397,7 +397,7 @@ def _knowledge_reference_lines(plan: TrainingPlanFact) -> list[str]:
     references = plan.coach_assessment.knowledge_references
     if not references:
         return []
-    return ["", "Kunskapsstöd", *_knowledge_display_lines(references)]
+    return ["", "Knowledge support", *_knowledge_display_lines(references)]
 
 
 def _knowledge_display_lines(references: tuple[str, ...]) -> list[str]:
@@ -428,8 +428,8 @@ def _html_knowledge_section(plan: TrainingPlanFact) -> str:
     lines = _knowledge_display_lines(references)
     items = "".join(f"<li>{escape(line.removeprefix('- '))}</li>" for line in lines)
     return (
-        "<h3>Kunskapsstöd</h3>"
-        "<p class=\"muted\">Källstöd för principerna, inte en ersättning för dina lokala fakta.</p>"
+        "<h3>Knowledge support</h3>"
+        "<p class=\"muted\">Sources supporting the principles, not a replacement for your local facts.</p>"
         f"<ul>{items}</ul>"
     )
 
@@ -440,10 +440,10 @@ def _fact_reference_label(reference: str) -> str:
 
 def _next_action_line(plan: TrainingPlanFact) -> str:
     if plan.status == "draft":
-        return f"Granska och acceptera vid behov: pace plan accept --id {plan.id}"
+        return f"Review and accept if needed: pace plan accept --id {plan.id}"
     if plan.status == "accepted":
-        return "Registrera utfall efter ett pass: pace plan feedback --session-id <id> --outcome completed"
-    return "Detta är en tidigare planversion och kan läsas, men inte ändras."
+        return "Report a session outcome in the Coach tab."
+    return "This is a previous plan version. It can be read but not changed."
 
 
 def _metric_card(label: str, value: str) -> str:
@@ -455,7 +455,7 @@ def _html_session_card(session: PlanSessionFact) -> str:
     blocks = (
         "".join(_html_workout_step(step) for step in steps)
         if steps
-        else '<p class="muted">Inget detaljerat upplägg finns för denna äldre plan.</p>'
+        else '<p class="muted">No detailed structure exists for this older plan.</p>'
     )
     return (
         '<article class="session-card">'
@@ -466,9 +466,9 @@ def _html_session_card(session: PlanSessionFact) -> str:
         '<div class="session-main">'
         f'<h3>{escape(session.purpose)}</h3>'
         '<div class="session-meta">'
-        f'<span><b>Omfattning</b>{escape(_session_scope(session))}</span>'
-        f'<span><b>Huvudmål</b>{escape(session.target_display)}</span>'
-        f'<span><b>Utfall</b>{escape(_feedback_display(session))}</span>'
+        f'<span><b>Scope</b>{escape(_session_scope(session))}</span>'
+        f'<span><b>Main target</b>{escape(session.target_display)}</span>'
+        f'<span><b>Outcome</b>{escape(_feedback_display(session))}</span>'
         "</div>"
         f'<div class="workout-blocks">{blocks}</div>'
         "</div>"
@@ -478,10 +478,10 @@ def _html_session_card(session: PlanSessionFact) -> str:
 
 def _html_workout_step(step) -> str:
     label = {
-        "warmup": "Uppvärmning",
-        "steady": "Jämn del",
-        "interval": "Intervaller",
-        "cooldown": "Nedjogg",
+        "warmup": "Warm-up",
+        "steady": "Steady",
+        "interval": "Intervals",
+        "cooldown": "Cool-down",
     }.get(step.kind, step.kind)
     scope = _workout_step_scope(step)
     target = _target_fact_display(step.target)
@@ -506,7 +506,7 @@ def _workout_step_scope(step) -> str:
     )
     if step.kind == "interval":
         return f"{step.repetitions} × {scope}"
-    return scope or "Ingen omfattning angiven"
+    return scope or "No scope specified"
 
 
 def _html_recovery(step) -> str:
@@ -523,10 +523,10 @@ def _html_recovery(step) -> str:
     recovery_target = (
         _target_fact_display(step.recovery_target)
         if step.recovery_target is not None
-        else "ingen separat intensitet"
+        else "no separate intensity target"
     )
     return (
-        '<p class="step-recovery"><b>Vila</b>'
+        '<p class="step-recovery"><b>Recovery</b>'
         f"{escape(recovery_scope)} · {escape(recovery_target)}</p>"
     )
 

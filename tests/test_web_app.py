@@ -252,7 +252,7 @@ def _web_client(tmp_path):
         today=lambda: date(2026, 7, 27),
     )
     return (
-        TestClient(create_app(services=services)),
+        TestClient(create_app(services=services, allowed_hosts=("testserver",))),
         plan_service,
         context,
         coach,
@@ -275,12 +275,29 @@ def test_local_web_home_renders_current_plan_and_report_navigation(tmp_path):
 
     assert response.status_code == 200
     assert "LOCAL COACHING SYSTEM" in response.text
-    assert "COACHKANAL" in response.text
+    assert "COACH CHANNEL" in response.text
     assert "UTKAST ATT GRANSKA" not in response.text
     assert "Dashboard" in response.text
     assert '"taper": "full"' in response.text
     assert "Offensiv" not in response.text
     assert "Noir" not in response.text
+
+
+def test_local_web_rejects_untrusted_hosts_and_sets_security_headers(tmp_path):
+    client, _plans, _context, _coach, _sync, _review = _web_client(tmp_path)
+
+    response = client.get("/")
+    rejected = client.get("/", headers={"host": "attacker.example"})
+
+    assert response.status_code == 200
+    assert response.headers["content-security-policy"].startswith(
+        "default-src 'self'"
+    )
+    assert response.headers["cross-origin-resource-policy"] == "same-origin"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert rejected.status_code == 400
 
 
 def test_first_run_onboarding_contains_the_complete_local_setup_path():
@@ -300,9 +317,9 @@ def test_first_run_onboarding_contains_the_complete_local_setup_path():
         csrf_token="local-csrf",
     )
 
-    assert "Bygg din" in page
-    assert "Endast löpning" in page
-    assert "Endast cykling" in page
+    assert "Build your" in page
+    assert "Running only" in page
+    assert "Cycling only" in page
     assert "/api/setup/history/confirm" not in page
     assert "onboarding.js" in page
 
@@ -335,8 +352,8 @@ def test_legacy_draft_is_visible_only_when_its_review_link_is_opened(tmp_path):
     response = client.get("/plan?draft=18")
 
     assert response.status_code == 200
-    assert "Tidigare planutkast" in response.text
-    assert "Äldre utkast 18" in response.text
+    assert "Previous plan draft" in response.text
+    assert "Archived draft 18" in response.text
 
 
 def test_confirmation_endpoints_require_csrf_and_reuse_existing_services(tmp_path):
@@ -434,8 +451,8 @@ def test_plan_page_creates_the_next_detailed_window_from_the_active_plan_only(tm
     )
 
     assert 'id="plan-revision-button"' in page.text
-    assert "Skapa nästa 14 dagar" in page.text
-    assert 'src="/static/plan.js?v=20260820-1"' in page.text
+    assert "Create next 14 days" in page.text
+    assert 'src="/static/plan.js?v=20260915-1"' in page.text
     assert denied.status_code == 403
     assert inactive.status_code == 409
     assert created.status_code == 200
@@ -462,7 +479,7 @@ def test_settings_is_a_local_view_and_history_sync_keeps_seven_day_batches(tmp_p
     )
 
     assert page.status_code == 200
-    assert "Inställningar" in page.text
+    assert "Settings" in page.text
     assert 'href="/settings"' in page.text
     assert result.status_code == 200
     assert len(sync.calls) == 12
@@ -505,6 +522,9 @@ def test_reports_are_available_only_from_the_safe_local_report_catalog(tmp_path)
 
     assert dashboard.status_code == 200
     assert "Dashboard" in dashboard.text
+    assert "script-src 'self' 'unsafe-inline'" in dashboard.headers[
+        "content-security-policy"
+    ]
     assert missing_review.status_code == 404
     assert invalid.status_code == 404
 
@@ -523,8 +543,8 @@ def test_in_app_reports_keep_navigation_and_use_current_local_views(tmp_path):
         assert 'href="/plan"' in response.text
         assert 'href="/weekly-review"' in response.text
         assert response.headers["cache-control"] == "no-store"
-    assert "Träning · 28 dagar" in dashboard.text
-    assert "Detaljerade pass" in plan.text
+    assert "Training · 28 days" in dashboard.text
+    assert "Detailed sessions" in plan.text
     assert "Veckan är sammanfattad." in review.text
 
 

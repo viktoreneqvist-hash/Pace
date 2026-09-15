@@ -78,20 +78,20 @@ def render_weekly_review_fragment(snapshot: WeeklyReviewSnapshot) -> str:
 
     def section(title: str, values: tuple[str, ...]) -> str:
         items = "".join(f"<li>{escape(value)}</li>" for value in values)
-        return f"<article><h2>{escape(title)}</h2><ul>{items or '<li>Inget angivet.</li>'}</ul></article>"
+        return f"<article><h2>{escape(title)}</h2><ul>{items or '<li>Nothing reported.</li>'}</ul></article>"
 
     return (
         '<section class="report-section weekly-summary">'
-        '<h2>Sammanfattning</h2>'
+        '<h2>Summary</h2>'
         f"<p>{escape(snapshot.summary)}</p>"
-        '<p class="notice">Det här är den senaste uttryckliga AI-reviewen. '
-        'Den räknas inte om när coachen sparar feedback eller context.</p>'
+        '<p class="notice">This is the latest explicit AI review. '
+        'It is not recalculated when the coach saves feedback or context.</p>'
         "</section>"
         '<section class="report-grid two">'
-        f'{section("Pace-fakta", snapshot.observations)}'
-        f'{section("Coachens bedömning", snapshot.coach_assessment)}'
-        f'{section("Rekommendationer", snapshot.recommendations)}'
-        f'{section("Osäkerheter", snapshot.uncertainties)}'
+        f'{section("Pace facts", snapshot.observations)}'
+        f'{section("Coach assessment", snapshot.coach_assessment)}'
+        f'{section("Recommendations", snapshot.recommendations)}'
+        f'{section("Uncertainties", snapshot.uncertainties)}'
         "</section>"
     )
 
@@ -99,19 +99,19 @@ def render_weekly_review_fragment(snapshot: WeeklyReviewSnapshot) -> str:
 def render_weekly_review_html(*, end_date, answer: WeeklyReviewAnswer) -> str:
     def section(title, values):
         items = "".join(f"<li>{escape(value)}</li>" for value in values)
-        return f"<section><h2>{title}</h2><ul>{items or '<li>Inget angivet.</li>'}</ul></section>"
+        return f"<section><h2>{title}</h2><ul>{items or '<li>Nothing reported.</li>'}</ul></section>"
 
     return (
-        '<!doctype html><html lang="sv"><meta charset="utf-8">'
+        '<!doctype html><html lang="en"><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        f"<title>Pace veckoreview</title><style>{_STYLE}</style><main>"
-        f"<header><p>PACE · VECKOREVIEW</p><h1>Vecka som slutar {escape(end_date.isoformat())}</h1></header>"
-        f"<section><h2>Sammanfattning</h2><p>{escape(answer.summary)}</p></section>"
-        f'{section("Pace-fakta", answer.observations)}'
-        f'{section("Coachens bedömning", answer.coach_assessment)}'
-        f'{section("Rekommendationer", answer.recommendations)}'
-        f'{section("Osäkerheter", answer.uncertainties)}'
-        "<footer>Skapad genom ett explicit Pace-anrop. Rapporten ändrar inte planen.</footer>"
+        f"<title>Pace weekly review</title><style>{_STYLE}</style><main>"
+        f"<header><p>PACE · WEEKLY REVIEW</p><h1>Week ending {escape(end_date.isoformat())}</h1></header>"
+        f"<section><h2>Summary</h2><p>{escape(answer.summary)}</p></section>"
+        f'{section("Pace facts", answer.observations)}'
+        f'{section("Coach assessment", answer.coach_assessment)}'
+        f'{section("Recommendations", answer.recommendations)}'
+        f'{section("Uncertainties", answer.uncertainties)}'
+        "<footer>Created by an explicit Pace request. This report does not change the plan.</footer>"
         "</main></html>"
     )
 

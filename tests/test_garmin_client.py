@@ -99,7 +99,7 @@ def test_secure_token_file_uses_owner_only_permissions(tmp_path: Path):
 def test_login_fails_if_a_reusable_token_was_not_saved(tmp_path: Path):
     FakeGarmin.write_token_file = False
 
-    with pytest.raises(GarminIntegrationError, match="kunde inte sparas lokalt"):
+    with pytest.raises(GarminIntegrationError, match="could not be saved locally"):
         GarminConnectClient.login_with_credentials(
             email="athlete@example.com",
             password="not-stored",
@@ -158,5 +158,5 @@ def test_connection_failure_does_not_claim_tokens_are_missing(tmp_path: Path):
     (token_dir / "garmin_tokens.json").touch()
     FakeGarmin.login_error = GarminConnectConnectionError("offline")
 
-    with pytest.raises(GarminIntegrationError, match="anslutningsfel"):
+    with pytest.raises(GarminIntegrationError, match="connection error"):
         GarminConnectClient.from_saved_tokens(token_dir)

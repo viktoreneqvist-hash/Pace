@@ -55,15 +55,15 @@ def require_secure_token_file(token_dir: Path) -> None:
     token_file = token_dir / GARMIN_TOKEN_FILENAME
     if not token_file.is_file():
         raise GarminIntegrationError(
-            "Garmin-sessionen kunde inte sparas lokalt. Kontrollera "
-            "filrättigheter och ledigt diskutrymme."
+            "The Garmin session could not be saved locally. Check file "
+            "permissions and available disk space."
         )
 
     try:
         secure_token_file(token_dir)
     except OSError as error:
         raise GarminIntegrationError(
-            "Garmin-sessionens lokala tokenfil kunde inte säkras."
+            "The local Garmin session token file could not be secured."
         ) from error
 
 
@@ -74,8 +74,8 @@ def persist_secure_token_file(api: Garmin, token_dir: Path) -> None:
         api.client.dump(str(token_dir))
     except Exception as error:
         raise GarminIntegrationError(
-            "Garmin-sessionen kunde inte sparas lokalt. Kontrollera "
-            "filrättigheter och ledigt diskutrymme."
+            "The Garmin session could not be saved locally. Check file "
+            "permissions and available disk space."
         ) from error
 
     require_secure_token_file(token_dir)
@@ -111,15 +111,15 @@ class GarminConnectClient:
             api.login(str(client._token_dir))
         except GarminConnectTooManyRequestsError as error:
             raise GarminRateLimitError(
-                "Garmin begränsar inloggningsförsök just nu. Vänta och försök igen senare."
+                "Garmin is rate-limiting login attempts. Wait and try again later."
             ) from error
         except GarminConnectAuthenticationError as error:
             raise GarminAuthenticationRequiredError(
-                "Garmin kunde inte verifiera inloggningen. Kontrollera e-post, lösenord och MFA-kod."
+                "Garmin could not verify the login. Check the email, password, and MFA code."
             ) from error
         except GarminConnectConnectionError as error:
             raise GarminIntegrationError(
-                "Kunde inte ansluta till Garmin. Kontrollera nätverket och försök igen."
+                "Could not connect to Garmin. Check the network and try again."
             ) from error
 
         persist_secure_token_file(api, client._token_dir)
@@ -132,7 +132,7 @@ class GarminConnectClient:
         private_token_dir = prepare_token_directory(token_dir)
         if not (private_token_dir / GARMIN_TOKEN_FILENAME).is_file():
             raise GarminAuthenticationRequiredError(
-                "Ingen giltig Garmin-session finns lokalt. Kör 'pace garmin login' först."
+                "No valid Garmin session exists locally. Run 'pace garmin login' first."
             )
 
         api = Garmin()
@@ -143,16 +143,16 @@ class GarminConnectClient:
             api.login(str(client._token_dir))
         except GarminConnectTooManyRequestsError as error:
             raise GarminRateLimitError(
-                "Garmin begränsar förfrågningar just nu. Vänta och kör synken igen senare."
+                "Garmin is rate-limiting requests. Wait and run the sync again later."
             ) from error
         except GarminConnectAuthenticationError as error:
             raise GarminAuthenticationRequiredError(
-                "Ingen giltig Garmin-session finns lokalt. Kör 'pace garmin login' först."
+                "No valid Garmin session exists locally. Run 'pace garmin login' first."
             ) from error
         except GarminConnectConnectionError as error:
             raise GarminIntegrationError(
-                "Kunde inte återställa Garmin-sessionen på grund av ett "
-                "anslutningsfel. Försök igen senare."
+                "Could not restore the Garmin session because of a "
+                "connection error. Try again later."
             ) from error
 
         persist_secure_token_file(api, client._token_dir)
@@ -172,22 +172,22 @@ class GarminConnectClient:
             )
         except GarminConnectTooManyRequestsError as error:
             raise GarminRateLimitError(
-                "Garmin begränsar förfrågningar just nu. Vänta och kör synken igen senare."
+                "Garmin is rate-limiting requests. Wait and run the sync again later."
             ) from error
         except GarminConnectAuthenticationError as error:
             raise GarminAuthenticationRequiredError(
-                "Garmin-sessionen är inte längre giltig. Kör 'pace garmin login' igen."
+                "The Garmin session is no longer valid. Run 'pace garmin login' again."
             ) from error
         except GarminConnectConnectionError as error:
             raise GarminIntegrationError(
-                "Kunde inte hämta aktiviteter från Garmin. Försök igen senare."
+                "Could not fetch activities from Garmin. Try again later."
             ) from error
 
     def get_activity_performance_detail(self, activity_id: str) -> dict[str, Any]:
         """Fetch a scalar activity detail response without route or chart data."""
 
         return self._call_activity_endpoint(
-            "aktivitetsdetaljer",
+            "activity details",
             self._api.get_activity_details,
             activity_id,
             maxchart=1,
@@ -198,7 +198,7 @@ class GarminConnectClient:
         """Fetch Garmin's split summaries for one already imported activity."""
 
         return self._call_activity_endpoint(
-            "aktivitets-splits",
+            "activity splits",
             self._api.get_activity_splits,
             activity_id,
         )
@@ -207,7 +207,7 @@ class GarminConnectClient:
         """Fetch Garmin's daily summary, including resting HR and stress."""
 
         return self._call_daily_endpoint(
-            "den dagliga sammanfattningen",
+            "the daily summary",
             self._api.get_user_summary,
             metric_date,
         )
@@ -216,7 +216,7 @@ class GarminConnectClient:
         """Fetch the detailed nightly sleep summary for one calendar day."""
 
         return self._call_daily_endpoint(
-            "sömndata",
+            "sleep data",
             self._api.get_sleep_data,
             metric_date,
         )
@@ -246,15 +246,15 @@ class GarminConnectClient:
             return method(metric_date.isoformat())
         except GarminConnectTooManyRequestsError as error:
             raise GarminRateLimitError(
-                "Garmin begränsar förfrågningar just nu. Vänta och kör synken igen senare."
+                "Garmin is rate-limiting requests. Wait and run the sync again later."
             ) from error
         except GarminConnectAuthenticationError as error:
             raise GarminAuthenticationRequiredError(
-                "Garmin-sessionen är inte längre giltig. Kör 'pace garmin login' igen."
+                "The Garmin session is no longer valid. Run 'pace garmin login' again."
             ) from error
         except GarminConnectConnectionError as error:
             raise GarminIntegrationError(
-                f"Kunde inte hämta {label} från Garmin. Försök igen senare."
+                f"Could not fetch {label} from Garmin. Try again later."
             ) from error
 
     def _call_activity_endpoint(self, label: str, method, activity_id: str, **kwargs):
@@ -264,13 +264,13 @@ class GarminConnectClient:
             return method(activity_id, **kwargs)
         except GarminConnectTooManyRequestsError as error:
             raise GarminRateLimitError(
-                "Garmin begränsar förfrågningar just nu. Vänta och kör samma detaljbatch igen senare."
+                "Garmin is rate-limiting requests. Wait and run the same detail batch again later."
             ) from error
         except GarminConnectAuthenticationError as error:
             raise GarminAuthenticationRequiredError(
-                "Garmin-sessionen är inte längre giltig. Kör 'pace garmin login' igen."
+                "The Garmin session is no longer valid. Run 'pace garmin login' again."
             ) from error
         except GarminConnectConnectionError as error:
             raise GarminIntegrationError(
-                f"Kunde inte hämta {label} från Garmin. Försök igen senare."
+                f"Could not fetch {label} from Garmin. Try again later."
             ) from error

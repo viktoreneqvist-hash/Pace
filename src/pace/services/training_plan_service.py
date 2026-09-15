@@ -1211,7 +1211,7 @@ def _render_target_display(*, item, performance_readiness: PerformanceReadiness)
         parts.append(f"{minutes}:{seconds:02d} min/km")
     elif target.kind == "power":
         parts.append(f"{target.power_watts} W")
-    return " | ".join(parts) or "Ingen primär intensitet"
+    return " | ".join(parts) or "No primary intensity target"
 
 
 def _legacy_intensity_type(item) -> str:

@@ -1,4 +1,4 @@
-"""Swedish deterministic templates for resting-heart-rate and sleep rules."""
+"""English deterministic templates for resting-heart-rate and sleep rules."""
 
 from pace.explanations.models import ExplanationItem
 from pace.rules.models import RuleEvaluationSummary
@@ -7,9 +7,9 @@ from pace.state.models import GarminCurrentFact
 
 GARMIN_SIGNAL_LABELS = {
     "training_readiness": "Garmin training readiness",
-    "body_battery_high": "Garmin Body Battery högsta värde",
-    "body_battery_low": "Garmin Body Battery lägsta värde",
-    "average_stress": "Garmin genomsnittlig stress",
+    "body_battery_high": "Garmin Body Battery high",
+    "body_battery_low": "Garmin Body Battery low",
+    "average_stress": "Garmin average stress",
     "recovery_time_hours": "Garmin recovery time",
 }
 
@@ -48,23 +48,23 @@ def explain_garmin_current_facts(
             ExplanationItem(
                 explanation_id="garmin_current_facts",
                 text=(
-                    f"Garmin-status för idag: {values}. "
-                    "Pace använder inte dessa Garmin-värden i egna regler."
+                    f"Garmin status for today: {values}. "
+                    "Pace does not use these Garmin values in its own rules."
                 ),
             )
         )
 
     if stale:
         values = ", ".join(
-            f"{GARMIN_SIGNAL_LABELS[fact.signal]} från {fact.source_date}"
+            f"{GARMIN_SIGNAL_LABELS[fact.signal]} from {fact.source_date}"
             for fact in stale
         )
         items.append(
             ExplanationItem(
                 explanation_id="garmin_stale_facts",
                 text=(
-                    f"Senaste Garmin-status är inte aktuell för denna dag: {values}. "
-                    "Dessa värden används inte i Pace-regler."
+                    f"The latest Garmin status is not current for this day: {values}. "
+                    "These values are not used in Pace rules."
                 ),
             )
         )
@@ -77,35 +77,35 @@ def _explain_resting_heart_rate(*, quality, pattern) -> ExplanationItem:
         return ExplanationItem(
             explanation_id="resting_heart_rate_baseline_insufficient",
             text=(
-                "Vilopulsunderlaget är ännu begränsat: "
-                f"{quality.facts['observed_baseline_days']} av minst "
-                f"{quality.facts['required_baseline_days']} observerade dagar."
+                "The resting-heart-rate baseline is still limited: "
+                f"{quality.facts['observed_baseline_days']} of at least "
+                f"{quality.facts['required_baseline_days']} observed days."
             ),
         )
     if pattern.status == "insufficient_data":
         return ExplanationItem(
             explanation_id="resting_heart_rate_consecutive_days_missing",
             text=(
-                "Vilopulsunderlaget räcker, men Pace saknar två sammanhängande "
-                "kalenderdagar med vilopulsdata för att utvärdera mönstret."
+                "The resting-heart-rate baseline is sufficient, but Pace lacks two consecutive "
+                "calendar days of resting-heart-rate data for evaluating the pattern."
             ),
         )
     if pattern.status == "triggered":
         return ExplanationItem(
             explanation_id="resting_heart_rate_elevated",
             text=(
-                "Vilopulsen ligger minst "
-                f"{pattern.facts['increase_percent_threshold']} % över den aktuella "
-                f"baslinjen två dagar i följd ({pattern.facts['signal_dates'][0]} och "
-                f"{pattern.facts['signal_dates'][1]}). Detta är en observation, inte "
-                "en förklaring eller ett träningsråd."
+                "Resting heart rate is at least "
+                f"{pattern.facts['increase_percent_threshold']}% above the current "
+                f"baseline on two consecutive days ({pattern.facts['signal_dates'][0]} and "
+                f"{pattern.facts['signal_dates'][1]}). This is an observation, not "
+                "an explanation or training recommendation."
             ),
         )
     return ExplanationItem(
         explanation_id="resting_heart_rate_pattern_not_present",
         text=(
-            "Pace ser inte två sammanhängande vilopulsdagar minst 5 % över den "
-            "aktuella baslinjen i den här utvärderingen."
+            "Pace does not see two consecutive resting-heart-rate days at least 5% above the "
+            "current baseline in this evaluation."
         ),
     )
 
@@ -115,39 +115,39 @@ def _explain_sleep_duration(*, quality, pattern) -> ExplanationItem:
         return ExplanationItem(
             explanation_id="sleep_duration_baseline_insufficient",
             text=(
-                "Sömnlängdsunderlaget är ännu begränsat: "
-                f"{quality.facts['observed_baseline_days']} av minst "
-                f"{quality.facts['required_baseline_days']} observerade dagar."
+                "The sleep-duration baseline is still limited: "
+                f"{quality.facts['observed_baseline_days']} of at least "
+                f"{quality.facts['required_baseline_days']} observed days."
             ),
         )
     if pattern.status == "insufficient_data":
         return ExplanationItem(
             explanation_id="sleep_duration_latest_value_missing",
             text=(
-                "Sömnlängdsunderlaget räcker, men Pace saknar den senaste "
-                "sömnlängden för att utvärdera natten."
+                "The sleep-duration baseline is sufficient, but Pace lacks the latest "
+                "sleep duration for evaluating the night."
             ),
         )
     if pattern.status == "triggered":
         return ExplanationItem(
             explanation_id="sleep_duration_short_night",
             text=(
-                "Sömnlängden ligger minst "
-                f"{pattern.facts['decrease_percent_threshold']} % under den aktuella "
-                f"baslinjen för {pattern.facts['signal_date']}. Detta är en "
-                "observation, inte en förklaring eller ett träningsråd."
+                "Sleep duration is at least "
+                f"{pattern.facts['decrease_percent_threshold']}% below the current "
+                f"baseline for {pattern.facts['signal_date']}. This is an "
+                "observation, not an explanation or training recommendation."
             ),
         )
     return ExplanationItem(
         explanation_id="sleep_duration_pattern_not_present",
         text=(
-            "Pace ser inte en sömnlängd minst 10 % under den aktuella baslinjen "
-            "i den här utvärderingen."
+            "Pace does not see sleep duration at least 10% below the current baseline "
+            "in this evaluation."
         ),
     )
 
 
 def _format_value(fact: GarminCurrentFact) -> str:
     if fact.signal == "recovery_time_hours":
-        return f"{fact.value:.1f} timmar"
+        return f"{fact.value:.1f} hours"
     return f"{fact.value:g}"

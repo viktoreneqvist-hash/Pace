@@ -27,7 +27,7 @@ class PaceAIResponseError(PaceAIError):
     """The provider response was refused or violated the Pace output contract."""
 
 
-SYSTEM_INSTRUCTIONS = """You are Pace's Swedish-language endurance coach for one athlete.
+SYSTEM_INSTRUCTIONS = """You are Pace's English-language endurance coach for one athlete.
 Treat supplied Pace facts as the complete factual contract about this athlete.
 Do not calculate, invent, or override metrics, rules, dates, data quality,
 training history, or causes. Treat correlations as observations, never causes.
@@ -51,7 +51,8 @@ selected facts support, what they do not support, and what data is missing.
 You may propose context_event_draft only when the athlete explicitly volunteers
 new relevant context or explicitly asks to prepare a note. A draft is never
 saved automatically and must be presented as requiring confirmation. Otherwise
-return null for context_event_draft. Return Swedish JSON matching the schema."""
+return null for context_event_draft. Write every user-facing JSON text field in
+clear English and return JSON matching the schema."""
 
 
 ANSWER_SCHEMA: dict[str, object] = {
@@ -137,24 +138,24 @@ class OpenAIResponsesClient:
             )
         except Exception as error:
             raise PaceAIUnavailableError(
-                "AI-tjänsten kunde inte svara. Dina Pace-data har inte ändrats."
+                "The AI service could not answer. Your Pace data has not changed."
             ) from error
 
         response_text = getattr(response, "output_text", "")
         if not response_text:
             if _find_refusal(response):
                 raise PaceAIResponseError(
-                    "AI-tjänsten avböjde frågan. Dina Pace-data har inte ändrats."
+                    "The AI service declined the question. Your Pace data has not changed."
                 )
             raise PaceAIResponseError(
-                "AI-tjänsten gav inget användbart svar. Dina Pace-data har inte ändrats."
+                "The AI service returned no usable answer. Your Pace data has not changed."
             )
 
         try:
             payload = json.loads(response_text)
         except json.JSONDecodeError as error:
             raise PaceAIResponseError(
-                "AI-tjänsten gav ett ogiltigt svar. Dina Pace-data har inte ändrats."
+                "The AI service returned an invalid answer. Your Pace data has not changed."
             ) from error
 
         return _parse_answer(
@@ -192,7 +193,7 @@ def _parse_answer(
     """Validate the provider JSON again before it reaches the Pace CLI."""
 
     if not isinstance(payload, dict):
-        raise PaceAIResponseError("AI-svaret hade fel format.")
+        raise PaceAIResponseError("The AI answer had the wrong format.")
 
     expected_keys = {
         "answer",
@@ -202,7 +203,7 @@ def _parse_answer(
         "knowledge_references",
     }
     if set(payload) != expected_keys:
-        raise PaceAIResponseError("AI-svaret hade fel fält.")
+        raise PaceAIResponseError("The AI answer had the wrong fields.")
 
     answer = payload["answer"]
     observations = payload["observations"]
@@ -212,7 +213,7 @@ def _parse_answer(
         or not _is_string_list(observations)
         or not _is_string_list(uncertainties)
     ):
-        raise PaceAIResponseError("AI-svaret hade ogiltigt innehåll.")
+        raise PaceAIResponseError("The AI answer contained invalid content.")
 
     knowledge_references = _parse_knowledge_references(
         payload["knowledge_references"], selected_knowledge_ids=selected_knowledge_ids
@@ -246,7 +247,7 @@ def _parse_knowledge_references(
     if not isinstance(value, list) or any(
         not isinstance(item, str) or not item.strip() for item in value
     ):
-        raise PaceAIResponseError("AI-svaret hade ogiltiga kunskapsreferenser.")
+        raise PaceAIResponseError("The AI answer contained invalid knowledge references.")
     return tuple(item for item in value if item in selected_knowledge_ids)
 
 
@@ -258,11 +259,11 @@ def _parse_context_event_draft(value: object) -> ContextEventDraft | None:
     if value is None:
         return None
     if not isinstance(value, dict):
-        raise PaceAIResponseError("Context-utkastet hade fel format.")
+        raise PaceAIResponseError("The context draft had the wrong format.")
 
     expected_keys = {"event_type", "start_date", "end_date", "ongoing", "note"}
     if set(value) != expected_keys:
-        raise PaceAIResponseError("Context-utkastet hade fel fält.")
+        raise PaceAIResponseError("The context draft had the wrong fields.")
 
     event_type = value["event_type"]
     start_date = value["start_date"]
@@ -277,18 +278,18 @@ def _parse_context_event_draft(value: object) -> ContextEventDraft | None:
         or not isinstance(note, str)
         or not note.strip()
     ):
-        raise PaceAIResponseError("Context-utkastet hade ogiltigt innehåll.")
+        raise PaceAIResponseError("The context draft contained invalid content.")
 
     try:
         parsed_start_date = date.fromisoformat(start_date)
         parsed_end_date = None if end_date is None else date.fromisoformat(end_date)
     except ValueError as error:
-        raise PaceAIResponseError("Context-utkastet hade ogiltiga datum.") from error
+        raise PaceAIResponseError("The context draft contained invalid dates.") from error
 
     if ongoing and parsed_end_date is not None:
-        raise PaceAIResponseError("Ett pågående context-utkast kan inte ha ett slutdatum.")
+        raise PaceAIResponseError("An ongoing context draft cannot have an end date.")
     if not ongoing and parsed_end_date is not None and parsed_end_date < parsed_start_date:
-        raise PaceAIResponseError("Context-utkastets slutdatum är före startdatumet.")
+        raise PaceAIResponseError("The context draft end date is before its start date.")
 
     return ContextEventDraft(
         event_type=event_type,

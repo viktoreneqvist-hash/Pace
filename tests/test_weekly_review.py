@@ -27,10 +27,10 @@ def test_weekly_review_html_is_self_contained_and_read_only():
         ),
     )
 
-    assert "VECKOREVIEW" in html
+    assert "WEEKLY REVIEW" in html
     assert "Veckan var jämn." in html
-    assert "Coachens bedömning" in html
-    assert "ändrar inte planen" in html
+    assert "Coach assessment" in html
+    assert "does not change the plan" in html
     assert "https://" not in html
 
 

@@ -9,7 +9,7 @@ from pace.ai.client import PaceAIResponseError, PaceAIUnavailableError
 from pace.weekly_review.models import WeeklyReviewAnswer, WeeklyReviewRequest
 
 
-SYSTEM_INSTRUCTIONS = """You are Pace's Swedish endurance coach writing one weekly review.
+SYSTEM_INSTRUCTIONS = """You are Pace's English-language endurance coach writing one weekly review.
 The supplied Pace facts are the complete factual contract about this athlete.
 Python already calculated all numbers: do not invent, recalculate, or override
 metrics, dates, training history, data quality, or causes. Treat correlations as
@@ -27,7 +27,8 @@ direct, unsentimental tone without generic care-provider language.
 Selected local knowledge briefs are optional support, not a complete allowlist
 of coaching knowledge. Cite only supplied brief IDs when one actually supports
 the review. Return an empty knowledge_references list when your assessment uses
-general coaching knowledge. Return Swedish JSON matching the schema."""
+general coaching knowledge. Write every user-facing JSON text field in clear
+English. Return JSON matching the schema."""
 
 SCHEMA = {
     "type": "object",
@@ -79,9 +80,9 @@ class WeeklyReviewClient:
         try:
             payload = json.loads(getattr(response, "output_text", ""))
         except json.JSONDecodeError as error:
-            raise PaceAIResponseError("AI-tjänsten gav en ogiltig veckoreview.") from error
+            raise PaceAIResponseError("The AI service returned an invalid weekly review.") from error
         if not isinstance(payload, dict) or set(payload) != set(SCHEMA["required"]):
-            raise PaceAIResponseError("AI-tjänsten gav fel veckoreview-format.")
+            raise PaceAIResponseError("The AI service returned the wrong weekly-review format.")
         lists = (
             "observations",
             "coach_assessment",
@@ -94,7 +95,7 @@ class WeeklyReviewClient:
             or any(not isinstance(item, str) for item in payload[key])
             for key in lists
         ):
-            raise PaceAIResponseError("AI-tjänsten gav ogiltigt veckoreview-innehåll.")
+            raise PaceAIResponseError("The AI service returned invalid weekly-review content.")
         selected = {
             item["id"]
             for item in request.context.get("knowledge_briefs", {}).get("briefs", [])
@@ -118,16 +119,16 @@ def _provider_error_message(error: Exception) -> str:
 
     status_code = getattr(error, "status_code", None)
     if status_code == 401:
-        reason = "OpenAI avvisade API-nyckeln (HTTP 401)."
+        reason = "OpenAI rejected the API key (HTTP 401)."
     elif status_code == 403:
-        reason = "OpenAI-nyckeln saknar behörighet för den valda modellen (HTTP 403)."
+        reason = "The OpenAI key is not authorized for the selected model (HTTP 403)."
     elif status_code == 429:
-        reason = "OpenAI begränsade begäran (HTTP 429): kontrollera saldo eller rate limit."
+        reason = "OpenAI rate-limited the request (HTTP 429): check the account balance or rate limit."
     elif isinstance(status_code, int) and 400 <= status_code < 500:
-        reason = f"OpenAI avvisade veckoreviewens begäran (HTTP {status_code})."
+        reason = f"OpenAI rejected the weekly-review request (HTTP {status_code})."
     elif isinstance(status_code, int) and status_code >= 500:
-        reason = f"OpenAI-tjänsten hade ett tillfälligt fel (HTTP {status_code})."
+        reason = f"The OpenAI service had a temporary error (HTTP {status_code})."
     else:
-        reason = f"AI-tjänsten kunde inte nås ({type(error).__name__})."
+        reason = f"The AI service could not be reached ({type(error).__name__})."
 
-    return f"{reason} Dina Pace-data har inte ändrats."
+    return f"{reason} Your Pace data has not changed."

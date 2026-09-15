@@ -1,0 +1,47 @@
+name: Bug report
+description: Report reproducible incorrect behavior in Pace
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remove credentials, Garmin tokens, database contents, personal notes, names, and email addresses before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: Pace version
+      description: Run `uv run pace --version`.
+      placeholder: pace 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: macOS 15, Apple Silicon
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and the behavior you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Start Pace
+        2. Open ...
+        3. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: safe_output
+    attributes:
+      label: Sanitized output
+      description: Optional logs or screenshots with all private data removed.
+      render: shell

@@ -45,7 +45,7 @@ def test_explanation_reports_insufficient_hrv_data_without_a_check_in():
 
     assert summary.context_check_in is None
     assert summary.items[0].explanation_id == "hrv_baseline_insufficient"
-    assert "7 av minst 14" in summary.items[0].text
+    assert "7 of at least 14" in summary.items[0].text
 
 
 def test_explanation_asks_a_neutral_check_in_only_for_signal_without_context():
@@ -69,9 +69,9 @@ def test_explanation_asks_a_neutral_check_in_only_for_signal_without_context():
 
     assert summary.items[0].explanation_id == "hrv_pattern_without_context"
     assert summary.context_check_in is not None
-    assert "kan vara relevant" in summary.context_check_in.question
+    assert "may be relevant" in summary.context_check_in.question
     rendered = render_explanation_summary(summary)
-    assert "Inget sparas automatiskt" in rendered
+    assert "Nothing is saved automatically" in rendered
 
 
 def test_explanation_describes_selected_context_without_claiming_causality():
@@ -93,8 +93,8 @@ def test_explanation_describes_selected_context_without_claiming_causality():
 
     assert summary.context_check_in is None
     assert summary.items[0].explanation_id == "hrv_pattern_with_context"
-    assert "dålig sömn, alkohol" in summary.items[0].text
-    assert "inte en orsak" in summary.items[0].text
+    assert "poor sleep, alcohol" in summary.items[0].text
+    assert "not cause" in summary.items[0].text
 
 
 def test_recovery_explanations_keep_resting_heart_rate_and_sleep_separate():
@@ -136,9 +136,9 @@ def test_recovery_explanations_keep_resting_heart_rate_and_sleep_separate():
     items = explain_recovery_rules(summary)
 
     assert items[0].explanation_id == "resting_heart_rate_elevated"
-    assert "5 %" in items[0].text
+    assert "5%" in items[0].text
     assert items[1].explanation_id == "sleep_duration_short_night"
-    assert "10 %" in items[1].text
+    assert "10%" in items[1].text
 
 
 def test_garmin_current_facts_are_presented_without_creating_rules():
@@ -160,6 +160,6 @@ def test_garmin_current_facts_are_presented_without_creating_rules():
     )
 
     assert items[0].explanation_id == "garmin_current_facts"
-    assert "använder inte dessa Garmin-värden i egna regler" in items[0].text
+    assert "does not use these Garmin values in its own rules" in items[0].text
     assert items[1].explanation_id == "garmin_stale_facts"
     assert "2026-07-24" in items[1].text

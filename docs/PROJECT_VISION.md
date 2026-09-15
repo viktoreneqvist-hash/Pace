@@ -2,364 +2,196 @@
 
 ## Purpose
 
-Pace is a private, local-first endurance coaching system for running and cycling.
+Pace is a private, local-first endurance coach for running and cycling. It
+combines observed Garmin history, deterministic software, explicit athlete
+context, and bounded AI coaching.
 
-The system should combine:
+The product is built around one idea:
 
-- Garmin training and recovery data
-- deterministic training metrics
-- persistent athlete context
-- rule-based interpretation
-- AI-assisted coaching later
+> A coach should start from what the athlete actually did, not only from what
+> the athlete says they can do or wants to achieve.
 
-The goal is not to build another report generator.
+Pace is therefore more than a Garmin report and less than an autonomous agent.
+It maintains a traceable coaching loop in which facts, judgment, and athlete
+intent remain separate.
 
-The goal is to build a persistent coach that understands both:
+## Intended user and distribution
 
-1. what happened in the athlete's data
-2. why it may have happened
+Pace supports one athlete per local installation. The source can be shared
+publicly, but each installation owns its own Garmin session, database, OpenAI
+key, settings, plans, and reports.
 
-Garmin can show that HRV, sleep, resting heart rate, or training load changed.
+Version 0.1 does not need:
 
-The athlete can provide context such as:
+- multi-user accounts;
+- cloud storage or hosted authentication;
+- subscription infrastructure;
+- organization or team features;
+- synchronization between devices.
 
-- illness
-- alcohol
-- late nights
-- travel
-- work stress
-- pain
-- injury
-- schedule constraints
-- perceived effort
-- missed sessions
-- equipment changes
+Single-athlete operation is an intentional architecture boundary, not a claim
+that only the original author can use the software.
 
-Pace should combine both sources before making interpretations.
+## Data sources
 
----
+Garmin Connect is the only training-data provider in v0.1. It supplies activity
+and recovery observations, including running and cycling, heart rate, HRV,
+resting heart rate, sleep, stress, Body Battery, training readiness, and
+recovery time when available.
 
-## Primary User
+Only activities normalized as `run` or `ride` affect Pace training facts.
+Unknown and unsupported activities remain traceable as `other` but do not
+silently change coaching totals.
 
-Pace is initially built only for Viktor.
+The athlete supplies facts Garmin cannot observe, such as:
 
-The project does not need:
+- illness, pain, travel, alcohol, poor sleep, work stress, and schedule limits;
+- intended races and their priority;
+- sport preference, availability, and coaching ambition;
+- whether a planned session was completed and how it felt.
 
-- multiple users
-- user registration
-- cloud authentication
-- public deployment
-- subscription infrastructure
-- organization or team support
+## Responsibility model
 
-Single-user operation is an intentional product and architecture decision.
+### Code calculates and validates facts
 
----
+Python owns exact, reproducible work:
 
-## Primary Data Source
+- normalization and units;
+- calendar windows and time zones;
+- training duration, distance, frequency, and continuity;
+- recovery baselines and data quality;
+- race, availability, and sport constraints;
+- database integrity and complete plan validation.
 
-Garmin Connect is the only external training-data source in the first version.
+Missing data remains missing. An LLM must not calculate values that the
+application can calculate exactly or invent evidence that is not present.
 
-Garmin was chosen because it provides both activity data and recovery-related data, including:
+### The athlete provides intent and confirmation
 
-- running and cycling activities
-- heart rate
-- HRV
-- resting heart rate
-- sleep
-- stress
-- Body Battery
-- training readiness
-- recovery time
-- device-derived training metrics
+The athlete chooses the goal scope: a specific A, B, or C race, or no race.
+They also choose practical constraints and report session outcomes. Preference
+does not become physiology: an offensive ambition may permit a stronger
+proposal, but it cannot create capacity evidence.
 
-Pace stores Garmin activities for traceability, but v1 training calculations
-strictly include only activities normalized as running or cycling. Other
-activity types do not affect totals, counts, active days, or comparisons.
+An explicit **create plan**, **create revision**, or **save feedback** action is
+authorization for that operation. Synchronization, recovery changes, and model
+conversation never mutate a plan by themselves.
 
-Strava is not part of the planned system.
+### AI provides coaching judgment
 
-Existing Strava integration code should be removed rather than maintained as a second provider.
+The model may:
 
----
+- interpret selected facts and uncertainty;
+- answer training questions;
+- choose session purpose and workout structure;
+- create a detailed one- or two-week plan window inside a longer block;
+- write a stable weekly review;
+- propose context, feedback, or a plan adjustment for confirmation.
 
-## Product Principles
+The model receives normalized, bounded facts rather than raw Garmin payloads.
+It may use general endurance knowledge, while Pace labels that reasoning as
+coaching judgment rather than observed athlete fact. Python validates every
+plan before it becomes active.
 
-### 1. Code calculates facts
+## Coaching principles
 
-Python should calculate all numerical values.
+### History, not one flattering week
 
-Examples:
+Plans use multiple time scales. Recent days matter for entry into the next
+week, but repeated historical continuity matters for sustainable capacity. A
+single high-volume week cannot independently justify a large progression, and
+a short unreported interruption does not erase months of training capacity.
 
-- weekly running distance
-- cycling duration
-- training frequency
-- HRV baseline
-- HRV deviation
-- resting heart-rate baseline
-- recent training volume
-- activity trends
-- anomaly flags
-
-These calculations must be:
-
-- deterministic
-- reproducible
-- testable
-- inexpensive
-- explainable
-
-A language model must not be responsible for calculating values that Python can calculate exactly.
-
-### 2. Context changes interpretation
-
-A physiological signal should not be interpreted without relevant athlete context.
-
-Example:
-
-```text
-Garmin signal:
-HRV below baseline for two days
-
-Athlete context:
-Late social event and alcohol the previous evening
-
-Interpretation:
-The HRV change has a plausible non-training explanation.
-Confidence in a training-fatigue interpretation is therefore lower.
-```
-
-Context should not cause signals to be ignored. It should change confidence and interpretation.
-
-### 3. AI is not the foundation
-
-The first working system should function without AI.
-
-The foundation consists of:
-
-- Garmin synchronization
-- local database
-- deterministic metrics
-- structured context memory
-- athlete-state representation
-- rule-based interpretation
-
-AI should later improve:
-
-- natural-language interaction
-- explanations
-- weekly reviews
-- plan adjustments
-- workout generation
-- discussion with the athlete
-
-AI should reason over compact structured data, not raw Garmin history. Pace
-facts remain the sole source for claims about the athlete; the model may apply
-general endurance-coaching knowledge for clearly labelled coach assessments and
-recommendations. A small local knowledge library supports traceability but is
-not a limit on the model's coaching competence.
-
-### 4. Incremental updates before full regeneration
-
-New Garmin data should update the system incrementally.
-
-The normal flow should be:
-
-```text
-new Garmin data
-    ->
-database update
-    ->
-metric update
-    ->
-state and rule evaluation
-    ->
-short explanation when relevant
-```
-
-The system should not regenerate an expensive full coaching report after every synchronization.
-
-The same principle applies to training plans. Pace should maintain a long
-block direction while detailing only the next one or two weeks. A deterministic
-checkpoint may say that a new revision is due, but a model can create only a
-new draft and the athlete must accept it explicitly.
-
-Workout choice should be fact-led rather than template-led. The coach may use
-continuous endurance, progression, hills, threshold work, short or long
-intervals when current capacity, recovery, race priority, and block purpose
-support the choice. Variety is not a goal by itself.
-
-### 5. Local-first and private
-
-The first version should run locally on the user's computer.
-
-Sensitive information must remain local by default, including:
-
-- Garmin credentials
-- Garmin session tokens
-- raw health and activity data
-- injury notes
-- contextual life events
-
-Garmin passwords and tokens must never be sent to an AI model.
-
-Local presentation should converge on one static Pace Home page rather than
-requiring the athlete to read JSON for everyday use. The underlying facts stay
-available as inspectable CLI output, and Pace must not hide coaching decisions
-behind a proprietary training-load score.
-
----
-
-## Initial Product Experience
-
-The first interface should be a command-line application.
-
-Target commands include:
-
-```bash
-pace db init
-pace sync --days 7
-pace sync --days 7 --end-date 2026-07-18
-pace activities
-pace activities --sport run
-pace metrics summary --end-date 2026-07-25
-pace note add --date 2026-07-18 --type social_event "Var ute sent och sov dåligt"
-pace note list
-pace explain hrv --days 14
-```
-
-The CLI is the first interface, not necessarily the final interface.
-
-Activity instants are stored in UTC, while calendar-day queries and metrics use
-the single configured athlete timezone, `Europe/Stockholm`. V1 does not model
-timezone changes during travel; travel may still be stored as ordinary athlete
-context.
-
-A web or mobile interface may be added later if the underlying system proves useful.
-
----
-
-## V1 Goal
-
-The goal of version 1 is not to build a complete autonomous coach.
-
-The goal is to prove the following core hypothesis:
-
-```text
-Garmin data + persistent structured context
-    ->
-more accurate and useful coaching explanations
-```
-
-Version 1 is successful when the system can:
-
-1. synchronize Garmin data reliably
-2. store activities and daily recovery metrics
-3. avoid duplicate records
-4. calculate basic metrics deterministically
-5. store athlete context events
-6. connect context events to physiological signals
-7. explain an HRV deviation without overclaiming
-8. run locally through a comprehensible CLI
-9. pass automated tests
-
----
-
-## Long-Term Direction
-
-After the data foundation is reliable, Pace should gradually support:
-
-### Training analysis
-
-- volume progression
-- consistency
-- intensity distribution
-- long-run development
-- cycling load
-- recovery trends
-- fatigue indicators
-
-### Athlete state
-
-- current goal
-- current training phase
-- active injuries or pain
-- current recovery status
-- schedule constraints
-- recent adherence
-- current confidence in available signals
-
-### Coaching
-
-- weekly reviews
-- specific workout recommendations
-- training-plan adjustments
-- race preparation
-- recovery guidance
-- explanation of why a recommendation was made
-
-### AI capabilities
-
-- parse free-text context into structured events
-- answer questions using relevant stored context
-- produce concise coaching explanations
-- generate detailed workouts
-- conduct deeper periodic reviews
-- remember athlete corrections and feedback
-
----
-
-## Secondary Goal: Engineering Education
-
-The project is also a structured way to learn:
-
-- Python application architecture
-- Git and version control
-- package management with `uv`
-- SQLite and SQL
-- SQLAlchemy
-- database migrations
-- external API integration
-- authentication and token persistence
-- data normalization
-- idempotent synchronization
-- testing
-- observability and error handling
-- structured outputs
-- tool calling
-- memory systems
-- retrieval systems
-- agent architecture
-- AI cost control
-
-Understanding the system is more important than implementing features quickly.
-
-Important components should not be treated as black boxes.
-
----
-
-## Non-Goals for V1
-
-Version 1 will not include:
-
-- Strava
-- multiple users
-- cloud deployment
-- user accounts
-- Supabase
-- a TypeScript frontend
-- FastAPI unless a real interface requires it later
-- autonomous plan changes
-- medical diagnosis
-- an LLM performing metric calculations
-- large raw-history prompts
-- automatic expensive AI analysis after every sync
-
----
-
-## Core Principle
-
-> Use code for facts and calculations.  
-> Use structured memory for athlete context.  
-> Use rules for transparent interpretation.  
-> Use AI later for reasoning, explanation, and discussion.
+Pace should describe an observed interruption without guessing whether it was
+caused by illness, travel, motivation, or something else.
+
+### Context changes interpretation
+
+Context never deletes a physiological signal. It may change the plausible
+explanation, confidence, or response. Pace must distinguish observations,
+inferences, and uncertainties and avoid causal or medical overclaiming.
+
+### Specificity follows the selected goal
+
+A selected race guides the block. An A race receives full taper priority, a B
+race a partial taper and secondary-goal treatment, and a C race is treated as
+a hard training event. A race is never an implicit command: the athlete can
+explicitly create a general plan even when races are stored.
+
+Workout variety is useful only when it serves capacity, recovery, race demand,
+and block purpose. Pace may prescribe continuous endurance, progression,
+hills, tempo, threshold work, or structured repetitions. It must not rotate
+templates merely to look intelligent.
+
+### Incremental use beats constant regeneration
+
+Garmin sync updates facts. It does not trigger a new plan or an AI call. Pace
+keeps a longer block direction but details only the next 7–14 days, then uses
+new data and feedback for the next explicitly requested version.
+
+## Product experience
+
+The primary interface is a loopback-only local web application started with
+`pace serve` or the macOS launcher. It provides onboarding, settings, sync,
+Coach, Dashboard, Plan, and Weekly review views. The CLI remains a supported
+fallback for diagnostics, automation, and reproducible development workflows.
+
+The interface should be information-dense and direct rather than a generic AI
+chat shell. Users should be able to inspect the evidence behind a recommendation
+and should not need to read raw JSON during normal use.
+
+## Privacy and safety
+
+The database, Garmin session, API key, reports, and private context remain local
+by default. External connections occur only for explicit Garmin and OpenAI
+operations. Garmin credentials, tokens, raw payloads, and database dumps must
+never be sent to the model.
+
+Pace is not medical care. Injury diagnosis, medication, nutrition, and
+supplement advice remain outside v0.1. The application must not be exposed as
+an internet-facing server without a new security architecture.
+
+## Version 0.1 success criteria
+
+Version 0.1 is successful when a new user can:
+
+1. install and start Pace from a clean clone;
+2. connect Garmin without leaking credentials or tokens;
+3. import bounded history idempotently;
+4. understand the local data and AI privacy boundary;
+5. configure sport intent, ambition, availability, zones, and races;
+6. create a valid general or race-directed plan from observed history;
+7. inspect structured sessions and the coach's reasoning;
+8. record feedback and use it in a later explicit plan version;
+9. read current facts and a stable weekly review in the local interface;
+10. run a fully synthetic, network-free test suite.
+
+## Long-term direction
+
+After the local alpha is reliable, Pace may add:
+
+- stronger training-load, intensity-distribution, and durability analysis;
+- better plan-versus-observed workout matching;
+- richer athlete memory with expiry and provenance;
+- broader, versioned scientific coaching knowledge;
+- additional tested platforms and packaging;
+- export to devices or calendars;
+- an optional hosted product only after separate privacy, identity, security,
+  and licensing decisions.
+
+## Engineering-education goal
+
+Pace is also a practical way to learn Python architecture, Git, package
+management, SQLite, migrations, APIs, authentication, normalization, testing,
+structured LLM output, retrieval, memory, and agent boundaries. Important
+components should remain understandable rather than becoming black boxes.
+
+## Core principle
+
+> Use code for facts and validation.
+>
+> Use structured memory for athlete context.
+>
+> Use AI for bounded coaching judgment.
+>
+> Keep material changes explicit, local, and reviewable.

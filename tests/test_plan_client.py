@@ -171,7 +171,7 @@ def test_plan_client_rejects_an_assessment_that_omits_uncertainties():
     assert isinstance(assessment, dict)
     del assessment["uncertainties"]
 
-    with pytest.raises(PaceAIResponseError, match="coachbedömning"):
+    with pytest.raises(PaceAIResponseError, match="coach assessment"):
         _parse_plan(payload)
 
 
@@ -181,7 +181,7 @@ def test_plan_client_rejects_empty_required_assessment_sections():
     assert isinstance(assessment, dict)
     assessment["fact_references"] = []
 
-    with pytest.raises(PaceAIResponseError, match="ogiltigt innehåll"):
+    with pytest.raises(PaceAIResponseError, match="invalid content"):
         _parse_plan(payload)
 
 
@@ -194,12 +194,13 @@ def test_plan_client_rejects_legacy_free_text_intensity_fields():
     del item["target"]
     item["intensity_target"] = "Z2 eller ungefär 300 W"
 
-    with pytest.raises(PaceAIResponseError, match="passfält"):
+    with pytest.raises(PaceAIResponseError, match="session fields"):
         _parse_plan(payload)
 
 
 def test_plan_client_instructs_a_direct_coach_tone_without_routine_care_referrals():
-    assert "direct, unsentimental Swedish endurance coach" in SYSTEM_INSTRUCTIONS
+    assert "direct, unsentimental endurance coach" in SYSTEM_INSTRUCTIONS
+    assert "clear English" in SYSTEM_INSTRUCTIONS
     assert "routine care-provider referrals" in SYSTEM_INSTRUCTIONS
     assert "toughness into recklessness" in SYSTEM_INSTRUCTIONS
     assert "Coaching ambition" in SYSTEM_INSTRUCTIONS

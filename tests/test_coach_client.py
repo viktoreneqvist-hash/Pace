@@ -169,5 +169,5 @@ def test_coach_client_explains_provider_status_without_request_data():
     message = _provider_error_message(error)
 
     assert "HTTP 429" in message
-    assert "Din plan har inte ändrats" in message
+    assert "Your plan has not changed" in message
     assert "test-key" not in message

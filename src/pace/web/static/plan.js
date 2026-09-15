@@ -7,7 +7,7 @@ if (revisionButton && revisionStatus) {
     const planId = Number(revisionButton.dataset.planId);
     const originalLabel = revisionButton.textContent;
     revisionButton.disabled = true;
-    revisionButton.textContent = "Skapar nästa 14 dagar…";
+    revisionButton.textContent = "Creating the next 14 days…";
     revisionStatus.hidden = true;
 
     try {
@@ -17,16 +17,16 @@ if (revisionButton && revisionStatus) {
         body: JSON.stringify({plan_id: planId}),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.detail || "Revisionen kunde inte skapas.");
+      if (!response.ok) throw new Error(payload.detail || "The revision could not be created.");
       revisionStatus.classList.remove("error");
-      revisionStatus.textContent = `Plan ${payload.plan.id} är aktiv. Plan-vyn uppdateras nu.`;
+      revisionStatus.textContent = `Plan ${payload.plan.id} is active. The plan view is updating.`;
       revisionStatus.hidden = false;
       window.setTimeout(() => window.location.assign("/plan"), 500);
     } catch (error) {
       revisionButton.disabled = false;
       revisionButton.textContent = originalLabel;
       revisionStatus.classList.add("error");
-      revisionStatus.textContent = `Kunde inte skapa nästa 14 dagar: ${error.message}`;
+      revisionStatus.textContent = `Could not create the next 14 days: ${error.message}`;
       revisionStatus.hidden = false;
     }
   });
