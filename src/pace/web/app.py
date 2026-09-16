@@ -116,13 +116,13 @@ class PlanRevisionConfirmation(BaseModel):
 
 
 class OpenAIKeySetup(BaseModel):
-    api_key: SecretStr
+    api_key: SecretStr = Field(min_length=1, max_length=2_048)
 
 
 class GarminLoginSetup(BaseModel):
     email: str = Field(min_length=3, max_length=320)
-    password: SecretStr
-    mfa_code: SecretStr | None = None
+    password: SecretStr = Field(min_length=1, max_length=1_024)
+    mfa_code: SecretStr | None = Field(default=None, max_length=64)
 
 
 class PreferenceSetup(BaseModel):
@@ -230,6 +230,7 @@ def create_app(
     app.add_middleware(
         SessionMiddleware,
         secret_key=secrets.token_urlsafe(32),
+        session_cookie="pace_session",
         same_site="lax",
         https_only=False,
     )
@@ -261,9 +262,14 @@ def create_app(
             )
         )
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
+        )
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
+        if not request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-store"
         return response
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -840,6 +846,11 @@ def _html_response(content: str) -> HTMLResponse:
 
 
 def _require_csrf(request: Request) -> None:
+    origin = request.headers.get("Origin")
+    expected_origin = f"{request.url.scheme}://{request.headers.get('host', '')}"
+    if origin and not secrets.compare_digest(origin.rstrip("/"), expected_origin):
+        raise HTTPException(status_code=403, detail="Invalid local request origin.")
+
     expected = _session_value(request, "csrf_token")
     supplied = request.headers.get("X-Pace-CSRF")
     if not supplied or not secrets.compare_digest(supplied, expected):

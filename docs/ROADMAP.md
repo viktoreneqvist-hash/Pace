@@ -78,6 +78,8 @@ pretending that the product is finished.
   artifacts
 - [x] Single installed source for the displayed application version
 - [x] Local Host-header allowlist and restrictive browser security headers
+- [x] S1 threat model, source review, localhost attack checks, dependency audit,
+  and full-history secret scan
 - [x] Verify a clean installation in an isolated temporary environment
 - [x] Scan all Git history with Gitleaks before publication
 - [ ] Review the newest compatible `garminconnect` release with a real login and

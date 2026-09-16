@@ -17,7 +17,8 @@ from garminconnect import (
 )
 
 
-GARMIN_TOKEN_FILENAME = "garmin_tokens.json"
+# This public filename identifies a session file; the value is not a credential.
+GARMIN_TOKEN_FILENAME = "garmin_tokens.json"  # nosec B105
 
 
 class GarminIntegrationError(RuntimeError):
@@ -36,7 +37,14 @@ def prepare_token_directory(token_dir: Path) -> Path:
     """Create the private directory that holds Garmin refresh tokens."""
 
     expanded_dir = token_dir.expanduser()
+    created_directories: list[Path] = []
+    candidate = expanded_dir
+    while not candidate.exists():
+        created_directories.append(candidate)
+        candidate = candidate.parent
     expanded_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    for created_directory in created_directories:
+        created_directory.chmod(0o700)
     expanded_dir.chmod(0o700)
     return expanded_dir
 

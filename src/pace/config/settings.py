@@ -105,6 +105,8 @@ def save_openai_api_key(*, api_key: str, config: Settings = settings) -> None:
     clean_key = api_key.strip()
     if not clean_key:
         raise ValueError("The OpenAI API key cannot be empty.")
+    if "\n" in clean_key or "\r" in clean_key:
+        raise ValueError("The OpenAI API key must be a single line.")
     secrets_file = config.openai_secrets_file
     secrets_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     if secrets_file.parent.stat().st_mode & 0o777 != 0o700:

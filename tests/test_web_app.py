@@ -294,10 +294,66 @@ def test_local_web_rejects_untrusted_hosts_and_sets_security_headers(tmp_path):
         "default-src 'self'"
     )
     assert response.headers["cross-origin-resource-policy"] == "same-origin"
+    assert response.headers["permissions-policy"] == (
+        "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
+    )
     assert response.headers["referrer-policy"] == "no-referrer"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["cache-control"] == "no-store"
+    assert "pace_session=" in response.headers["set-cookie"]
+    assert "httponly" in response.headers["set-cookie"].lower()
+    assert "samesite=lax" in response.headers["set-cookie"].lower()
     assert rejected.status_code == 400
+
+
+def test_local_web_rejects_cross_origin_writes_even_with_a_valid_csrf_token(
+    tmp_path,
+):
+    client, _plans, _context, _coach, _sync, _review = _web_client(tmp_path)
+    csrf = _csrf(client)
+
+    response = client.post(
+        "/api/command",
+        headers={
+            "X-Pace-CSRF": csrf,
+            "Origin": "https://attacker.example",
+        },
+        json={"command": "/help"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Invalid local request origin."
+
+    allowed = client.post(
+        "/api/command",
+        headers={
+            "X-Pace-CSRF": csrf,
+            "Origin": "http://testserver",
+        },
+        json={"command": "/help"},
+    )
+    preflight = client.options(
+        "/api/command",
+        headers={
+            "Origin": "https://attacker.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "X-Pace-CSRF, Content-Type",
+        },
+    )
+
+    assert allowed.status_code == 200
+    assert preflight.status_code == 405
+    assert "access-control-allow-origin" not in preflight.headers
+
+
+def test_local_web_does_not_cache_private_api_responses(tmp_path):
+    client, _plans, _context, _coach, _sync, _review = _web_client(tmp_path)
+
+    response = client.get("/api/home")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
 
 
 def test_first_run_onboarding_contains_the_complete_local_setup_path():

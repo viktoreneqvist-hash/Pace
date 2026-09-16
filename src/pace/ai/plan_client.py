@@ -349,9 +349,11 @@ def _schema_for_request(request: PlanGenerationRequest) -> dict[str, object]:
     )
     schema = deepcopy(PLAN_SCHEMA)
     assessment = schema["properties"]["coach_assessment"]
-    assert isinstance(assessment, dict)
+    if not isinstance(assessment, dict):
+        raise RuntimeError("The internal plan schema has no coach assessment object.")
     properties = assessment["properties"]
-    assert isinstance(properties, dict)
+    if not isinstance(properties, dict):
+        raise RuntimeError("The internal plan schema has no assessment properties.")
     properties["fact_references"] = {
         "type": "array",
         "minItems": 1,

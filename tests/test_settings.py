@@ -2,7 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from pace.config.settings import load_settings, resolve_openai_api_key
+from pace.config.settings import (
+    Settings,
+    load_settings,
+    resolve_openai_api_key,
+    save_openai_api_key,
+)
 
 
 def test_default_athlete_timezone_is_stockholm(monkeypatch):
@@ -69,3 +74,19 @@ def test_openai_secrets_file_must_be_owner_only(monkeypatch, tmp_path: Path):
 
     with pytest.raises(ValueError, match="readable only by its owner"):
         resolve_openai_api_key(load_settings())
+
+
+def test_openai_api_key_must_be_a_single_line(tmp_path: Path):
+    config = Settings(
+        database_url=f"sqlite:///{tmp_path / 'pace.db'}",
+        garmin_token_dir=tmp_path / "garmin_tokens",
+        athlete_timezone="Europe/Stockholm",
+        openai_api_key=None,
+        openai_model="test-model",
+        openai_secrets_file=tmp_path / ".local" / "pace.env",
+    )
+
+    with pytest.raises(ValueError, match="single line"):
+        save_openai_api_key(api_key="test-key\nUNEXPECTED=value", config=config)
+
+    assert not config.openai_secrets_file.exists()

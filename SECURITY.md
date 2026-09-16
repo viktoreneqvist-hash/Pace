@@ -31,10 +31,14 @@ Sensitive local files include:
 - `reports/` — generated reports that may contain personal training data.
 
 These paths are ignored by Git. Pace also restricts accepted web hosts and
-adds browser security headers. Those protections do not turn it into an
-internet-facing service.
+adds CSRF and Origin checks, browser security headers, and no-store caching for
+private responses. Those protections do not turn it into an internet-facing
+service.
 
 Garmin integration is unofficial. Garmin credentials are used for login but
 the password is not stored by Pace. OpenAI requests receive selected,
 normalized Pace facts; raw Garmin payloads, tokens, credentials, and database
 dumps are excluded.
+
+The reviewed public-alpha threat model and validation record are documented in
+[`docs/SECURITY_REVIEW_S1.md`](docs/SECURITY_REVIEW_S1.md).

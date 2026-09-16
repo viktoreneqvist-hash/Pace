@@ -570,7 +570,8 @@ class TrainingPlanService:
                 repair_instruction = str(error)
                 continue
             return candidate
-        assert last_error is not None
+        if last_error is None:
+            raise RuntimeError("Plan validation ended without a candidate or error.")
         raise last_error
 
     def _require_generator(self) -> PlanDraftGenerator:

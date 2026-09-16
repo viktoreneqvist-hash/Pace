@@ -12,6 +12,7 @@ from pace.integrations.garmin.client import (
     GarminAuthenticationRequiredError,
     GarminConnectClient,
     GarminIntegrationError,
+    prepare_token_directory,
     secure_token_file,
 )
 
@@ -94,6 +95,16 @@ def test_secure_token_file_uses_owner_only_permissions(tmp_path: Path):
     secure_token_file(tmp_path)
 
     assert token_file.stat().st_mode & 0o777 == 0o600
+
+
+def test_prepare_token_directory_secures_every_directory_it_creates(tmp_path: Path):
+    token_dir = tmp_path / "private" / "garmin_tokens"
+
+    prepared = prepare_token_directory(token_dir)
+
+    assert prepared == token_dir
+    assert token_dir.stat().st_mode & 0o777 == 0o700
+    assert token_dir.parent.stat().st_mode & 0o777 == 0o700
 
 
 def test_login_fails_if_a_reusable_token_was_not_saved(tmp_path: Path):
