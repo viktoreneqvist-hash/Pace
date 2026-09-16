@@ -2889,6 +2889,48 @@ surface area before Pace has validated its core product with external users.
 
 ---
 
+# Decision 64: Pin the Real-Login-Tested Garmin Client for the First Alpha
+
+## Problem
+
+Pace passed onboarding, Garmin login, bounded history sync, and first-plan
+creation on two macOS environments with `garminconnect==0.3.6`. Version 0.3.15
+is available, but changing the provider client immediately before the first
+public tag would invalidate that live compatibility evidence.
+
+## Options
+
+1. Upgrade to 0.3.15 and repeat the live release validation before tagging.
+2. Release the tested 0.3.6 pin and evaluate the upgrade separately.
+3. Allow an unbounded dependency range and accept different provider behavior
+   between installations.
+
+## Chosen solution
+
+The first public alpha retains the exact `garminconnect==0.3.6` pin. The newer
+release is acknowledged but is not silently introduced into the release. A
+future upgrade must run the synthetic suite and a deliberate read-only live
+login and sync check before the pin changes.
+
+## Reason
+
+For an unofficial provider integration, observed compatibility is more useful
+at the release boundary than untested novelty. An exact pin also makes alpha
+installations reproducible. Version 0.3.6 is newer than the token-permission
+security issue affecting versions through 0.3.4, while Pace independently
+enforces owner-only permissions for its token and data directories.
+
+## Future consequences
+
+- Dependency tooling may report that a newer Garmin client exists; this is an
+  intentional compatibility pin, not an accidental omission.
+- Authentication or provider breakage must trigger evaluation of the newest
+  compatible client.
+- The upgrade task must review upstream authentication and data-model changes,
+  not merely update the lockfile.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

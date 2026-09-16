@@ -84,20 +84,22 @@ pretending that the product is finished.
 - [x] Scan all Git history with Gitleaks before publication
 - [ ] Review the newest compatible `garminconnect` release with a real login and
   read-only sync
+- [x] Keep the real-login-tested `garminconnect==0.3.6` pin for the first alpha;
+  evaluate newer versions as a separate compatibility change
 - [x] Add a synthetic-data product screenshot or short demo
 - [x] Enable GitHub Dependabot vulnerability alerts and repository topics
-- [ ] Enable GitHub secret scanning and private vulnerability reporting when
-  the repository visibility and account features allow them
-- [ ] Choose public repository visibility and the first release tag only after
-  the release gate passes
+- [x] Enable GitHub secret scanning, push protection, automated security fixes,
+  and private vulnerability reporting
+- [x] Choose public repository visibility and `v0.1.0-alpha.1` after the release
+  gate passes
 
 ## L1 — first external-user feedback
 
 Goal: learn where installation and normal use fail for people other than the
 author.
 
-- [ ] Test clean installation on at least two separate macOS machines
-- [ ] Record setup completion, Garmin failure mode, and first-plan success
+- [x] Test clean installation on at least two separate macOS machines
+- [x] Record setup completion, Garmin failure mode, and first-plan success
   without collecting private athlete data
 - [ ] Improve errors for missing tools, unsupported Python, Garmin rate limits,
   MFA, missing API credit, and failed plan validation
@@ -105,7 +107,7 @@ author.
 - [x] Use English for the v0.1 product interface and coach output; consider
   localization after the public release
 - [ ] Decide whether Python 3.13 support is valuable enough to test and maintain
-- [ ] Publish a known-issues list from real tester reports
+- [x] Publish the first known-limitations list in README and the alpha changelog
 
 ## L2 — coaching quality and trust
 

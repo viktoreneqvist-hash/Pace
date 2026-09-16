@@ -1,6 +1,6 @@
 [project]
 name = "pace"
-version = "0.1.0"
+version = "0.1.0a1"
 description = "A private, local-first endurance coaching system."
 readme = "README.md"
 license = "MIT"
