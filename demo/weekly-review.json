@@ -1,0 +1,21 @@
+{
+  "end_date": "2026-09-15",
+  "summary": "Training was consistent across running and cycling. The next block can introduce one controlled 10 km-specific session while preserving aerobic volume.",
+  "observations": [
+    "Fourteen run or ride sessions are present in the 28-day window.",
+    "Recovery coverage is complete for HRV, resting heart rate, and sleep.",
+    "Six explicit session outcomes include one fatigue-limited run."
+  ],
+  "coach_assessment": [
+    "The isolated limited session does not establish a repeated negative response.",
+    "Current continuity supports one controlled quality session, not several hard days."
+  ],
+  "recommendations": [
+    "Keep the next easy sessions genuinely easy.",
+    "Use RPE for 10 km-specific repetitions until current pace evidence is verified.",
+    "Report the outcome rather than compensating for a missed session."
+  ],
+  "uncertainties": [
+    "The synthetic demo intentionally contains no verified current race pace."
+  ]
+}

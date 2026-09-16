@@ -84,7 +84,7 @@ pretending that the product is finished.
 - [x] Scan all Git history with Gitleaks before publication
 - [ ] Review the newest compatible `garminconnect` release with a real login and
   read-only sync
-- [ ] Add a synthetic-data product screenshot or short demo
+- [x] Add a synthetic-data product screenshot or short demo
 - [x] Enable GitHub Dependabot vulnerability alerts and repository topics
 - [ ] Enable GitHub secret scanning and private vulnerability reporting when
   the repository visibility and account features allow them

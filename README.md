@@ -10,6 +10,15 @@ questions, and weekly reviews only when you ask it to.
 > unofficial and the project has not yet had broad platform testing. The v0.1
 > interface and coach output are in English.
 
+## Product preview
+
+![Pace dashboard with synthetic training data](docs/assets/pace-dashboard.png)
+
+This preview uses fully synthetic training and recovery data. No athlete,
+Garmin, or OpenAI account data is included. See the
+[complete product demo](docs/PRODUCT_DEMO.md) for the active plan, weekly
+review, and instructions for running the read-only demo locally.
+
 ## Why Pace exists
 
 Most training-plan apps ask you to describe your own fitness. Pace starts with
