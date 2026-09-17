@@ -2931,6 +2931,59 @@ enforces owner-only permissions for its token and data directories.
 
 ---
 
+# Decision 65: Lovable May Replace the Frontend, Not the Pace Core
+
+## Problem
+
+Pace's local interface is functional and secure, but its server-rendered HTML,
+CSS, and small JavaScript modules make a substantial visual redesign slower
+than a dedicated frontend workflow. Lovable can accelerate design and React
+implementation, but moving Pace's database, Garmin integration, AI calls, or
+coaching validation into Lovable Cloud would create a second product and break
+the local-first privacy model.
+
+## Options
+
+1. Keep the existing server-rendered interface and redesign every view by hand.
+2. Rebuild Pace as a hosted Lovable/Supabase application.
+3. Use Lovable to prototype and generate a React presentation layer while the
+   existing local Python application remains the only system of record.
+
+## Chosen solution
+
+Lovable is a frontend design and implementation tool for Pace. The first
+prototype uses synthetic fixtures and a typed frontend adapter in a separate
+`pace-ui` repository. It has no Lovable Cloud, Supabase, authentication,
+telemetry, real credentials, or direct external integrations.
+
+After visual and interaction review, the exported React source may be
+integrated under `frontend/` in the Pace repository. FastAPI will serve the
+built frontend and a same-origin local API. That API must reuse existing Pace
+services, Python validators, CSRF protection, Host restrictions, and privacy
+boundaries. SQLite, Garmin, OpenAI, metrics, rules, and durable writes remain
+server-side.
+
+## Reason
+
+This captures Lovable's strength — rapid, coherent frontend iteration — without
+discarding the tested system that gives Pace its integrity. Synthetic-first
+design also prevents real athlete data or secrets from entering a hosted design
+environment and allows UI decisions to settle before an API migration begins.
+
+## Future consequences
+
+- `uv run pace serve` remains the normal application entry point.
+- The main Pace repository remains the release source of truth and retains its
+  full Git history.
+- The current server-rendered views remain operational until the React
+  replacement passes feature-parity, security, and browser tests.
+- A local versioned presentation API and frontend build pipeline require a
+  separate implementation review before integration.
+- Cloud accounts, remote persistence, public hosting, multi-user data, and
+  telemetry remain explicitly out of scope.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |
@@ -2940,7 +2993,7 @@ enforces owner-only permissions for its token and data directories.
 | Package management | uv |
 | Data source | Garmin only |
 | Database | SQLite |
-| Interface | Loopback coach UI with CLI fallback; first-run onboarding and Finder launcher |
+| Interface | Loopback UI with CLI fallback; Lovable may generate a React presentation layer over the local Python core |
 | Architecture style | Layered application |
 | Metrics | Deterministic Python |
 | Memory | Structured context events |

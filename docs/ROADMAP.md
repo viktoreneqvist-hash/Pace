@@ -139,6 +139,26 @@ Goal: reduce contributor friction after behavior has stabilized.
 - [ ] Add release notes and a documented deprecation policy
 - [ ] Add Linux or Windows support only with real maintainers and CI coverage
 
+## UI modernization — Lovable frontend
+
+Goal: substantially improve Pace's visual and interaction design without
+replacing its local Python, SQLite, Garmin, AI, or validation architecture.
+
+- [x] Choose Lovable as a frontend-only design and React implementation tool
+- [x] Create a synthetic-data handoff with product, screen, design, and
+  architecture specifications
+- [ ] Build and review a separate `pace-ui` prototype in Lovable
+- [ ] Freeze the approved component system and normalized view contracts
+- [ ] Add a versioned same-origin local presentation API over existing services
+- [ ] Integrate the exported React source under `frontend/`
+- [ ] Preserve loopback binding, CSRF, Host restrictions, CSP, owner-only data,
+  and no-cache behaviour
+- [ ] Verify onboarding, sync progress, coach confirmations, plan creation,
+  feedback, settings, and weekly review feature parity
+- [ ] Add frontend unit, accessibility, API-contract, and local-browser tests
+- [ ] Remove the replaced server-rendered pages only after the React interface
+  passes the release gate
+
 ## Deferred product areas
 
 These require separate design decisions and are not implied by the public-alpha
