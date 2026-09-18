@@ -1,0 +1,165 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Pace design system.
+ *
+ * Editorial sport-science look: warm off-white canvas, ink-black text,
+ * restrained forest green, one energetic accent. Squared geometry,
+ * visible rules, dense legible type. No dark default, no gradients.
+ * Fonts are system stacks only — no external font requests.
+ */
+
+@theme inline {
+  --radius-sm: 0.125rem;
+  --radius-md: 0.1875rem;
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 2px);
+  --radius-2xl: calc(var(--radius) + 4px);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+    monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+
+  /* Pace semantic extensions */
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-forest: var(--forest);
+  --color-forest-soft: var(--forest-soft);
+  --color-run: var(--run);
+  --color-ride: var(--ride);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-success: var(--success);
+  --color-unknown: var(--unknown);
+
+  --color-chart-1: var(--run);
+  --color-chart-2: var(--ride);
+  --color-chart-3: var(--warning);
+  --color-chart-4: var(--forest);
+  --color-chart-5: var(--unknown);
+
+  --color-sidebar: var(--surface);
+  --color-sidebar-foreground: var(--foreground);
+  --color-sidebar-primary: var(--forest);
+  --color-sidebar-primary-foreground: var(--primary-foreground);
+  --color-sidebar-accent: var(--accent);
+  --color-sidebar-accent-foreground: var(--accent-foreground);
+  --color-sidebar-border: var(--rule);
+  --color-sidebar-ring: var(--ring);
+}
+
+:root {
+  --radius: 0.25rem;
+
+  --background: oklch(0.965 0.009 85);
+  --foreground: oklch(0.185 0.012 150);
+  --surface: oklch(0.988 0.005 85);
+  --surface-sunken: oklch(0.945 0.011 130);
+
+  --card: oklch(0.988 0.005 85);
+  --card-foreground: oklch(0.185 0.012 150);
+  --popover: oklch(0.988 0.005 85);
+  --popover-foreground: oklch(0.185 0.012 150);
+
+  --primary: oklch(0.36 0.062 152);
+  --primary-foreground: oklch(0.985 0.006 85);
+  --forest: oklch(0.36 0.062 152);
+  --forest-soft: oklch(0.93 0.02 152);
+
+  --secondary: oklch(0.94 0.01 100);
+  --secondary-foreground: oklch(0.25 0.014 150);
+  --muted: oklch(0.945 0.011 100);
+  --muted-foreground: oklch(0.47 0.012 130);
+
+  --accent: oklch(0.885 0.166 118);
+  --accent-foreground: oklch(0.2 0.03 130);
+
+  --destructive: oklch(0.52 0.17 28);
+  --destructive-foreground: oklch(0.985 0.006 85);
+  --warning: oklch(0.72 0.13 72);
+  --warning-soft: oklch(0.945 0.055 88);
+  --success: oklch(0.45 0.1 152);
+  --unknown: oklch(0.62 0.012 120);
+
+  --run: oklch(0.52 0.17 258);
+  --ride: oklch(0.4 0.08 152);
+
+  --border: oklch(0.86 0.012 100);
+  --rule: oklch(0.86 0.012 100);
+  --rule-strong: oklch(0.3 0.014 150);
+  --input: oklch(0.82 0.014 100);
+  --ring: oklch(0.36 0.062 152);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.015em;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-forest);
+    outline-offset: 2px;
+  }
+}
+
+/* Compact uppercase field label used throughout the app. */
+@utility label-micro {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+}
+
+@utility label-micro-strong {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-foreground);
+}

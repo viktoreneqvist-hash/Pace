@@ -2984,6 +2984,52 @@ environment and allows UI decisions to settle before an API migration begins.
 
 ---
 
+# Decision 66: Ship the Reviewed React UI as Static Local Assets
+
+## Problem
+
+The approved Lovable prototype had a coherent visual system but still used
+synthetic fixtures and a Cloudflare-oriented development runtime. Pace needed
+to adopt the interface without adding a second server, exposing local data, or
+requiring Node.js on an athlete's computer.
+
+## Options
+
+1. Keep the prototype as a separate demo indefinitely.
+2. Run a JavaScript server beside FastAPI and proxy between them.
+3. Build a client-only React application, package its static output with Pace,
+   and connect it to existing Python services through a same-origin API.
+
+## Chosen solution
+
+Option 3. The reviewed source lives under `frontend/`. Production builds use
+`HttpPaceClient` and `/api/v1/*`; synthetic `MockPaceClient` data requires the
+explicit `VITE_PACE_USE_MOCKS=true` development flag. FastAPI serves the built
+files from `src/pace/web/frontend_dist`, keeps loopback binding and the existing
+security middleware, and remains the only process and system of record.
+
+The existing server-rendered setup flow is retained at `/legacy/setup` and is
+also used automatically on a fresh installation. This avoids regressing local
+credential setup while the remaining React onboarding forms are completed.
+
+## Reason
+
+Static assets preserve the one-command local product, eliminate a production
+Node dependency, and allow the visual layer to evolve without duplicating
+Garmin, SQLite, AI, validation, or coaching logic. Reusing CSRF and Python
+services keeps mutations within the already reviewed trust boundary.
+
+## Future consequences
+
+- Frontend changes require rebuilding and copying the static distribution.
+- API contract tests are part of the Python release gate.
+- The server-rendered setup fallback is removed only after React onboarding,
+  credential reconnection, and browser accessibility tests reach parity.
+- The separate prototype repository is upstream design history, not a runtime
+  dependency.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |
@@ -2993,7 +3039,7 @@ environment and allows UI decisions to settle before an API migration begins.
 | Package management | uv |
 | Data source | Garmin only |
 | Database | SQLite |
-| Interface | Loopback UI with CLI fallback; Lovable may generate a React presentation layer over the local Python core |
+| Interface | Packaged React loopback UI over FastAPI `/api/v1`, with CLI and hardened setup fallbacks |
 | Architecture style | Layered application |
 | Metrics | Deterministic Python |
 | Memory | Structured context events |

@@ -105,7 +105,7 @@ class FakeWeeklyReviewService:
         return self.output_path
 
 
-def _web_client(tmp_path):
+def _web_client(tmp_path, *, react_frontend=False):
     session = SimpleNamespace(
         id=12,
         scheduled_date=date(2026, 7, 27),
@@ -121,8 +121,10 @@ def _web_client(tmp_path):
     )
     plan = SimpleNamespace(
         id=7,
+        race_id=3,
         status="accepted",
         goal_mode="race",
+        as_of_date=date(2026, 7, 27),
         block_start_date=date(2026, 7, 20),
         block_end_date=date(2026, 8, 22),
         detailed_end_date=date(2026, 8, 2),
@@ -230,6 +232,9 @@ def _web_client(tmp_path):
                     sport_type="run",
                     priority="A",
                     taper_override=None,
+                    desired_time_seconds=None,
+                    distance_meters=10_000,
+                    status="planned",
                 ),
             )
         ),
@@ -252,7 +257,13 @@ def _web_client(tmp_path):
         today=lambda: date(2026, 7, 27),
     )
     return (
-        TestClient(create_app(services=services, allowed_hosts=("testserver",))),
+        TestClient(
+            create_app(
+                services=services,
+                allowed_hosts=("testserver",),
+                react_frontend=react_frontend,
+            )
+        ),
         plan_service,
         context,
         coach,
@@ -643,3 +654,56 @@ def test_web_commands_are_allowlisted_and_external_actions_need_confirmation(tmp
     assert review_result.json()["status"] == "completed"
     assert unknown.status_code == 422
     assert coach.calls == []
+
+
+def test_react_frontend_and_v1_read_contract_use_real_service_boundaries(tmp_path):
+    client, _plans, _context, _coach, _sync, _review = _web_client(
+        tmp_path, react_frontend=True
+    )
+
+    root = client.get("/")
+    plan_page = client.get("/plan")
+    bootstrap = client.get("/api/v1/bootstrap")
+    today = client.get("/api/v1/today")
+    active_plan = client.get("/api/v1/plans/active")
+    dashboard = client.get("/api/v1/dashboard?days=84")
+    races = client.get("/api/v1/races")
+    settings = client.get("/api/v1/settings")
+    session = client.get("/api/v1/sessions/12")
+
+    assert root.status_code == 200
+    assert '<div id="root"></div>' in root.text
+    assert plan_page.status_code == 200
+    assert plan_page.text == root.text
+    assert bootstrap.json()["prototype"] is False
+    assert bootstrap.json()["csrfToken"]
+    assert today.json()["session"]["id"] == "12"
+    assert today.json()["goal"]["label"] == "Testlopp"
+    assert active_plan.json()["planId"] == "7"
+    assert active_plan.json()["goal"]["priority"] == "A"
+    assert dashboard.json()["window"] == 84
+    assert len(dashboard.json()["charts"]) == 4
+    assert races.json()["activeTargetId"] == "3"
+    assert settings.json()["sportRole"] == "ride_primary"
+    assert session.json()["session"]["id"] == "12"
+    assert session.json()["garminNote"]
+
+
+def test_v1_mutations_require_the_same_csrf_confirmation_as_legacy_ui(tmp_path):
+    client, _plans, _context, _coach, _sync, _review = _web_client(
+        tmp_path, react_frontend=True
+    )
+    csrf = client.get("/api/v1/bootstrap").json()["csrfToken"]
+    payload = {
+        "name": "Autumn 10K",
+        "sport": "running",
+        "date": "2026-10-11",
+        "distance_km": 10,
+        "priority": "A",
+        "desired_time_seconds": 2700,
+    }
+
+    denied = client.post("/api/v1/races", json=payload)
+
+    assert denied.status_code == 403
+    assert csrf

@@ -96,15 +96,38 @@ The first-run screen guides you through:
 5. importing the standard 80-day history window;
 6. adding optional races and creating the first plan.
 
-After setup, normal use happens in four views:
+After setup, normal use happens in the browser:
 
 - **Coach** — ask questions and confirm context or session feedback.
 - **Dashboard** — inspect current training and recovery facts.
 - **Plan** — see the active plan and create the next detailed window.
 - **Weekly review** — read the most recently generated weekly review.
+- **Races** — add or cancel goals and explicitly choose a race for a new plan.
+- **Settings** — change sport role, ambition, availability, cycling zones, and
+  run a 7-day or 80-day Garmin sync.
+- **Onboarding** — inspect setup status and reopen the secure local setup flow.
 
 Settings, Garmin sync, races, zones, sport balance, and ambition are available
 in the browser. The CLI remains available for development and troubleshooting.
+
+The React interface is already packaged with Pace. Normal users do not install
+Node.js and do not run a separate frontend server.
+
+### Frontend development
+
+Only contributors changing the interface need Node.js:
+
+```bash
+cd frontend
+npm install
+npm run typecheck
+npm run lint
+npm run build
+```
+
+Production uses the same-origin Python API and real local Pace data. Synthetic
+fixtures are opt-in for isolated design work with
+`VITE_PACE_USE_MOCKS=true`; they are never the production default.
 
 ## Safe commands in the Coach chat
 

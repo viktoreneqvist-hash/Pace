@@ -25,14 +25,16 @@ class DashboardData:
 
 
 class DashboardService:
-    def get_dashboard_data(self, *, end_date: date) -> DashboardData:
+    def get_dashboard_data(self, *, end_date: date, days: int = 28) -> DashboardData:
+        if days not in {28, 84}:
+            raise ValueError("Dashboard days must be 28 or 84.")
         state = AthleteStateService().get_state(end_date=end_date)
         trends = TrainingResponseTrendService().get_trends(end_date=end_date)
         plans = TrainingPlanService().list_plans()
         plan = next((item for item in plans if item.status == "accepted" and item.block_start_date <= end_date <= item.block_end_date), None)
         with session_scope() as session:
-            activities = get_activities_in_date_range(session, start_date=end_date - timedelta(days=27), end_date=end_date)
-            daily_metrics = get_daily_metrics_in_date_range(session, start_date=end_date - timedelta(days=27), end_date=end_date)
+            activities = get_activities_in_date_range(session, start_date=end_date - timedelta(days=days - 1), end_date=end_date)
+            daily_metrics = get_daily_metrics_in_date_range(session, start_date=end_date - timedelta(days=days - 1), end_date=end_date)
         recovery_observations = tuple(
             RecoveryDayObservation(
                 date=item.date,

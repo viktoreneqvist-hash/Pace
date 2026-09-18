@@ -155,15 +155,23 @@ the selected Pace facts.
 
 ### Presentation
 
-The primary interface is `pace.web`: a server-rendered FastAPI application with
-small same-origin JavaScript and CSS assets. `pace serve` binds Uvicorn to
-`127.0.0.1` only. Accepted host names are restricted, state-changing requests
-require a session CSRF token, and responses add restrictive browser headers.
+The primary interface is a React/TypeScript single-page application generated
+as static assets under `src/pace/web/frontend_dist`. FastAPI serves those assets
+and a normalized same-origin `/api/v1/*` presentation API. Editable source
+lives under `frontend/`; end users do not need Node.js. The previous
+server-rendered onboarding remains available as the hardened local setup
+fallback while React feature parity is completed.
+
+`pace serve` binds Uvicorn to `127.0.0.1` only. Accepted host names are
+restricted, state-changing requests require the same session CSRF token in both
+frontends, and responses add restrictive browser headers.
 
 The web layer may compose read models and call services. It must not contain
 training calculations, arbitrary file access, arbitrary command execution, raw
 provider payloads, or credentials. Coach conversation is bounded process
-memory and disappears when the server stops.
+memory and disappears when the server stops. React talks only to the same
+origin through `HttpPaceClient`; synthetic fixtures are used solely when the
+frontend is explicitly built with `VITE_PACE_USE_MOCKS=true`.
 
 The CLI remains a supported adapter for diagnostics and advanced reproducible
 workflows. It may parse arguments, call services, format results, and return

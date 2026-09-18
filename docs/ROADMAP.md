@@ -147,15 +147,16 @@ replacing its local Python, SQLite, Garmin, AI, or validation architecture.
 - [x] Choose Lovable as a frontend-only design and React implementation tool
 - [x] Create a synthetic-data handoff with product, screen, design, and
   architecture specifications
-- [ ] Build and review a separate `pace-ui` prototype in Lovable
-- [ ] Freeze the approved component system and normalized view contracts
-- [ ] Add a versioned same-origin local presentation API over existing services
-- [ ] Integrate the exported React source under `frontend/`
-- [ ] Preserve loopback binding, CSRF, Host restrictions, CSP, owner-only data,
+- [x] Build and review a separate `pace-ui` prototype in Lovable
+- [x] Freeze the approved component system and normalized view contracts
+- [x] Add a versioned same-origin local presentation API over existing services
+- [x] Integrate the exported React source under `frontend/`
+- [x] Preserve loopback binding, CSRF, Host restrictions, CSP, owner-only data,
   and no-cache behaviour
 - [ ] Verify onboarding, sync progress, coach confirmations, plan creation,
   feedback, settings, and weekly review feature parity
-- [ ] Add frontend unit, accessibility, API-contract, and local-browser tests
+- [ ] Add frontend unit and automated accessibility tests; Python API-contract
+  tests and local-browser smoke coverage are in place
 - [ ] Remove the replaced server-rendered pages only after the React interface
   passes the release gate
 

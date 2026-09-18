@@ -63,10 +63,12 @@ from pace.web.presentation import (
     render_web_report_page,
     render_web_settings,
 )
+from pace.web.api_v1 import install_api_v1
 from pace.weekly_review.client import WeeklyReviewClient
 
 
 STATIC_DIR = Path(__file__).with_name("static")
+FRONTEND_DIR = Path(__file__).with_name("frontend_dist")
 REPORTS_DIRECTORY = PROJECT_ROOT / "reports"
 MAX_CONVERSATION_MESSAGES = 8
 SAFE_REPORT_NAME = re.compile(r"(?:dashboard|home|weekly-review|plan-[1-9][0-9]*)\.html")
@@ -155,6 +157,13 @@ class HistorySyncConfirmation(BaseModel):
     days: int = Field(default=80, ge=1, le=80)
 
 
+def _react_index() -> FileResponse:
+    index = FRONTEND_DIR / "index.html"
+    if not index.is_file():
+        raise HTTPException(status_code=503, detail="The Pace frontend has not been built.")
+    return FileResponse(index, media_type="text/html", headers={"Cache-Control": "no-store"})
+
+
 @dataclass(slots=True)
 class WebServices:
     """Dependency bundle that keeps HTTP thin and makes synthetic tests simple."""
@@ -221,10 +230,16 @@ def create_app(
     *,
     services: WebServices | None = None,
     allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost"),
+    react_frontend: bool | None = None,
 ) -> FastAPI:
     """Create a same-origin UI, bound by the CLI command to loopback only."""
 
     dependencies = services or WebServices()
+    use_react_frontend = (
+        FRONTEND_DIR.joinpath("index.html").is_file() and services is None
+        if react_frontend is None
+        else react_frontend
+    )
     conversations: dict[str, list[dict[str, str]]] = {}
     app = FastAPI(title="Pace Local Coach", docs_url=None, redoc_url=None)
     app.add_middleware(
@@ -273,13 +288,37 @@ def create_app(
         return response
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    if FRONTEND_DIR.joinpath("assets").is_dir():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=FRONTEND_DIR / "assets"),
+            name="frontend-assets",
+        )
 
+    install_api_v1(
+        app,
+        services=dependencies,
+        session_value=_session_value,
+        require_csrf=_require_csrf,
+    )
+
+    @app.get("/legacy/setup", response_class=HTMLResponse)
     @app.get("/", response_class=HTMLResponse)
-    def home(request: Request) -> HTMLResponse:
+    def home(request: Request):
+        if use_react_frontend and request.url.path == "/":
+            state = _home_state(dependencies)
+            if state["onboarding"]["active"]:
+                csrf_token = _session_value(request, "csrf_token")
+                return HTMLResponse(
+                    render_web_onboarding(state=state, csrf_token=csrf_token)
+                )
+            return _react_index()
         csrf_token = _session_value(request, "csrf_token")
         conversation_id = _session_value(request, "conversation_id")
         state = _home_state(dependencies)
         state["conversation"] = conversations.get(conversation_id, [])
+        if request.url.path == "/legacy/setup":
+            state["onboarding"]["active"] = True
         if state["onboarding"]["active"]:
             return HTMLResponse(render_web_onboarding(state=state, csrf_token=csrf_token))
         return HTMLResponse(render_web_home(state=state, csrf_token=csrf_token))
@@ -290,13 +329,17 @@ def create_app(
         return _home_state(dependencies)
 
     @app.get("/settings", response_class=HTMLResponse)
-    def settings_page(request: Request) -> HTMLResponse:
+    def settings_page(request: Request):
+        if use_react_frontend:
+            return _react_index()
         csrf_token = _session_value(request, "csrf_token")
         state = _home_state(dependencies)
         return _html_response(render_web_settings(state=state, csrf_token=csrf_token))
 
     @app.get("/dashboard", response_class=HTMLResponse)
-    def dashboard(request: Request) -> HTMLResponse:
+    def dashboard(request: Request):
+        if use_react_frontend:
+            return _react_index()
         _session_value(request, "csrf_token")
         state = _home_state(dependencies)
         data = dependencies.dashboard_service.get_dashboard_data(
@@ -320,7 +363,9 @@ def create_app(
         )
 
     @app.get("/plan", response_class=HTMLResponse)
-    def plan(request: Request) -> HTMLResponse:
+    def plan(request: Request):
+        if use_react_frontend:
+            return _react_index()
         csrf_token = _session_value(request, "csrf_token")
         state = _home_state(dependencies)
         plans = dependencies.plan_service.list_plans()
@@ -370,7 +415,9 @@ def create_app(
         )
 
     @app.get("/weekly-review", response_class=HTMLResponse)
-    def weekly_review(request: Request) -> HTMLResponse:
+    def weekly_review(request: Request):
+        if use_react_frontend:
+            return _react_index()
         _session_value(request, "csrf_token")
         state = _home_state(dependencies)
         snapshot = load_weekly_review_snapshot(
@@ -414,6 +461,14 @@ def create_app(
             media_type="text/html",
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.get("/races", include_in_schema=False)
+    @app.get("/onboarding", include_in_schema=False)
+    @app.get("/sessions/{session_id}", include_in_schema=False)
+    def react_only_pages(session_id: str | None = None):
+        if not use_react_frontend:
+            raise HTTPException(status_code=404, detail="Page not found.")
+        return _react_index()
 
     @app.post("/api/command")
     def command(request: Request, payload: CommandRequest) -> dict[str, object]:
