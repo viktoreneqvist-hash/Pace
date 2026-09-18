@@ -200,6 +200,12 @@ export function CoachConversation() {
           rows={3}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
           placeholder="e.g. /feedback completed, RPE 7, last two repetitions were hard"
           className="mt-2 w-full resize-y border border-input bg-background px-3 py-2 text-sm"
         />
@@ -211,6 +217,7 @@ export function CoachConversation() {
           >
             Send
           </button>
+          <span className="label-micro">Enter to send · Shift+Enter for a new line</span>
           {commands?.map((command) => (
             <button
               key={command.command}
