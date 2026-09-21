@@ -210,11 +210,29 @@ export interface PlanHistoryEntry {
 }
 
 export interface RevisionResult {
-  status: "saved" | "failed";
+  status: "saved" | "pending_approval" | "failed";
   message: string;
   detail: string;
   /** Present only when validation succeeded and the plan was replaced. */
   plan?: PlanView;
+}
+
+export interface VolumeBoundaryBreach {
+  metric: "running_distance" | "cycling_duration" | "total_duration";
+  ceiling: number;
+  proposed: number;
+  unit: "km" | "hours";
+}
+
+export interface PendingVolumeException {
+  planId: string;
+  raceName: string;
+  rationale: string;
+  weeks: {
+    weekStart: string;
+    weekEnd: string;
+    breaches: VolumeBoundaryBreach[];
+  }[];
 }
 
 // ------------------------------------------------------------- dashboard area
@@ -359,6 +377,11 @@ export interface SettingsView {
   sportRole: SportRole;
   ambition: Ambition;
   availability: AvailabilityDay[];
+  volumeBoundaries: {
+    runningKmPerWeek: number | null;
+    cyclingHoursPerWeek: number | null;
+    totalHoursPerWeek: number | null;
+  };
   cyclingZones: CyclingZone[];
   zonesConfirmed: boolean;
   connections: ConnectionStatus[];
@@ -369,6 +392,7 @@ export interface SettingsPatch {
   sportRole?: SportRole;
   ambition?: Ambition;
   availability?: AvailabilityDay[];
+  volumeBoundaries?: SettingsView["volumeBoundaries"];
   cyclingZones?: CyclingZone[];
   zonesConfirmed?: boolean;
 }
@@ -433,6 +457,8 @@ export interface PaceClient {
   pollSync(): Promise<SyncState>;
   getPlan(): Promise<PlanView>;
   getPlanHistory(): Promise<PlanHistoryEntry[]>;
+  getPendingVolumeException(): Promise<PendingVolumeException | null>;
+  approveVolumeException(planId: string): Promise<MutationResult>;
   /** Prototype-only switch between the revision-not-due and revision-due states. */
   setRevisionDueDemo(due: boolean): Promise<PlanView>;
   /** Simulated generation of the next 14 detailed days. Fails local validation once. */

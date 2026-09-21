@@ -67,3 +67,30 @@ def test_only_sport_roles_are_valid_explicit_athlete_boundaries(sport_role):
     )
 
     assert preference.sport_role == sport_role
+
+
+def test_base_volume_boundaries_are_saved_and_must_be_positive():
+    service = TrainingPreferenceService()
+
+    preference = service.set_preference(
+        TrainingPreferenceInput(
+            sport_role="balanced",
+            available_days=("mon:any",),
+            base_running_distance_ceiling_km=55,
+            base_cycling_duration_ceiling_hours=5.5,
+            base_total_duration_ceiling_hours=8,
+        )
+    )
+
+    assert preference.base_running_distance_ceiling_km == 55
+    assert preference.base_cycling_duration_ceiling_hours == 5.5
+    assert preference.base_total_duration_ceiling_hours == 8
+
+    with pytest.raises(ValueError, match="greater than zero"):
+        service.set_preference(
+            TrainingPreferenceInput(
+                sport_role="balanced",
+                available_days=("mon:any",),
+                base_running_distance_ceiling_km=0,
+            )
+        )

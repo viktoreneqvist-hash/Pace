@@ -3030,6 +3030,49 @@ services keeps mutations within the already reviewed trust boundary.
 
 ---
 
+# Decision 67: Athlete-Owned Base-Volume Boundaries and Explicit Race Exceptions
+
+## Problem
+
+Ordinary training should not grow indefinitely just because more volume could
+be prescribed. An athlete may have a deliberate lifestyle ceiling for running,
+cycling, or total weekly training. That ceiling is not evidence of capacity.
+
+## Options
+
+1. Use the ceilings as soft prompt guidance.
+2. Enforce permanent ceilings with no exception.
+3. Enforce hard base-training ceilings while allowing a race-directed plan to
+   propose a temporary, reviewable exception.
+
+## Chosen solution
+
+Option 3. The athlete may independently set running kilometres, cycling hours,
+and combined training hours per Monday–Sunday calendar week. Empty means no
+athlete-defined ceiling. General plans may never exceed a configured boundary.
+
+An explicitly selected-race plan may propose a **race-volume exception**. The
+proposal remains inactive and the accepted plan remains unchanged until the
+athlete reviews the affected weeks and explicitly approves that plan version.
+Approval does not alter the saved base boundaries. This is not a marathon-only
+rule, and ambition or race priority never counts as approval.
+
+## Reason
+
+This separates athlete intent from coaching judgment. The athlete owns the
+maximum ordinary commitment; the coach can explain why a particular race build
+may temporarily require more, and the trade-off remains visible.
+
+## Future consequences
+
+- Plans need run distance when a running ceiling exists and duration when a
+  cycling or total-time ceiling exists.
+- Every later revision that exceeds a boundary needs its own approval.
+- Existing capacity, availability, recovery, and structural validation still
+  apply; there is no separate hidden race-build maximum.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |
@@ -3052,4 +3095,4 @@ services keeps mutations within the already reviewed trust boundary.
 | Recovery merge | Latest successful snapshot per endpoint |
 | Local privacy | Owner-only files; no application encryption |
 | Provider deletions | Local append/update archive; no inferred deletes |
-| Plan activation | Explicit create/revise action, complete Python validation, atomic accepted version |
+| Plan activation | Explicit create/revise action and complete Python validation; race-volume exceptions require separate approval |

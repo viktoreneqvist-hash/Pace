@@ -144,6 +144,11 @@ Garmin provider
   never a numerical volume/intensity rule or permission to bypass factual,
   availability, evidence, or acceptance boundaries. The coach model must
   explain how it affected a draft or why the facts prevented that effect.
+- Athlete-defined weekly running-distance, cycling-time, and combined-time
+  ceilings are hard boundaries for general plans and never training targets.
+  A selected-race plan may be `volume_exception_pending`, but the accepted plan
+  remains active until explicit approval. Approval never changes the saved
+  base ceiling.
 - Race records have an explicit `active`/`cancelled` lifecycle. Correct or
   delete only unused future races. Once a plan or Garmin evidence references a
   race, its facts and identity are historical. A cancelled race is retained for

@@ -258,6 +258,19 @@ export class MockPaceClient implements PaceClient {
     return clone(planFixtures.planHistory);
   }
 
+  async getPendingVolumeException() {
+    await delay(120);
+    return null;
+  }
+
+  async approveVolumeException(): Promise<MutationResult> {
+    return {
+      status: "failed",
+      message: "No exception is pending.",
+      detail: "The synthetic plan stays unchanged.",
+    };
+  }
+
   async setRevisionDueDemo(due: boolean): Promise<PlanView> {
     await delay(120);
     this.plan.revisionDue = due;

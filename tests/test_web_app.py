@@ -11,7 +11,7 @@ from pace.coach.models import CoachDialogueAnswer, SessionFeedbackDraft
 from pace.personalization.models import PersonalizationEvidence
 from pace.planning.checkpoint_models import PlanCheckpoint
 from pace.training_analysis.models import SportWindowAnalysis, TransparentTrainingAnalysis
-from pace.web.app import WebServices, create_app
+from pace.web.app import STATIC_DIR, WebServices, create_app
 from pace.web.presentation import render_web_onboarding
 
 
@@ -277,6 +277,16 @@ def _csrf(client: TestClient) -> str:
     match = re.search(r'<meta name="pace-csrf" content="([^"]+)">', response.text)
     assert match is not None
     return match.group(1)
+
+
+def test_async_forms_keep_a_stable_form_reference_before_resetting():
+    onboarding = (STATIC_DIR / "onboarding.js").read_text()
+    settings = (STATIC_DIR / "settings.js").read_text()
+
+    assert "event.currentTarget.reset()" not in onboarding
+    assert "event.currentTarget.reset()" not in settings
+    assert "formElement.reset()" in onboarding
+    assert "form.reset()" in settings
 
 
 def test_local_web_home_renders_current_plan_and_report_navigation(tmp_path):

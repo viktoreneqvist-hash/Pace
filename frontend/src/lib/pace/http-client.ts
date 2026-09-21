@@ -8,6 +8,7 @@ import type {
   OnboardingView,
   PaceClient,
   PlanHistoryEntry,
+  PendingVolumeException,
   PlanView,
   RaceDraft,
   RacesView,
@@ -226,6 +227,19 @@ export class HttpPaceClient implements PaceClient {
   getPlanHistory() {
     return this.get<PlanHistoryEntry[]>("/api/v1/plans/history");
   }
+  getPendingVolumeException() {
+    return this.get<PendingVolumeException | null>("/api/v1/plans/pending-volume-exception");
+  }
+  async approveVolumeException(planId: string): Promise<MutationResult> {
+    try {
+      await this.mutate<JsonObject>("/api/v1/plans/volume-exception/approve", {
+        plan_id: Number(planId),
+      });
+      return ok("Race-volume exception approved.", "The proposed plan is now active.");
+    } catch (error) {
+      return failed(error);
+    }
+  }
   getDashboard(window: DashboardWindow) {
     return this.get<DashboardView>(`/api/v1/dashboard?days=${window}`);
   }
@@ -248,9 +262,16 @@ export class HttpPaceClient implements PaceClient {
   async generateNextWindow(): Promise<RevisionResult> {
     const current = await this.getPlan();
     try {
-      await this.mutate<JsonObject>("/api/plan/revise/confirm", {
+      const result = await this.mutate<JsonObject>("/api/plan/revise/confirm", {
         plan_id: Number(current.planId),
       });
+      if (result["status"] === "volume_exception_pending") {
+        return {
+          status: "pending_approval",
+          message: "The proposed plan needs your approval.",
+          detail: "It exceeds a base-volume boundary and has not replaced the active plan.",
+        };
+      }
       return {
         status: "saved",
         message: "The next detailed window was created.",
@@ -295,7 +316,15 @@ export class HttpPaceClient implements PaceClient {
   }
   async setPlanTarget(raceId: string): Promise<MutationResult> {
     try {
-      await this.mutate<JsonObject>("/api/plan/draft/confirm", { race_id: Number(raceId) });
+      const result = await this.mutate<JsonObject>("/api/plan/draft/confirm", {
+        race_id: Number(raceId),
+      });
+      if (result["status"] === "volume_exception_pending") {
+        return ok(
+          "Plan created for review.",
+          "It exceeds a base-volume boundary and is not active until you approve the exception on Plan.",
+        );
+      }
       return ok("Plan created and activated.", "The selected race is now the explicit target.");
     } catch (error) {
       return failed(error);
@@ -312,6 +341,9 @@ export class HttpPaceClient implements PaceClient {
         available_days: next.availability
           .filter((item) => item.available)
           .map((item) => `${item.day}:${item.capMinutes ?? "any"}`),
+        base_running_distance_ceiling_km: next.volumeBoundaries.runningKmPerWeek,
+        base_cycling_duration_ceiling_hours: next.volumeBoundaries.cyclingHoursPerWeek,
+        base_total_duration_ceiling_hours: next.volumeBoundaries.totalHoursPerWeek,
       });
       if (
         next.zonesConfirmed &&

@@ -93,6 +93,12 @@ It may use general endurance knowledge, while Pace labels that reasoning as
 coaching judgment rather than observed athlete fact. Python validates every
 plan before it becomes active.
 
+The athlete may set separate weekly base-training ceilings for running
+distance, cycling time, and combined training time. These are hard boundaries,
+not targets or capacity evidence. A race-directed plan may propose a temporary
+exception, but it remains inactive until the athlete reviews the affected
+weeks and explicitly approves that plan version.
+
 ## Coaching principles
 
 ### History, not one flattering week

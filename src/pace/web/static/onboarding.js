@@ -84,13 +84,13 @@ async function streamHistory(button) {
 }
 
 document.getElementById("setup-openai").addEventListener("submit", async event => {
-  event.preventDefault(); clearError(); const button = event.currentTarget.querySelector("button"); start(button);
-  try { update(await api("/api/setup/openai", {api_key: new FormData(event.currentTarget).get("api_key")})); event.currentTarget.reset(); }
+  event.preventDefault(); clearError(); const form = event.currentTarget; const button = form.querySelector("button"); start(button);
+  try { update(await api("/api/setup/openai", {api_key: new FormData(form).get("api_key")})); form.reset(); }
   catch (error) { showError(error); stop(button); }
 });
 document.getElementById("setup-garmin").addEventListener("submit", async event => {
-  event.preventDefault(); clearError(); const button = event.currentTarget.querySelector("button"); start(button); const form = new FormData(event.currentTarget);
-  try { update(await api("/api/setup/garmin", {email:form.get("email"), password:form.get("password"), mfa_code:form.get("mfa_code") || null})); event.currentTarget.reset(); }
+  event.preventDefault(); clearError(); const formElement = event.currentTarget; const button = formElement.querySelector("button"); start(button); const form = new FormData(formElement);
+  try { update(await api("/api/setup/garmin", {email:form.get("email"), password:form.get("password"), mfa_code:form.get("mfa_code") || null})); formElement.reset(); }
   catch (error) { showError(error); stop(button); }
 });
 document.getElementById("setup-preferences").addEventListener("submit", async event => {
@@ -106,10 +106,10 @@ document.getElementById("setup-zones").addEventListener("submit", async event =>
   catch (error) { showError(error); stop(button); }
 });
 document.getElementById("setup-race").addEventListener("submit", async event => {
-  event.preventDefault(); clearError(); const form = new FormData(event.currentTarget);
+  event.preventDefault(); clearError(); const formElement = event.currentTarget; const form = new FormData(formElement);
   if (!form.get("name") && !form.get("race_date") && !form.get("distance_km")) return;
-  const button = event.currentTarget.querySelector("button"); start(button);
-  try { update(await api("/api/setup/races", Object.fromEntries(form))); event.currentTarget.reset(); }
+  const button = formElement.querySelector("button"); start(button);
+  try { update(await api("/api/setup/races", Object.fromEntries(form))); formElement.reset(); }
   catch (error) { showError(error); stop(button); }
 });
 document.getElementById("history-button").addEventListener("click", async event => {

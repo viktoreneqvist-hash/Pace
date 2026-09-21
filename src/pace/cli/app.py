@@ -80,7 +80,10 @@ from pace.services.training_preference_service import (
     TrainingPreferenceInput,
     TrainingPreferenceService,
 )
-from pace.services.heart_rate_zone_service import HeartRateZoneInput, HeartRateZoneService
+from pace.services.heart_rate_zone_service import (
+    HeartRateZoneInput,
+    HeartRateZoneService,
+)
 from pace.presentation.plan_views import (
     render_plan_review,
     render_plan_today,
@@ -132,7 +135,9 @@ def local_port(value: str) -> int:
     try:
         port = int(value)
     except ValueError as error:
-        raise ArgumentTypeError("--port must be an integer between 1024 and 65535.") from error
+        raise ArgumentTypeError(
+            "--port must be an integer between 1024 and 65535."
+        ) from error
     if not 1024 <= port <= 65_535:
         raise ArgumentTypeError("--port must be between 1024 and 65535.")
     return port
@@ -468,7 +473,9 @@ def build_parser() -> ArgumentParser:
     race_update_parser.add_argument("--id", type=int, required=True)
     race_update_parser.add_argument("--name")
     race_update_parser.add_argument("--date", type=iso_date)
-    race_update_parser.add_argument("--sport", choices=sorted(SUPPORTED_RACE_SPORT_TYPES))
+    race_update_parser.add_argument(
+        "--sport", choices=sorted(SUPPORTED_RACE_SPORT_TYPES)
+    )
     race_update_parser.add_argument("--distance-km", type=positive_distance_km)
     race_update_parser.add_argument("--desired-time", type=duration_seconds)
     race_update_parser.add_argument("--clear-desired-time", action="store_true")
@@ -588,6 +595,13 @@ def build_parser() -> ArgumentParser:
     plan_accept_parser.add_argument("--id", type=int, required=True)
     plan_accept_parser.set_defaults(handler=run_plan_accept)
 
+    plan_exception_parser = plan_subparsers.add_parser(
+        "approve-volume-exception",
+        help="explicitly approve and activate a pending race-volume exception",
+    )
+    plan_exception_parser.add_argument("--id", type=int, required=True)
+    plan_exception_parser.set_defaults(handler=run_plan_approve_volume_exception)
+
     plan_feedback_parser = plan_subparsers.add_parser(
         "feedback",
         help="save a structured outcome for an active planned session",
@@ -618,7 +632,9 @@ def build_parser() -> ArgumentParser:
         "workout",
         help="evaluate a planned session against explicit feedback and same-day Garmin data",
     )
-    plan_workout_subparsers = plan_workout_parser.add_subparsers(dest="plan_workout_command")
+    plan_workout_subparsers = plan_workout_parser.add_subparsers(
+        dest="plan_workout_command"
+    )
     plan_workout_evaluate_parser = plan_workout_subparsers.add_parser(
         "evaluate",
         help="evaluate without changing the plan or recording completion automatically",
@@ -717,21 +733,31 @@ def build_parser() -> ArgumentParser:
         "review", help="create an explicit AI weekly review as local HTML"
     )
     review_subparsers = review_parser.add_subparsers(dest="review_command")
-    weekly_review_parser = review_subparsers.add_parser("weekly", help="analyse the latest week without changing the plan")
+    weekly_review_parser = review_subparsers.add_parser(
+        "weekly", help="analyse the latest week without changing the plan"
+    )
     weekly_review_parser.add_argument("--end-date", type=iso_date)
     weekly_review_parser.set_defaults(handler=run_weekly_review)
 
-    profile_parser = subparsers.add_parser("profile", help="manage confirmed personal coaching principles")
+    profile_parser = subparsers.add_parser(
+        "profile", help="manage confirmed personal coaching principles"
+    )
     profile_subparsers = profile_parser.add_subparsers(dest="profile_command")
-    profile_list_parser = profile_subparsers.add_parser("list", help="show active and review-due principles")
+    profile_list_parser = profile_subparsers.add_parser(
+        "list", help="show active and review-due principles"
+    )
     profile_list_parser.add_argument("--end-date", type=iso_date)
     profile_list_parser.set_defaults(handler=run_profile_list)
-    profile_accept_parser = profile_subparsers.add_parser("accept", help="confirm a coaching principle from a plan draft")
+    profile_accept_parser = profile_subparsers.add_parser(
+        "accept", help="confirm a coaching principle from a plan draft"
+    )
     profile_accept_parser.add_argument("--plan-id", type=int, required=True)
     profile_accept_parser.add_argument("--principle-index", type=int, required=True)
     profile_accept_parser.add_argument("--end-date", type=iso_date)
     profile_accept_parser.set_defaults(handler=run_profile_accept)
-    profile_archive_parser = profile_subparsers.add_parser("archive", help="archive a confirmed coaching principle")
+    profile_archive_parser = profile_subparsers.add_parser(
+        "archive", help="archive a confirmed coaching principle"
+    )
     profile_archive_parser.add_argument("--id", type=int, required=True)
     profile_archive_parser.set_defaults(handler=run_profile_archive)
 
@@ -739,7 +765,9 @@ def build_parser() -> ArgumentParser:
         "preferences",
         help="manage availability and sport role for future plan drafts",
     )
-    preferences_subparsers = preferences_parser.add_subparsers(dest="preferences_command")
+    preferences_subparsers = preferences_parser.add_subparsers(
+        dest="preferences_command"
+    )
     preferences_set_parser = preferences_subparsers.add_parser(
         "set", help="save available days and preferred sport role"
     )
@@ -759,6 +787,21 @@ def build_parser() -> ArgumentParser:
         action="append",
         required=True,
         help="availability such as mon:60 or mon:any; repeat for multiple days",
+    )
+    preferences_set_parser.add_argument(
+        "--base-run-km",
+        type=float,
+        help="hard base-phase running ceiling in kilometres per calendar week",
+    )
+    preferences_set_parser.add_argument(
+        "--base-ride-hours",
+        type=float,
+        help="hard base-phase cycling ceiling in hours per calendar week",
+    )
+    preferences_set_parser.add_argument(
+        "--base-total-hours",
+        type=float,
+        help="hard combined base-phase ceiling in hours per calendar week",
     )
     preferences_set_parser.set_defaults(handler=run_preferences_set)
     preferences_show_parser = preferences_subparsers.add_parser(
@@ -1015,7 +1058,9 @@ def run_note_add(args: Namespace) -> int:
         return 2
 
     duration = "ongoing" if event.end_date is None else str(event.end_date)
-    print(f"Context note saved: {event.event_type}, from {event.start_date} to {duration}.")
+    print(
+        f"Context note saved: {event.event_type}, from {event.start_date} to {duration}."
+    )
     return 0
 
 
@@ -1031,7 +1076,9 @@ def run_note_list(args: Namespace) -> int:
         print(f"Context notes could not be fetched: {error}")
         return 2
 
-    print(json.dumps([asdict(event) for event in events], default=_json_default, indent=2))
+    print(
+        json.dumps([asdict(event) for event in events], default=_json_default, indent=2)
+    )
     return 0
 
 
@@ -1137,13 +1184,17 @@ def run_knowledge_show(args: Namespace) -> int:
         return 2
     brief = brief_by_id(library, brief_id=args.brief_id)
     if brief is None:
-        print(f"No knowledge brief has id '{args.brief_id}'. Run 'pace knowledge list'.")
+        print(
+            f"No knowledge brief has id '{args.brief_id}'. Run 'pace knowledge list'."
+        )
         return 2
     lines = [brief.title, f"ID: {brief.id}", "", "Supported claims:"]
     lines.extend(f"- {claim}" for claim in brief.supported_claims)
     lines.extend(["", "Limitations:"])
     lines.extend(f"- {limitation}" for limitation in brief.limitations)
-    lines.extend(["", "When Pace may use it:", f"- {brief.applicability}", "", "Sources:"])
+    lines.extend(
+        ["", "When Pace may use it:", f"- {brief.applicability}", "", "Sources:"]
+    )
     for source_id in brief.source_ids:
         source = source_by_id(library, source_id=source_id)
         if source is not None:
@@ -1202,7 +1253,7 @@ def run_coach_chat(args: Namespace, *, today: date | None = None) -> int:
     while True:
         try:
             question = input("You: ").strip()
-        except (EOFError, KeyboardInterrupt):
+        except EOFError, KeyboardInterrupt:
             print("\nCoach dialogue closed. Nothing was saved.")
             return 0
         if question.casefold() in {"avsluta", "exit", "quit"}:
@@ -1322,7 +1373,9 @@ def run_race_remove(args: Namespace, *, today: date | None = None) -> int:
 
 def run_race_cancel(args: Namespace, *, today: date | None = None) -> int:
     try:
-        race = RaceService().cancel_race(race_id=args.id, as_of_date=today or date.today())
+        race = RaceService().cancel_race(
+            race_id=args.id, as_of_date=today or date.today()
+        )
     except ValueError as error:
         print(f"The race could not be cancelled: {error}")
         return 2
@@ -1354,6 +1407,9 @@ def run_preferences_set(args: Namespace) -> int:
                 sport_role=args.sport_role,
                 available_days=tuple(args.day),
                 coaching_ambition=args.ambition,
+                base_running_distance_ceiling_km=args.base_run_km,
+                base_cycling_duration_ceiling_hours=args.base_ride_hours,
+                base_total_duration_ceiling_hours=args.base_total_hours,
             )
         )
     except ValueError as error:
@@ -1377,6 +1433,15 @@ def run_preferences_show(_args: Namespace) -> int:
             {
                 "sport_role": preference.sport_role,
                 "coaching_ambition": preference.coaching_ambition,
+                "base_running_distance_ceiling_km": getattr(
+                    preference, "base_running_distance_ceiling_km", None
+                ),
+                "base_cycling_duration_ceiling_hours": getattr(
+                    preference, "base_cycling_duration_ceiling_hours", None
+                ),
+                "base_total_duration_ceiling_hours": getattr(
+                    preference, "base_total_duration_ceiling_hours", None
+                ),
                 "available_days": preference.available_days,
             },
             indent=2,
@@ -1406,7 +1471,9 @@ def run_zones_set(args: Namespace) -> int:
         print(f"The Garmin heart-rate zones could not be saved: {error}")
         return 2
     print("Garmin heart-rate zones for cycling have been saved locally.")
-    print(json.dumps({"sport_type": profile.sport_type, "zones": profile.zones}, indent=2))
+    print(
+        json.dumps({"sport_type": profile.sport_type, "zones": profile.zones}, indent=2)
+    )
     return 0
 
 
@@ -1415,7 +1482,9 @@ def run_zones_show(args: Namespace) -> int:
     if profile is None:
         print("No Garmin heart-rate zones for cycling have been saved yet.")
         return 2
-    print(json.dumps({"sport_type": profile.sport_type, "zones": profile.zones}, indent=2))
+    print(
+        json.dumps({"sport_type": profile.sport_type, "zones": profile.zones}, indent=2)
+    )
     return 0
 
 
@@ -1441,7 +1510,27 @@ def run_plan_draft(args: Namespace, *, today: date | None = None) -> int:
         return 2
     print(json.dumps(asdict(plan), default=_json_default, indent=2))
     print(f"Review it in readable form: 'pace plan review --id {plan.id}'.")
-    print(f"Plan {plan.id} is active. A previous active plan is replaced only after successful validation.")
+    if plan.status == "volume_exception_pending":
+        print(
+            f"Plan {plan.id} exceeds a base-volume boundary and is not active. "
+            f"Review it, then approve the race-volume exception with "
+            f"'pace plan approve-volume-exception --id {plan.id}'."
+        )
+    else:
+        print(
+            f"Plan {plan.id} is active. A previous active plan is replaced only after "
+            "successful validation."
+        )
+    return 0
+
+
+def run_plan_approve_volume_exception(args: Namespace) -> int:
+    try:
+        plan = TrainingPlanService().approve_volume_exception(plan_id=args.id)
+    except ValueError as error:
+        print(f"The race-volume exception could not be approved: {error}")
+        return 2
+    print(f"Race-volume exception approved. Plan {plan.id} is now active.")
     return 0
 
 
@@ -1616,7 +1705,9 @@ def run_eval_scenarios(_args: Namespace) -> int:
 
 def run_eval_coach(args: Namespace) -> int:
     if not args.live:
-        print("The live evaluation was not started. Add --live for six synthetic AI calls.")
+        print(
+            "The live evaluation was not started. Add --live for six synthetic AI calls."
+        )
         return 2
     api_key = resolve_openai_api_key(settings)
     if not api_key:
@@ -1635,7 +1726,9 @@ def run_weekly_review(args: Namespace, *, today: date | None = None) -> int:
         print("OPENAI_API_KEY is missing; no weekly review was created.")
         return 2
     try:
-        path = WeeklyReviewService(client=WeeklyReviewClient(api_key=api_key, model=settings.openai_model)).create(end_date=args.end_date or today or date.today())
+        path = WeeklyReviewService(
+            client=WeeklyReviewClient(api_key=api_key, model=settings.openai_model)
+        ).create(end_date=args.end_date or today or date.today())
     except (ValueError, PaceAIError) as error:
         print(f"The weekly review could not be created: {error}")
         return 2
@@ -1647,13 +1740,32 @@ def run_weekly_review(args: Namespace, *, today: date | None = None) -> int:
 def run_profile_list(args: Namespace, *, today: date | None = None) -> int:
     as_of_date = args.end_date or today or date.today()
     rows = CoachingPrincipleService().list_active(as_of_date=as_of_date)
-    print(json.dumps([{"id": item.id, "statement": item.statement, "source_plan_id": item.source_plan_id, "review_due_date": item.review_due_date, "review_due": due} for item, due in rows], default=_json_default, indent=2))
+    print(
+        json.dumps(
+            [
+                {
+                    "id": item.id,
+                    "statement": item.statement,
+                    "source_plan_id": item.source_plan_id,
+                    "review_due_date": item.review_due_date,
+                    "review_due": due,
+                }
+                for item, due in rows
+            ],
+            default=_json_default,
+            indent=2,
+        )
+    )
     return 0
 
 
 def run_profile_accept(args: Namespace, *, today: date | None = None) -> int:
     try:
-        item = CoachingPrincipleService().accept_from_plan(plan_id=args.plan_id, principle_index=args.principle_index, as_of_date=args.end_date or today or date.today())
+        item = CoachingPrincipleService().accept_from_plan(
+            plan_id=args.plan_id,
+            principle_index=args.principle_index,
+            as_of_date=args.end_date or today or date.today(),
+        )
     except ValueError as error:
         print(f"The coaching principle could not be confirmed: {error}")
         return 2
@@ -1683,7 +1795,17 @@ def run_plan_revise(args: Namespace, *, today: date | None = None) -> int:
         print(f"The revised plan could not be created: {error}")
         return 2
     print(json.dumps(asdict(plan), default=_json_default, indent=2))
-    print(f"Revised plan {plan.id} is active. The previous plan was replaced only after successful validation.")
+    if plan.status == "volume_exception_pending":
+        print(
+            f"Revised plan {plan.id} exceeds a base-volume boundary and is not active. "
+            f"Approve the race-volume exception with "
+            f"'pace plan approve-volume-exception --id {plan.id}'."
+        )
+    else:
+        print(
+            f"Revised plan {plan.id} is active. The previous plan was replaced only after "
+            "successful validation."
+        )
     return 0
 
 
@@ -1728,12 +1850,18 @@ def run_performance_sync(args: Namespace, *, today: date | None = None) -> int:
     )
     if result.status == "partial":
         if result.stop_reason == "rate_limit":
-            print("The detail sync was stopped by a Garmin limit. Wait and run the same batch again.")
+            print(
+                "The detail sync was stopped by a Garmin limit. Wait and run the same batch again."
+            )
             return 3
         if result.stop_reason == "authentication":
-            print("The Garmin session became invalid. Log in again and run the same batch.")
+            print(
+                "The Garmin session became invalid. Log in again and run the same batch."
+            )
             return 2
-        print("The detail sync is partially complete. Previous details were preserved; run the same batch again.")
+        print(
+            "The detail sync is partially complete. Previous details were preserved; run the same batch again."
+        )
     return 0
 
 
@@ -1810,7 +1938,9 @@ def _render_ai_answer(answer: PaceAIAnswer, *, as_of_date: date) -> str:
         )
     if answer.context_event_draft is not None:
         draft = answer.context_event_draft
-        duration = "ongoing" if draft.ongoing else str(draft.end_date or draft.start_date)
+        duration = (
+            "ongoing" if draft.ongoing else str(draft.end_date or draft.start_date)
+        )
         lines.extend(
             [
                 "",
@@ -1837,9 +1967,13 @@ def _render_coach_answer(
 
     lines = [f"Pace coach ({as_of_date})", answer.answer]
     if answer.observations:
-        lines.extend(["", "Observations:", *[f"- {item}" for item in answer.observations]])
+        lines.extend(
+            ["", "Observations:", *[f"- {item}" for item in answer.observations]]
+        )
     if answer.uncertainties:
-        lines.extend(["", "Uncertainties:", *[f"- {item}" for item in answer.uncertainties]])
+        lines.extend(
+            ["", "Uncertainties:", *[f"- {item}" for item in answer.uncertainties]]
+        )
     if answer.knowledge_references:
         lines.extend(
             [
@@ -1854,7 +1988,11 @@ def _render_coach_answer(
     adjustment = answer.adjustment_draft
     if adjustment is not None:
         lines.extend(["", "Plan adjustment draft — not saved:"])
-        labels = {"keep_plan": "Keep plan", "skip": "Skip session", "replace": "Replace session"}
+        labels = {
+            "keep_plan": "Keep plan",
+            "skip": "Skip session",
+            "replace": "Replace session",
+        }
         lines.extend(
             [
                 f"- action: {labels[adjustment.action]}",

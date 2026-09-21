@@ -207,13 +207,15 @@ explicit athlete goal selection
     -> structured model request
     -> complete structured plan response
     -> Python validation
-    -> atomic accepted plan version
-    -> previous overlapping version marked superseded
+    -> accepted plan OR inactive race-volume exception awaiting approval
+    -> previous overlapping version superseded only after activation
 ```
 
-The explicit create or revise action is the authorization. There is no second
-normal acceptance click. If generation or validation fails, no partial plan is
-stored and the active version remains unchanged.
+The explicit create or revise action is normally the authorization. General
+plans that cross athlete-defined weekly base ceilings fail validation. A
+race-directed plan may instead be stored as `volume_exception_pending`; a
+separate approval is then required and the active plan remains unchanged until
+approval. If ordinary generation or validation fails, no partial plan is stored.
 
 Plans describe a longer block direction while detailing only 7–14 days.
 Checkpoint logic can recommend another explicit revision as the detailed window

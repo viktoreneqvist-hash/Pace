@@ -38,8 +38,8 @@ you explicitly request or confirm every saved change
 
 - **Python owns facts.** Time, distance, frequency, baselines, data quality,
   plan constraints, and validation are calculated in code.
-- **You own intent.** You choose sport balance, ambition, availability, races,
-  and report how sessions felt.
+- **You own intent.** You choose sport balance, ambition, availability, weekly
+  base-volume boundaries, races, and report how sessions felt.
 - **The model owns coaching judgment.** It selects and explains training using
   the supplied evidence. It cannot silently rewrite stored facts or plans.
 
@@ -103,8 +103,8 @@ After setup, normal use happens in the browser:
 - **Plan** — see the active plan and create the next detailed window.
 - **Weekly review** — read the most recently generated weekly review.
 - **Races** — add or cancel goals and explicitly choose a race for a new plan.
-- **Settings** — change sport role, ambition, availability, cycling zones, and
-  run a 7-day or 80-day Garmin sync.
+- **Settings** — change sport role, ambition, availability, weekly base-volume
+  boundaries, cycling zones, and run a 7-day or 80-day Garmin sync.
 - **Onboarding** — inspect setup status and reopen the secure local setup flow.
 
 Settings, Garmin sync, races, zones, sport balance, and ambition are available

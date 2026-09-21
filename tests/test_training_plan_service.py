@@ -19,7 +19,10 @@ from pace.planning.draft_models import (
     SessionTargetDraft,
 )
 from pace.planning.models import HistoryCoverage, PlanReadiness
-from pace.repositories.training_plan_repository import get_training_plan, list_training_plans
+from pace.repositories.training_plan_repository import (
+    get_training_plan,
+    list_training_plans,
+)
 from pace.services.training_plan_service import (
     TrainingPlanService,
     _validate_races_in_detailed_window,
@@ -79,13 +82,26 @@ class StubCapacityService:
 
 
 class StubPreferenceService:
-    def __init__(self, available_days=None) -> None:
+    def __init__(
+        self,
+        available_days=None,
+        *,
+        run_ceiling: float | None = None,
+        ride_ceiling: float | None = None,
+        total_ceiling: float | None = None,
+    ) -> None:
         self.available_days = available_days or [{"day": "mon", "minutes": None}]
+        self.run_ceiling = run_ceiling
+        self.ride_ceiling = ride_ceiling
+        self.total_ceiling = total_ceiling
 
     def get_preference(self):
         return SimpleNamespace(
             sport_role="run_primary",
             available_days=self.available_days,
+            base_running_distance_ceiling_km=self.run_ceiling,
+            base_cycling_duration_ceiling_hours=self.ride_ceiling,
+            base_total_duration_ceiling_hours=self.total_ceiling,
         )
 
 
@@ -142,18 +158,22 @@ class StubPerformanceService:
 
     def get_readiness(self, *, end_date: date) -> PerformanceReadiness:
         run_evidence = (
-            IntensityEvidenceFact(
-                reference_id="performance.run.benchmark.run-evidence",
-                sport_type="run",
-                evidence_type="benchmark",
-                protocol="run_5k_time_trial",
-                activity_date=date(2026, 7, 1),
-                duration_seconds=1_500,
-                distance_meters=5_000,
-                average_speed_mps=3.33,
-                qualifying_power_watts=None,
-            ),
-        ) if self.run_intensity_allowed else ()
+            (
+                IntensityEvidenceFact(
+                    reference_id="performance.run.benchmark.run-evidence",
+                    sport_type="run",
+                    evidence_type="benchmark",
+                    protocol="run_5k_time_trial",
+                    activity_date=date(2026, 7, 1),
+                    duration_seconds=1_500,
+                    distance_meters=5_000,
+                    average_speed_mps=3.33,
+                    qualifying_power_watts=None,
+                ),
+            )
+            if self.run_intensity_allowed
+            else ()
+        )
         return PerformanceReadiness(
             as_of_date=end_date,
             evidence_start_date=date(2026, 5, 4),
@@ -274,6 +294,7 @@ def _service(
     run_intensity_allowed: bool = False,
     available_days=None,
     performance_service=None,
+    preference_service=None,
 ):
     return TrainingPlanService(
         generator=generator,
@@ -281,7 +302,7 @@ def _service(
         capacity_service=StubCapacityService(),
         performance_service=performance_service
         or StubPerformanceService(run_intensity_allowed=run_intensity_allowed),
-        preference_service=StubPreferenceService(available_days),
+        preference_service=preference_service or StubPreferenceService(available_days),
         training_history_service=StubTrainingHistoryService(),
     )
 
@@ -305,10 +326,61 @@ def test_initial_plan_is_activated_after_validation_with_selected_fact_catalog_o
     continuity = catalog["training_continuity"]
     assert continuity["provenance"] == "garmin_verified"
     assert continuity["value"]["weekly_training"][-1]["active_days"] == 1
-    assert continuity["value"]["recent_windows"][0]["training"]["run"]["activity_count"] == 5
-    assert continuity["value"]["established_baseline"]["excluded_most_recent_days"] == 14
+    assert (
+        continuity["value"]["recent_windows"][0]["training"]["run"]["activity_count"]
+        == 5
+    )
+    assert (
+        continuity["value"]["established_baseline"]["excluded_most_recent_days"] == 14
+    )
     assert "recovery" not in str(continuity)
     assert "note" not in str(catalog["relevant_context"])
+
+
+def test_general_plan_cannot_cross_a_base_running_boundary():
+    service = _service(
+        StubGenerator(_generated_plan()),
+        preference_service=StubPreferenceService(run_ceiling=4),
+    )
+
+    with pytest.raises(ValueError, match="hard base-volume ceiling"):
+        service.generate_draft(
+            as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
+        )
+
+    with SessionFactory() as session:
+        assert list_training_plans(session) == []
+
+
+def test_race_plan_crossing_a_base_boundary_waits_for_explicit_approval():
+    race = RaceService().add_race(
+        RaceInput(
+            name="Autumn 10K",
+            sport_type="run",
+            race_date=date(2026, 8, 22),
+            distance_meters=10_000,
+            priority="A",
+        )
+    )
+    service = _service(
+        StubGenerator(_generated_plan()),
+        preference_service=StubPreferenceService(run_ceiling=4),
+    )
+
+    pending = service.generate_draft(
+        as_of_date=date(2026, 7, 26), detailed_days=14, race_id=race.id
+    )
+
+    assert pending.status == "volume_exception_pending"
+    assert pending.volume_exception is not None
+    assert pending.volume_exception.approved is False
+    assert pending.volume_exception.weeks[0].breaches[0].ceiling == 4
+
+    accepted = service.approve_volume_exception(plan_id=pending.id)
+
+    assert accepted.status == "accepted"
+    assert accepted.volume_exception is not None
+    assert accepted.volume_exception.approved is True
 
 
 def test_initial_plan_retries_one_python_rejected_ai_candidate():
@@ -444,7 +516,10 @@ def test_feedback_creates_a_bounded_revision_without_overwriting_parent():
     assert revision_catalog["feedback"]["value"][0]["perceived_exertion"] == 7
     assert revision_catalog["feedback"]["value"][0]["reason_code"] == "fatigue"
     assert revision_catalog["feedback"]["value"][0]["workout_steps"]
-    assert revision_catalog["training_response_trends"]["value"]["status"] == "insufficient_data"
+    assert (
+        revision_catalog["training_response_trends"]["value"]["status"]
+        == "insufficient_data"
+    )
     assert "target" in revision_catalog["parent_plan"]["value"]["sessions"][0]
 
 
@@ -580,7 +655,9 @@ def test_general_plan_ignores_unselected_races_inside_the_detailed_window():
     ("priority", "expected_taper"),
     (("B", "partial"), ("C", "none")),
 )
-def test_any_active_race_priority_can_be_an_explicit_plan_target(priority, expected_taper):
+def test_any_active_race_priority_can_be_an_explicit_plan_target(
+    priority, expected_taper
+):
     race = RaceService().add_race(
         RaceInput(
             name=f"{priority}-lopp",
@@ -640,7 +717,8 @@ def test_plan_enforces_available_days_and_time_caps_in_python():
     )
     with pytest.raises(ValueError, match="exceeds athlete availability"):
         _service(
-            StubGenerator(capped_sessions), available_days=[{"day": "mon", "minutes": 30}]
+            StubGenerator(capped_sessions),
+            available_days=[{"day": "mon", "minutes": 30}],
         ).generate_draft(as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None)
 
 

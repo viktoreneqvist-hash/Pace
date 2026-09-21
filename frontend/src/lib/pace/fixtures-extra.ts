@@ -601,6 +601,11 @@ const connections: ConnectionStatus[] = [
 export const settingsFixture: SettingsView = {
   sportRole: "run_primary",
   ambition: "balanced",
+  volumeBoundaries: {
+    runningKmPerWeek: 55,
+    cyclingHoursPerWeek: 5,
+    totalHoursPerWeek: 8,
+  },
   availability: [
     { day: "Monday", available: false, capMinutes: null },
     { day: "Tuesday", available: true, capMinutes: 75 },

@@ -97,6 +97,7 @@ function SettingsForm({ settings }: { settings: SettingsView }) {
         sportRole: value.sportRole,
         ambition: value.ambition,
         availability: value.availability,
+        volumeBoundaries: value.volumeBoundaries,
         cyclingZones: value.cyclingZones,
         zonesConfirmed: value.zonesConfirmed,
       }),
@@ -163,6 +164,98 @@ function SettingsForm({ settings }: { settings: SettingsView }) {
             </label>
           ))}
         </fieldset>
+      </Panel>
+
+      <Panel
+        title="Base training volume boundaries"
+        note="Hard weekly ceilings for ordinary base training. These are lifestyle boundaries, not targets or evidence of capacity."
+      >
+        <div className="grid gap-4 md:grid-cols-3">
+          {draft.sportRole !== "ride_only" && (
+            <label className="text-sm">
+              <span className="font-semibold">Running</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Maximum kilometres per calendar week
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={1000}
+                step="0.5"
+                className={`${FIELD} mt-2`}
+                value={draft.volumeBoundaries.runningKmPerWeek ?? ""}
+                placeholder="No athlete cap"
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    volumeBoundaries: {
+                      ...draft.volumeBoundaries,
+                      runningKmPerWeek:
+                        event.target.value === "" ? null : Number(event.target.value),
+                    },
+                  })
+                }
+              />
+            </label>
+          )}
+          {draft.sportRole !== "run_only" && (
+            <label className="text-sm">
+              <span className="font-semibold">Cycling</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Maximum hours per calendar week
+              </span>
+              <input
+                type="number"
+                min={0.5}
+                max={168}
+                step="0.5"
+                className={`${FIELD} mt-2`}
+                value={draft.volumeBoundaries.cyclingHoursPerWeek ?? ""}
+                placeholder="No athlete cap"
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    volumeBoundaries: {
+                      ...draft.volumeBoundaries,
+                      cyclingHoursPerWeek:
+                        event.target.value === "" ? null : Number(event.target.value),
+                    },
+                  })
+                }
+              />
+            </label>
+          )}
+          <label className="text-sm">
+            <span className="font-semibold">Combined training</span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              Maximum total hours per calendar week
+            </span>
+            <input
+              type="number"
+              min={0.5}
+              max={168}
+              step="0.5"
+              className={`${FIELD} mt-2`}
+              value={draft.volumeBoundaries.totalHoursPerWeek ?? ""}
+              placeholder="No athlete cap"
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  volumeBoundaries: {
+                    ...draft.volumeBoundaries,
+                    totalHoursPerWeek:
+                      event.target.value === "" ? null : Number(event.target.value),
+                  },
+                })
+              }
+            />
+          </label>
+        </div>
+        <div className="mt-4 border-l-2 border-accent px-3 text-sm text-muted-foreground">
+          A general plan cannot cross these boundaries. A race-directed plan may propose a temporary
+          exception, but it stays inactive until you explicitly approve it. Approval does not change
+          these saved base boundaries.
+        </div>
       </Panel>
 
       <Panel

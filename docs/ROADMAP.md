@@ -46,6 +46,8 @@ alpha. The detailed history of product decisions remains in
 - [x] Stored A/B/C races and explicit general-plan mode
 - [x] Five sport roles, weekly availability, coaching ambition, and cycling
   heart-rate zones
+- [x] Hard base-volume boundaries for running distance, cycling time, and total
+  time, with explicit per-version race-volume exceptions
 - [x] Historical capacity and privacy-minimized verified performance evidence
 - [x] Race-specific or general plan generation
 - [x] Structured workouts with continuous, warm-up, interval, recovery, and

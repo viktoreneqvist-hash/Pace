@@ -19,6 +19,9 @@ from pace.planning.plan_models import (
     PlanSessionFact,
     SessionTargetFact,
     TrainingPlanFact,
+    VolumeBoundaryBreachFact,
+    VolumeExceptionFact,
+    WeeklyVolumeExceptionFact,
     WorkoutStepFact,
 )
 from pace.repositories.context_event_repository import get_context_events_in_date_range
@@ -44,7 +47,9 @@ from pace.services.race_service import resolved_taper
 from pace.services.training_preference_service import TrainingPreferenceService
 from pace.services.training_response_trend_service import TrainingResponseTrendService
 from pace.services.coaching_principle_service import CoachingPrincipleService
-from pace.services.personalization_evidence_service import PersonalizationEvidenceService
+from pace.services.personalization_evidence_service import (
+    PersonalizationEvidenceService,
+)
 from pace.knowledge.library import load_knowledge_library
 from pace.knowledge.selection import select_for_plan_context, serialize_selected_briefs
 
@@ -100,7 +105,8 @@ class TrainingPlanService:
         goal = self._resolve_goal(as_of_date=as_of_date, race_id=race_id)
         detailed_start_date = as_of_date
         detailed_end_date = min(
-            detailed_start_date + timedelta(days=_validate_plan_days(detailed_days) - 1),
+            detailed_start_date
+            + timedelta(days=_validate_plan_days(detailed_days) - 1),
             goal["block_end_date"],
         )
         context = self._build_context(
@@ -111,7 +117,9 @@ class TrainingPlanService:
             feedback=(),
             parent_plan=None,
         )
-        performance_readiness = self._performance_service.get_readiness(end_date=as_of_date)
+        performance_readiness = self._performance_service.get_readiness(
+            end_date=as_of_date
+        )
         generated = self._generate_validated(
             request=PlanGenerationRequest(mode="initial_draft", context=context),
             validate=lambda candidate: self._validate_generated_plan(
@@ -124,6 +132,9 @@ class TrainingPlanService:
                 context=context,
             ),
         )
+        volume_exception = _volume_exception_for_generated(
+            generated=generated, context=context
+        )
         return self._persist_plan(
             parent_plan_id=None,
             goal=goal,
@@ -133,6 +144,7 @@ class TrainingPlanService:
             generated=generated,
             context=context,
             performance_readiness=performance_readiness,
+            volume_exception=volume_exception,
         )
 
     def generate_revision(
@@ -151,19 +163,26 @@ class TrainingPlanService:
             if parent.status != "accepted":
                 raise ValueError("Only an accepted plan can receive a revision draft.")
             if parent.contract_version != CURRENT_PLAN_CONTRACT_VERSION:
-                raise ValueError("Legacy plans must be regenerated before they can be revised.")
+                raise ValueError(
+                    "Legacy plans must be regenerated before they can be revised."
+                )
             if not _has_complete_assessment(parent.coach_assessment):
-                raise ValueError("Plans without a complete coach assessment cannot be revised.")
+                raise ValueError(
+                    "Plans without a complete coach assessment cannot be revised."
+                )
             sessions = get_sessions_for_plan(session, plan_id=parent.id)
             feedback_by_session = get_feedback_for_sessions(
                 session, session_ids=[item.id for item in sessions]
             )
         if as_of_date > parent.block_end_date:
-            raise ValueError("The accepted plan's block has ended; create a new plan draft.")
+            raise ValueError(
+                "The accepted plan's block has ended; create a new plan draft."
+            )
         goal = _goal_from_parent(parent)
         detailed_start_date = as_of_date
         detailed_end_date = min(
-            detailed_start_date + timedelta(days=_validate_plan_days(detailed_days) - 1),
+            detailed_start_date
+            + timedelta(days=_validate_plan_days(detailed_days) - 1),
             parent.block_end_date,
         )
         feedback = tuple(
@@ -200,7 +219,9 @@ class TrainingPlanService:
         parent_outline = tuple(
             _deserialize_outline_item(item) for item in parent.block_outline
         )
-        performance_readiness = self._performance_service.get_readiness(end_date=as_of_date)
+        performance_readiness = self._performance_service.get_readiness(
+            end_date=as_of_date
+        )
 
         def validate_revision(candidate: GeneratedPlanDraft) -> None:
             self._validate_generated_plan(
@@ -226,6 +247,9 @@ class TrainingPlanService:
             sessions=candidate.sessions,
             coach_assessment=candidate.coach_assessment,
         )
+        volume_exception = _volume_exception_for_generated(
+            generated=generated, context=context
+        )
         return self._persist_plan(
             parent_plan_id=parent.id,
             goal=goal,
@@ -235,7 +259,49 @@ class TrainingPlanService:
             generated=generated,
             context=context,
             performance_readiness=performance_readiness,
+            volume_exception=volume_exception,
         )
+
+    def approve_volume_exception(self, *, plan_id: int) -> TrainingPlanFact:
+        """Activate one race-specific exception after explicit athlete approval."""
+
+        with session_scope() as session:
+            plan = get_training_plan(session, plan_id=plan_id)
+            if plan is None:
+                raise ValueError(f"No plan exists with id {plan_id}.")
+            if plan.status != "volume_exception_pending":
+                raise ValueError("This plan has no pending race-volume exception.")
+            if plan.race_id is None:
+                raise ValueError(
+                    "Only a race-directed plan can use a volume exception."
+                )
+            race = get_race_by_id(session, plan.race_id)
+            if race is None or race.status != "active":
+                raise ValueError("The target race is no longer active.")
+            volume_exception = _stored_volume_exception(plan.context_snapshot)
+            if volume_exception is None or not volume_exception.weeks:
+                raise ValueError(
+                    "The pending plan has no valid volume-exception record."
+                )
+            if plan.parent_plan_id is not None:
+                parent = get_training_plan(session, plan_id=plan.parent_plan_id)
+                if parent is None or parent.status != "accepted":
+                    raise ValueError(
+                        "This revision is stale because its parent is no longer active."
+                    )
+            context_snapshot = dict(plan.context_snapshot)
+            serialized_exception = dict(context_snapshot["volume_exception"])
+            serialized_exception["approved"] = True
+            context_snapshot["volume_exception"] = serialized_exception
+            plan.context_snapshot = context_snapshot
+            plan.status = "accepted"
+            _supersede_replaced_active_plans(
+                session=session,
+                plan=plan,
+                as_of_date=plan.as_of_date,
+            )
+            session.flush()
+            return _plan_fact(session, plan)
 
     def accept_plan(self, *, plan_id: int) -> TrainingPlanFact:
         with session_scope() as session:
@@ -247,17 +313,23 @@ class TrainingPlanService:
             if plan.status != "draft":
                 raise ValueError("Only a draft plan can be accepted.")
             if plan.contract_version != CURRENT_PLAN_CONTRACT_VERSION:
-                raise ValueError("Legacy draft plans must be regenerated before acceptance.")
+                raise ValueError(
+                    "Legacy draft plans must be regenerated before acceptance."
+                )
             if plan.race_id is not None:
                 race = get_race_by_id(session, plan.race_id)
                 if race is None or race.status != "active":
                     raise ValueError("A draft for a cancelled race cannot be accepted.")
             if not _has_complete_assessment(plan.coach_assessment):
-                raise ValueError("A complete coach assessment is required before acceptance.")
+                raise ValueError(
+                    "A complete coach assessment is required before acceptance."
+                )
             if plan.parent_plan_id is not None:
                 parent = get_training_plan(session, plan_id=plan.parent_plan_id)
                 if parent is None or parent.status != "accepted":
-                    raise ValueError("This revision draft is stale because its parent is no longer accepted.")
+                    raise ValueError(
+                        "This revision draft is stale because its parent is no longer accepted."
+                    )
                 parent.status = "superseded"
             plan.status = "accepted"
             session.flush()
@@ -291,7 +363,9 @@ class TrainingPlanService:
                 raise ValueError(f"No planned session exists with id {session_id}.")
             plan = get_training_plan(session, plan_id=planned_session.plan_id)
             if plan is None or plan.status != "accepted":
-                raise ValueError("Feedback can only be saved for an accepted plan session.")
+                raise ValueError(
+                    "Feedback can only be saved for an accepted plan session."
+                )
             upsert_session_feedback(
                 session,
                 planned_session_id=planned_session.id,
@@ -311,9 +385,13 @@ class TrainingPlanService:
 
     def list_plans(self) -> tuple[TrainingPlanFact, ...]:
         with session_scope() as session:
-            return tuple(_plan_fact(session, plan) for plan in list_training_plans(session))
+            return tuple(
+                _plan_fact(session, plan) for plan in list_training_plans(session)
+            )
 
-    def _resolve_goal(self, *, as_of_date: date, race_id: int | None) -> dict[str, object]:
+    def _resolve_goal(
+        self, *, as_of_date: date, race_id: int | None
+    ) -> dict[str, object]:
         if race_id is None:
             return {
                 "goal_mode": "general",
@@ -357,15 +435,21 @@ class TrainingPlanService:
         feedback: tuple[dict[str, object], ...],
         parent_plan: dict[str, object] | None,
     ) -> dict[str, object]:
-        plan_readiness = self._plan_readiness_service.get_readiness(as_of_date=as_of_date)
+        plan_readiness = self._plan_readiness_service.get_readiness(
+            as_of_date=as_of_date
+        )
         if plan_readiness.status != "ready":
             codes = ", ".join(blocker.code for blocker in plan_readiness.blockers)
-            raise ValueError(f"Plan draft is blocked: {codes or 'insufficient history'}.")
+            raise ValueError(
+                f"Plan draft is blocked: {codes or 'insufficient history'}."
+            )
         preference = self._preference_service.get_preference()
         if preference is None:
             raise ValueError("Set training preferences before creating a plan draft.")
         capacity = self._capacity_service.get_profile(end_date=as_of_date)
-        performance_readiness = self._performance_service.get_readiness(end_date=as_of_date)
+        performance_readiness = self._performance_service.get_readiness(
+            end_date=as_of_date
+        )
         training_response_trends = self._training_response_trend_service.get_trends(
             end_date=as_of_date
         )
@@ -373,11 +457,19 @@ class TrainingPlanService:
             self._training_history_service.get_history(end_date=as_of_date)
         )
         active_principles = tuple(
-            {"id": item.id, "statement": item.statement, "source_plan_id": item.source_plan_id}
-            for item, review_due in CoachingPrincipleService().list_active(as_of_date=as_of_date)
+            {
+                "id": item.id,
+                "statement": item.statement,
+                "source_plan_id": item.source_plan_id,
+            }
+            for item, review_due in CoachingPrincipleService().list_active(
+                as_of_date=as_of_date
+            )
             if not review_due
         )
-        personalization_evidence = PersonalizationEvidenceService().get_evidence(end_date=as_of_date)
+        personalization_evidence = PersonalizationEvidenceService().get_evidence(
+            end_date=as_of_date
+        )
         with session_scope() as session:
             context_events = get_context_events_in_date_range(
                 session,
@@ -423,13 +515,16 @@ class TrainingPlanService:
         if not generated.block_outline:
             raise ValueError("AI plan draft must contain a block outline.")
         if not generated.sessions:
-            raise ValueError("AI plan draft must contain at least one detailed session.")
+            raise ValueError(
+                "AI plan draft must contain at least one detailed session."
+            )
         if not _is_complete_assessment(generated.coach_assessment):
             raise ValueError("AI plan draft must include a complete coach assessment.")
         _validate_fact_references(generated=generated, context=context)
         _validate_knowledge_references(generated=generated, context=context)
         _validate_availability(generated=generated, context=context)
         _validate_sport_mode(generated=generated, context=context)
+        _validate_volume_boundaries(generated=generated, context=context)
         _validate_races_in_detailed_window(generated=generated, context=context)
         allowed_intensity = {
             fact.sport_type: set(fact.allowed_intensity_types)
@@ -444,17 +539,29 @@ class TrainingPlanService:
             if item.sport_type not in {"run", "ride"}:
                 raise ValueError("AI plan draft contains an unsupported sport.")
             if not detailed_start_date <= item.scheduled_date <= detailed_end_date:
-                raise ValueError("AI plan draft contains a session outside the detailed window.")
+                raise ValueError(
+                    "AI plan draft contains a session outside the detailed window."
+                )
             if item.distance_meters is None and item.duration_seconds is None:
                 raise ValueError("Each AI plan session needs distance or duration.")
             if item.sport_type == "ride" and item.distance_meters is None:
                 raise ValueError("Each cycling plan session needs a distance target.")
             if item.sport_type == "ride" and item.duration_seconds is None:
                 raise ValueError("Each cycling plan session needs a duration target.")
-            if item.sport_type == "ride" and item.heart_rate_zone not in {1, 2, 3, 4, 5}:
-                raise ValueError("Each cycling plan session needs a configured Garmin heart-rate zone.")
+            if item.sport_type == "ride" and item.heart_rate_zone not in {
+                1,
+                2,
+                3,
+                4,
+                5,
+            }:
+                raise ValueError(
+                    "Each cycling plan session needs a configured Garmin heart-rate zone."
+                )
             if item.sport_type == "run" and item.heart_rate_zone is not None:
-                raise ValueError("Running plan sessions cannot include a cycling heart-rate zone.")
+                raise ValueError(
+                    "Running plan sessions cannot include a cycling heart-rate zone."
+                )
             _validate_session_target(
                 session=item,
                 allowed_intensity_types=allowed_intensity.get(item.sport_type, set()),
@@ -481,6 +588,7 @@ class TrainingPlanService:
         generated: GeneratedPlanDraft,
         context: dict[str, object],
         performance_readiness: PerformanceReadiness,
+        volume_exception: dict[str, object] | None,
     ) -> TrainingPlanFact:
         with session_scope() as session:
             if goal["race_id"] is not None:
@@ -490,12 +598,21 @@ class TrainingPlanService:
             if parent_plan_id is not None:
                 parent = get_training_plan(session, plan_id=parent_plan_id)
                 if parent is None or parent.status != "accepted":
-                    raise ValueError("This revision is stale because its parent is no longer active.")
+                    raise ValueError(
+                        "This revision is stale because its parent is no longer active."
+                    )
+            stored_context = dict(context)
+            if volume_exception is not None:
+                stored_context["volume_exception"] = volume_exception
             plan = create_training_plan(
                 session,
                 TrainingPlan(
                     parent_plan_id=parent_plan_id,
-                    status="accepted",
+                    status=(
+                        "volume_exception_pending"
+                        if volume_exception is not None
+                        else "accepted"
+                    ),
                     contract_version=CURRENT_PLAN_CONTRACT_VERSION,
                     goal_mode=goal["goal_mode"],
                     race_id=goal["race_id"],
@@ -512,7 +629,7 @@ class TrainingPlanService:
                         }
                         for item in generated.block_outline
                     ],
-                    context_snapshot=context,
+                    context_snapshot=stored_context,
                     coach_assessment=_serialize_coach_assessment(
                         generated.coach_assessment
                     ),
@@ -538,11 +655,12 @@ class TrainingPlanService:
                         workout_steps=_serialize_workout_steps(item.workout_steps),
                     ),
                 )
-            _supersede_replaced_active_plans(
-                session=session,
-                plan=plan,
-                as_of_date=as_of_date,
-            )
+            if volume_exception is None:
+                _supersede_replaced_active_plans(
+                    session=session,
+                    plan=plan,
+                    as_of_date=as_of_date,
+                )
             return _plan_fact(session, plan)
 
     def _generate_validated(
@@ -580,7 +698,9 @@ class TrainingPlanService:
         return self._generator
 
 
-def _supersede_replaced_active_plans(*, session, plan: TrainingPlan, as_of_date: date) -> None:
+def _supersede_replaced_active_plans(
+    *, session, plan: TrainingPlan, as_of_date: date
+) -> None:
     """Version an explicit replacement only after its complete new plan exists."""
 
     for existing in list_training_plans(session):
@@ -596,7 +716,9 @@ def _validate_plan_days(days: int) -> int:
     return days
 
 
-def _validate_feedback_exertion(*, outcome: str, perceived_exertion: int | None) -> int | None:
+def _validate_feedback_exertion(
+    *, outcome: str, perceived_exertion: int | None
+) -> int | None:
     if perceived_exertion is None:
         return None
     if outcome not in {"completed", "completed_limited"}:
@@ -615,7 +737,9 @@ def _validate_feedback_reason(*, outcome: str, reason_code: str | None) -> str |
         return None
     normalized_reason = reason_code.strip().lower()
     if outcome not in {"completed_limited", "skipped"}:
-        raise ValueError("A structured reason can only be saved for a limited or skipped session.")
+        raise ValueError(
+            "A structured reason can only be saved for a limited or skipped session."
+        )
     if normalized_reason not in SUPPORTED_FEEDBACK_REASON_CODES:
         raise ValueError(f"Unsupported feedback reason: {normalized_reason}.")
     return normalized_reason
@@ -633,7 +757,9 @@ def _deserialize_outline_item(item: dict[str, object]):
 
 def _plan_fact(session, plan: TrainingPlan) -> TrainingPlanFact:
     sessions = get_sessions_for_plan(session, plan_id=plan.id)
-    feedback = get_feedback_for_sessions(session, session_ids=[item.id for item in sessions])
+    feedback = get_feedback_for_sessions(
+        session, session_ids=[item.id for item in sessions]
+    )
     return TrainingPlanFact(
         id=plan.id,
         parent_plan_id=plan.parent_plan_id,
@@ -662,7 +788,9 @@ def _plan_fact(session, plan: TrainingPlan) -> TrainingPlanFact:
                     None if item.id not in feedback else feedback[item.id].outcome
                 ),
                 feedback_perceived_exertion=(
-                    None if item.id not in feedback else feedback[item.id].perceived_exertion
+                    None
+                    if item.id not in feedback
+                    else feedback[item.id].perceived_exertion
                 ),
                 feedback_reason_code=(
                     None if item.id not in feedback else feedback[item.id].reason_code
@@ -675,6 +803,7 @@ def _plan_fact(session, plan: TrainingPlan) -> TrainingPlanFact:
             plan.coach_assessment,
             context_snapshot=plan.context_snapshot,
         ),
+        volume_exception=_stored_volume_exception(plan.context_snapshot),
     )
 
 
@@ -776,6 +905,15 @@ def _fact_catalog(
                     preference, "coaching_ambition", "balanced"
                 ),
                 "available_days": preference.available_days,
+                "base_running_distance_ceiling_km": getattr(
+                    preference, "base_running_distance_ceiling_km", None
+                ),
+                "base_cycling_duration_ceiling_hours": getattr(
+                    preference, "base_cycling_duration_ceiling_hours", None
+                ),
+                "base_total_duration_ceiling_hours": getattr(
+                    preference, "base_total_duration_ceiling_hours", None
+                ),
             },
         ),
         "relevant_context": _catalog_entry(
@@ -794,13 +932,13 @@ def _fact_catalog(
         "training_response_trends": _catalog_entry(
             "athlete_reported_python_derived", asdict(training_response_trends)
         ),
-        "training_continuity": _catalog_entry(
-            "garmin_verified", training_continuity
-        ),
+        "training_continuity": _catalog_entry("garmin_verified", training_continuity),
         "athlete_confirmed_coach_principles": _catalog_entry(
             "explicit_athlete_confirmation", active_principles
         ),
-        "personalization_evidence": _catalog_entry("athlete_reported_python_derived", asdict(personalization_evidence)),
+        "personalization_evidence": _catalog_entry(
+            "athlete_reported_python_derived", asdict(personalization_evidence)
+        ),
         "parent_plan": _catalog_entry("local_accepted_plan", parent_plan),
     }
 
@@ -834,14 +972,14 @@ def _validate_races_in_detailed_window(
     try:
         start = date.fromisoformat(str(detailed_window["start_date"]))
         end = date.fromisoformat(str(detailed_window["end_date"]))
-    except (KeyError, ValueError):
+    except KeyError, ValueError:
         return
     race = goal.get("race")
     if not isinstance(race, dict):
         return
     try:
         race_date = date.fromisoformat(str(race["race_date"]))
-    except (KeyError, ValueError):
+    except KeyError, ValueError:
         return
     if not start <= race_date <= end:
         return
@@ -850,7 +988,9 @@ def _validate_races_in_detailed_window(
         session.scheduled_date == race_date and session.sport_type == sport_type
         for session in generated.sessions
     ):
-        raise ValueError("AI plan draft omitted the selected target race inside the detailed window.")
+        raise ValueError(
+            "AI plan draft omitted the selected target race inside the detailed window."
+        )
 
 
 def _planning_readiness_for_selected_goal(plan_readiness) -> dict[str, object]:
@@ -874,10 +1014,14 @@ def _validate_fact_references(
         raise ValueError("Plan draft context is missing the fact catalog.")
     references = generated.coach_assessment.fact_references
     if not references:
-        raise ValueError("AI plan draft must reference at least one selected Pace fact.")
+        raise ValueError(
+            "AI plan draft must reference at least one selected Pace fact."
+        )
     unknown = set(references).difference(fact_catalog)
     if unknown:
-        raise ValueError("AI plan draft referenced facts outside the selected Pace fact catalog.")
+        raise ValueError(
+            "AI plan draft referenced facts outside the selected Pace fact catalog."
+        )
 
 
 def _validate_knowledge_references(
@@ -896,10 +1040,14 @@ def _validate_knowledge_references(
     }
     references = generated.coach_assessment.knowledge_references
     if set(references).difference(allowed_ids):
-        raise ValueError("AI plan draft cited knowledge outside the selected knowledge briefs.")
+        raise ValueError(
+            "AI plan draft cited knowledge outside the selected knowledge briefs."
+        )
 
 
-def _validate_availability(*, generated: GeneratedPlanDraft, context: dict[str, object]) -> None:
+def _validate_availability(
+    *, generated: GeneratedPlanDraft, context: dict[str, object]
+) -> None:
     """Enforce athlete-supplied weekdays and explicit time ceilings in Python."""
 
     fact_catalog = context.get("fact_catalog")
@@ -920,7 +1068,9 @@ def _validate_availability(*, generated: GeneratedPlanDraft, context: dict[str, 
             raise ValueError("Plan draft context has invalid availability entries.")
         day = item.get("day")
         minutes = item.get("minutes")
-        if day not in WEEKDAY_CODES or (minutes is not None and not isinstance(minutes, int)):
+        if day not in WEEKDAY_CODES or (
+            minutes is not None and not isinstance(minutes, int)
+        ):
             raise ValueError("Plan draft context has invalid availability entries.")
         limits_by_day[day] = minutes
 
@@ -928,13 +1078,16 @@ def _validate_availability(*, generated: GeneratedPlanDraft, context: dict[str, 
     for session in generated.sessions:
         day = WEEKDAY_CODES[session.scheduled_date.weekday()]
         if day not in limits_by_day:
-            raise ValueError("AI plan draft scheduled a session outside athlete availability.")
-        duration_by_date[session.scheduled_date] = (
-            duration_by_date.get(session.scheduled_date, 0)
-            + (session.duration_seconds or 0)
-        )
+            raise ValueError(
+                "AI plan draft scheduled a session outside athlete availability."
+            )
+        duration_by_date[session.scheduled_date] = duration_by_date.get(
+            session.scheduled_date, 0
+        ) + (session.duration_seconds or 0)
         if limits_by_day[day] is not None and session.duration_seconds is None:
-            raise ValueError("A time-limited available day requires a session duration.")
+            raise ValueError(
+                "A time-limited available day requires a session duration."
+            )
 
     for scheduled_date, total_seconds in duration_by_date.items():
         day = WEEKDAY_CODES[scheduled_date.weekday()]
@@ -943,12 +1096,18 @@ def _validate_availability(*, generated: GeneratedPlanDraft, context: dict[str, 
             raise ValueError("AI plan draft exceeds athlete availability on one day.")
 
 
-def _validate_sport_mode(*, generated: GeneratedPlanDraft, context: dict[str, object]) -> None:
+def _validate_sport_mode(
+    *, generated: GeneratedPlanDraft, context: dict[str, object]
+) -> None:
     """Treat only-sport selections as athlete-owned hard boundaries."""
 
     catalog = context.get("fact_catalog")
-    preference_entry = catalog.get("training_preference") if isinstance(catalog, dict) else None
-    preference = preference_entry.get("value") if isinstance(preference_entry, dict) else None
+    preference_entry = (
+        catalog.get("training_preference") if isinstance(catalog, dict) else None
+    )
+    preference = (
+        preference_entry.get("value") if isinstance(preference_entry, dict) else None
+    )
     role = preference.get("sport_role") if isinstance(preference, dict) else None
     allowed = {"run", "ride"}
     if role == "run_only":
@@ -956,16 +1115,187 @@ def _validate_sport_mode(*, generated: GeneratedPlanDraft, context: dict[str, ob
     elif role == "ride_only":
         allowed = {"ride"}
     if any(session.sport_type not in allowed for session in generated.sessions):
-        raise ValueError("AI plan draft used a sport outside the athlete's selected sport mode.")
+        raise ValueError(
+            "AI plan draft used a sport outside the athlete's selected sport mode."
+        )
 
 
-def _validate_block_outline(*, outline, block_start_date: date, block_end_date: date) -> None:
+def _validate_volume_boundaries(
+    *, generated: GeneratedPlanDraft, context: dict[str, object]
+) -> None:
+    """Enforce base ceilings; only a selected race may request an exception."""
+
+    breaches = _weekly_volume_breaches(generated=generated, context=context)
+    if not breaches:
+        return
+    catalog = context.get("fact_catalog")
+    goal = _catalog_value(catalog, "goal") if isinstance(catalog, dict) else None
+    if isinstance(goal, dict) and goal.get("goal_mode") == "race":
+        return
+    first = breaches[0]
+    metrics = ", ".join(item["metric"] for item in first["breaches"])
+    raise ValueError(
+        "AI plan draft exceeds the athlete's hard base-volume ceiling "
+        f"for {metrics}. A general plan cannot request a race-volume exception."
+    )
+
+
+def _volume_exception_for_generated(
+    *, generated: GeneratedPlanDraft, context: dict[str, object]
+) -> dict[str, object] | None:
+    breaches = _weekly_volume_breaches(generated=generated, context=context)
+    if not breaches:
+        return None
+    return {
+        "approved": False,
+        "rationale": generated.coach_assessment.rationale,
+        "weeks": breaches,
+    }
+
+
+def _weekly_volume_breaches(
+    *, generated: GeneratedPlanDraft, context: dict[str, object]
+) -> list[dict[str, object]]:
+    catalog = context.get("fact_catalog")
+    preference = (
+        _catalog_value(catalog, "training_preference")
+        if isinstance(catalog, dict)
+        else None
+    )
+    if not isinstance(preference, dict):
+        raise ValueError("Plan draft context is missing training preferences.")
+    run_ceiling = _optional_positive_number(
+        preference.get("base_running_distance_ceiling_km"),
+        label="base running ceiling",
+    )
+    ride_ceiling = _optional_positive_number(
+        preference.get("base_cycling_duration_ceiling_hours"),
+        label="base cycling ceiling",
+    )
+    total_ceiling = _optional_positive_number(
+        preference.get("base_total_duration_ceiling_hours"),
+        label="base total-time ceiling",
+    )
+    if run_ceiling is None and ride_ceiling is None and total_ceiling is None:
+        return []
+
+    weekly: dict[date, dict[str, float]] = {}
+    for item in generated.sessions:
+        week_start = item.scheduled_date - timedelta(days=item.scheduled_date.weekday())
+        values = weekly.setdefault(
+            week_start,
+            {
+                "running_distance_km": 0.0,
+                "cycling_duration_hours": 0.0,
+                "total_duration_hours": 0.0,
+            },
+        )
+        if item.sport_type == "run" and run_ceiling is not None:
+            if item.distance_meters is None:
+                raise ValueError(
+                    "Each running session needs a distance while a base running ceiling is set."
+                )
+            values["running_distance_km"] += item.distance_meters / 1_000
+        if item.sport_type == "ride" and ride_ceiling is not None:
+            if item.duration_seconds is None:
+                raise ValueError(
+                    "Each cycling session needs a duration while a base cycling ceiling is set."
+                )
+            values["cycling_duration_hours"] += item.duration_seconds / 3_600
+        if total_ceiling is not None:
+            if item.duration_seconds is None:
+                raise ValueError(
+                    "Each session needs a duration while a base total-time ceiling is set."
+                )
+            values["total_duration_hours"] += item.duration_seconds / 3_600
+
+    boundaries = (
+        ("running_distance_km", run_ceiling, "km"),
+        ("cycling_duration_hours", ride_ceiling, "hours"),
+        ("total_duration_hours", total_ceiling, "hours"),
+    )
+    result: list[dict[str, object]] = []
+    for week_start, values in sorted(weekly.items()):
+        week_breaches = [
+            {
+                "metric": metric,
+                "ceiling": ceiling,
+                "proposed": round(values[metric], 3),
+                "unit": unit,
+            }
+            for metric, ceiling, unit in boundaries
+            if ceiling is not None and values[metric] > ceiling + 1e-9
+        ]
+        if week_breaches:
+            result.append(
+                {
+                    "week_start": week_start.isoformat(),
+                    "week_end": (week_start + timedelta(days=6)).isoformat(),
+                    "breaches": week_breaches,
+                }
+            )
+    return result
+
+
+def _optional_positive_number(value: object, *, label: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        raise ValueError(f"Plan draft context has an invalid {label}.")
+    return float(value)
+
+
+def _stored_volume_exception(
+    context_snapshot: dict[str, object],
+) -> VolumeExceptionFact | None:
+    value = context_snapshot.get("volume_exception")
+    if not isinstance(value, dict):
+        return None
+    weeks_value = value.get("weeks")
+    if not isinstance(weeks_value, list):
+        return None
+    weeks: list[WeeklyVolumeExceptionFact] = []
+    try:
+        for week in weeks_value:
+            if not isinstance(week, dict) or not isinstance(week.get("breaches"), list):
+                return None
+            breaches = tuple(
+                VolumeBoundaryBreachFact(
+                    metric=str(breach["metric"]),
+                    ceiling=float(breach["ceiling"]),
+                    proposed=float(breach["proposed"]),
+                    unit=str(breach["unit"]),
+                )
+                for breach in week["breaches"]
+                if isinstance(breach, dict)
+            )
+            weeks.append(
+                WeeklyVolumeExceptionFact(
+                    week_start=date.fromisoformat(str(week["week_start"])),
+                    week_end=date.fromisoformat(str(week["week_end"])),
+                    breaches=breaches,
+                )
+            )
+    except KeyError, TypeError, ValueError:
+        return None
+    return VolumeExceptionFact(
+        approved=bool(value.get("approved")),
+        rationale=str(value.get("rationale") or ""),
+        weeks=tuple(weeks),
+    )
+
+
+def _validate_block_outline(
+    *, outline, block_start_date: date, block_end_date: date
+) -> None:
     """Require sorted, contiguous phases that describe the whole plan block."""
 
     expected_start = block_start_date
     for item in outline:
         if item.week_start != expected_start or item.week_end < item.week_start:
-            raise ValueError("AI plan draft block outline must be sorted and contiguous.")
+            raise ValueError(
+                "AI plan draft block outline must be sorted and contiguous."
+            )
         if item.week_end > block_end_date:
             raise ValueError("AI plan draft contains an outline outside the block.")
         expected_start = item.week_end + timedelta(days=1)
@@ -985,8 +1315,10 @@ def _is_complete_assessment(assessment) -> bool:
 
 
 def _has_nonempty_texts(values: object) -> bool:
-    return isinstance(values, tuple) and bool(values) and all(
-        isinstance(value, str) and value.strip() for value in values
+    return (
+        isinstance(values, tuple)
+        and bool(values)
+        and all(isinstance(value, str) and value.strip() for value in values)
     )
 
 
@@ -1055,7 +1387,9 @@ def _parent_plan_context(*, parent, sessions, feedback_by_session) -> dict[str, 
     }
 
 
-def _validate_heart_rate_zone(*, session, performance_readiness: PerformanceReadiness) -> None:
+def _validate_heart_rate_zone(
+    *, session, performance_readiness: PerformanceReadiness
+) -> None:
     """Require a cycling zone that exists in the athlete's saved profile."""
 
     if session.heart_rate_zone is None:
@@ -1067,7 +1401,9 @@ def _validate_heart_rate_zone(*, session, performance_readiness: PerformanceRead
         for zone in sport.heart_rate_zones
     }
     if session.heart_rate_zone not in configured_zones:
-        raise ValueError("AI plan draft used a heart-rate zone not configured for this sport.")
+        raise ValueError(
+            "AI plan draft used a heart-rate zone not configured for this sport."
+        )
 
 
 def _validate_session_target(
@@ -1089,8 +1425,13 @@ def _validate_session_target(
         for evidence in sport.intensity_evidence
     }
     if target.kind == "none":
-        if any(value is not None for value in numeric_fields) or target.evidence_reference_id:
-            raise ValueError("A none target cannot include numeric values or an evidence reference.")
+        if (
+            any(value is not None for value in numeric_fields)
+            or target.evidence_reference_id
+        ):
+            raise ValueError(
+                "A none target cannot include numeric values or an evidence reference."
+            )
         return
     if target.kind == "rpe":
         if (
@@ -1101,7 +1442,9 @@ def _validate_session_target(
             or target.power_watts is not None
             or target.evidence_reference_id is not None
         ):
-            raise ValueError("An RPE target must contain only an RPE range from 1 to 10.")
+            raise ValueError(
+                "An RPE target must contain only an RPE range from 1 to 10."
+            )
         return
     if target.kind not in allowed_intensity_types:
         raise ValueError(
@@ -1120,7 +1463,9 @@ def _validate_session_target(
             or target.power_watts is not None
             or evidence.average_speed_mps is None
         ):
-            raise ValueError("A pace target must cite numeric verified running evidence.")
+            raise ValueError(
+                "A pace target must cite numeric verified running evidence."
+            )
         return
     if target.kind == "power":
         if (
@@ -1133,7 +1478,9 @@ def _validate_session_target(
             or evidence.protocol != "ride_20min_power_test"
             or evidence.qualifying_power_watts is None
         ):
-            raise ValueError("A power target must cite a verified 20-minute cycling power test.")
+            raise ValueError(
+                "A power target must cite a verified 20-minute cycling power test."
+            )
         return
     raise ValueError("AI plan draft had an unsupported target kind.")
 
@@ -1147,7 +1494,9 @@ def _validate_workout_steps(
     """Validate each generated workout block with the same evidence gates as its pass."""
 
     if not session.workout_steps:
-        raise ValueError("Each AI plan session needs at least one structured workout step.")
+        raise ValueError(
+            "Each AI plan session needs at least one structured workout step."
+        )
     for step in session.workout_steps:
         if step.kind not in {"warmup", "steady", "interval", "cooldown"}:
             raise ValueError("AI plan draft contains an unsupported workout-step kind.")
@@ -1155,19 +1504,25 @@ def _validate_workout_steps(
             raise ValueError("Each workout step needs distance or duration.")
         if step.kind == "interval":
             if step.repetitions < 2:
-                raise ValueError("An interval workout step needs at least two repetitions.")
+                raise ValueError(
+                    "An interval workout step needs at least two repetitions."
+                )
             if (
                 step.recovery_distance_meters is None
                 and step.recovery_duration_seconds is None
             ) or step.recovery_target is None:
-                raise ValueError("An interval workout step needs recovery duration or distance and target.")
+                raise ValueError(
+                    "An interval workout step needs recovery duration or distance and target."
+                )
         elif (
             step.repetitions != 1
             or step.recovery_distance_meters is not None
             or step.recovery_duration_seconds is not None
             or step.recovery_target is not None
         ):
-            raise ValueError("Only interval workout steps may use repetitions or recovery.")
+            raise ValueError(
+                "Only interval workout steps may use repetitions or recovery."
+            )
         _validate_session_target(
             session=_WorkoutStepSession(session.sport_type, step.target),
             allowed_intensity_types=allowed_intensity_types,
@@ -1256,7 +1611,9 @@ def _serialize_workout_steps(
 def _serialize_stored_workout_steps(session) -> list[dict[str, object]]:
     """Return plan snapshots as JSON-safe context, tolerating pre-v3 plans."""
 
-    return list(session.workout_steps) if isinstance(session.workout_steps, list) else []
+    return (
+        list(session.workout_steps) if isinstance(session.workout_steps, list) else []
+    )
 
 
 def _session_target_draft(session) -> SessionTargetDraft:
@@ -1313,8 +1670,12 @@ def _workout_steps_fact(session) -> tuple[WorkoutStepFact, ...]:
                 distance_meters=_stored_float(raw.get("distance_meters")),
                 duration_seconds=_stored_int(raw.get("duration_seconds")),
                 target=target,
-                recovery_distance_meters=_stored_float(raw.get("recovery_distance_meters")),
-                recovery_duration_seconds=_stored_int(raw.get("recovery_duration_seconds")),
+                recovery_distance_meters=_stored_float(
+                    raw.get("recovery_distance_meters")
+                ),
+                recovery_duration_seconds=_stored_int(
+                    raw.get("recovery_duration_seconds")
+                ),
                 recovery_target=(
                     _session_target_fact_from_raw(recovery_raw)
                     if isinstance(recovery_raw, dict)
@@ -1357,4 +1718,8 @@ def _stored_int(value: object) -> int | None:
 
 
 def _stored_float(value: object) -> float | None:
-    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+    return (
+        float(value)
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+        else None
+    )

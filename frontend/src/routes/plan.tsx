@@ -14,7 +14,12 @@ import {
   StatusBadge,
 } from "@/components/pace/states";
 import { getPaceClient, IS_PROTOTYPE_DATA } from "@/lib/pace/client";
-import { paceKeys, planHistoryQuery, planQuery } from "@/lib/pace/queries";
+import {
+  paceKeys,
+  pendingVolumeExceptionQuery,
+  planHistoryQuery,
+  planQuery,
+} from "@/lib/pace/queries";
 import type { RevisionResult } from "@/lib/pace/types";
 
 export const Route = createFileRoute("/plan")({
@@ -50,6 +55,18 @@ function PlanPage() {
 
   const plan = useQuery(planQuery());
   const history = useQuery(planHistoryQuery());
+  const pendingException = useQuery(pendingVolumeExceptionQuery());
+
+  const approveException = useMutation({
+    mutationFn: (planId: string) => getPaceClient().approveVolumeException(planId),
+    onSuccess: (result) => {
+      if (result.status === "saved") {
+        queryClient.invalidateQueries({ queryKey: paceKeys.plan });
+        queryClient.invalidateQueries({ queryKey: paceKeys.planHistory });
+        queryClient.invalidateQueries({ queryKey: paceKeys.pendingVolumeException });
+      }
+    },
+  });
 
   const toggleDemo = useMutation({
     mutationFn: (due: boolean) => getPaceClient().setRevisionDueDemo(due),
@@ -67,6 +84,10 @@ function PlanPage() {
         queryClient.setQueryData(paceKeys.plan, result.plan);
         queryClient.invalidateQueries({ queryKey: paceKeys.planHistory });
       }
+      if (result.status === "pending_approval") {
+        queryClient.invalidateQueries({ queryKey: paceKeys.pendingVolumeException });
+        queryClient.invalidateQueries({ queryKey: paceKeys.planHistory });
+      }
     },
   });
 
@@ -79,6 +100,75 @@ function PlanPage() {
       />
 
       <div className="mt-8 space-y-6">
+        {pendingException.data && (
+          <Panel
+            title="Race-volume exception requires approval"
+            note={`Proposed plan ${pendingException.data.planId} for ${pendingException.data.raceName} is not active. Your current accepted plan remains unchanged.`}
+            aside={<StatusBadge kind="pending" label="Not approved" />}
+          >
+            <p className="text-sm">{pendingException.data.rationale}</p>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[560px] border-collapse text-sm">
+                <thead>
+                  <tr>
+                    <th className="border-b border-rule px-2 py-2 text-left">Calendar week</th>
+                    <th className="border-b border-rule px-2 py-2 text-left">Boundary</th>
+                    <th className="border-b border-rule px-2 py-2 text-right">Base ceiling</th>
+                    <th className="border-b border-rule px-2 py-2 text-right">Proposed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingException.data.weeks.flatMap((week) =>
+                    week.breaches.map((breach) => (
+                      <tr key={`${week.weekStart}-${breach.metric}`}>
+                        <td className="border-b border-rule px-2 py-2">
+                          {week.weekStart} to {week.weekEnd}
+                        </td>
+                        <td className="border-b border-rule px-2 py-2">
+                          {breach.metric.replaceAll("_", " ")}
+                        </td>
+                        <td className="border-b border-rule px-2 py-2 text-right">
+                          {breach.ceiling} {breach.unit}
+                        </td>
+                        <td className="border-b border-rule px-2 py-2 text-right font-semibold">
+                          {breach.proposed} {breach.unit}
+                        </td>
+                      </tr>
+                    )),
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              This approval applies only to this race-plan version. It does not raise your saved
+              base ceiling.
+            </p>
+            <button
+              type="button"
+              className={`${BTN_PRIMARY} mt-4`}
+              disabled={approveException.isPending || approveException.data?.status === "saved"}
+              onClick={() => approveException.mutate(pendingException.data!.planId)}
+            >
+              {approveException.isPending ? "Approving" : "Approve race-volume exception"}
+            </button>
+            {approveException.data && !approveException.isPending && (
+              <div className="mt-3">
+                {approveException.data.status === "saved" ? (
+                  <NoticeState
+                    kind="completed"
+                    title={approveException.data.message}
+                    description={approveException.data.detail}
+                  />
+                ) : (
+                  <FailedState
+                    title={approveException.data.message}
+                    description={approveException.data.detail}
+                  />
+                )}
+              </div>
+            )}
+          </Panel>
+        )}
         {plan.isPending && (
           <Panel title="Active plan">
             <LoadingState label="Reading the active plan" />
@@ -204,6 +294,14 @@ function PlanPage() {
                   />
                 )}
 
+                {revision?.status === "pending_approval" && !generate.isPending && (
+                  <NoticeState
+                    kind="pending"
+                    title={revision.message}
+                    description={revision.detail}
+                  />
+                )}
+
                 {revision?.status === "saved" && !generate.isPending && (
                   <NoticeState
                     kind="completed"
@@ -226,23 +324,12 @@ function PlanPage() {
               ))}
             </div>
 
-            <Panel title="Facts behind this plan">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {plan.data.facts.map((fact) => (
-                  <StatTile
-                    key={fact.id}
-                    label={fact.label}
-                    value={fact.value}
-                    unit={fact.unit}
-                    detail={fact.detail}
-                  />
-                ))}
-              </div>
-              <div className="mt-4 space-y-3">
+            <section className="border border-rule bg-surface px-4 py-4">
+              <div className="grid gap-4 lg:grid-cols-2">
                 <EvidenceList kind="assessment" items={plan.data.assessment} />
                 <EvidenceList kind="uncertainty" items={plan.data.uncertainty} />
               </div>
-            </Panel>
+            </section>
 
             <section className="border border-rule bg-surface-sunken/40">
               <button

@@ -10,6 +10,7 @@ export const paceKeys = {
   sync: ["pace", "sync"] as const,
   plan: ["pace", "plan"] as const,
   planHistory: ["pace", "plan-history"] as const,
+  pendingVolumeException: ["pace", "pending-volume-exception"] as const,
   dashboard: (window: DashboardWindow) => ["pace", "dashboard", window] as const,
   weeklyReview: ["pace", "weekly-review"] as const,
   races: ["pace", "races"] as const,
@@ -53,6 +54,12 @@ export const planHistoryQuery = () =>
   queryOptions({
     queryKey: paceKeys.planHistory,
     queryFn: () => getPaceClient().getPlanHistory(),
+  });
+
+export const pendingVolumeExceptionQuery = () =>
+  queryOptions({
+    queryKey: paceKeys.pendingVolumeException,
+    queryFn: () => getPaceClient().getPendingVolumeException(),
   });
 
 export const dashboardQuery = (window: DashboardWindow) =>

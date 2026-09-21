@@ -26,6 +26,10 @@ class RaceMutation(BaseModel):
     taper_override: str | None = None
 
 
+class VolumeExceptionApproval(BaseModel):
+    plan_id: int = Field(gt=0)
+
+
 def install_api_v1(
     app: FastAPI,
     *,
@@ -87,7 +91,9 @@ def install_api_v1(
                 {
                     "id": str(plan.id),
                     "version": int(getattr(plan, "contract_version", 1)),
-                    "acceptedAt": getattr(plan, "as_of_date", services.today()).isoformat(),
+                    "acceptedAt": getattr(
+                        plan, "as_of_date", services.today()
+                    ).isoformat(),
                     "mode": plan.goal_mode,
                     "windowLabel": (
                         f"{plan.detailed_start_date.isoformat()} – "
@@ -99,10 +105,60 @@ def install_api_v1(
             )
         return result
 
+    @router.get("/plans/pending-volume-exception")
+    def pending_volume_exception() -> dict[str, object] | None:
+        plan = next(
+            (
+                item
+                for item in services.plan_service.list_plans()
+                if item.status == "volume_exception_pending"
+            ),
+            None,
+        )
+        if plan is None or plan.volume_exception is None:
+            return None
+        race = _race_for_plan(services, plan, services.today())
+        return {
+            "planId": str(plan.id),
+            "raceName": "Selected race" if race is None else race.name,
+            "rationale": plan.volume_exception.rationale,
+            "weeks": [
+                {
+                    "weekStart": week.week_start.isoformat(),
+                    "weekEnd": week.week_end.isoformat(),
+                    "breaches": [
+                        {
+                            "metric": breach.metric,
+                            "ceiling": breach.ceiling,
+                            "proposed": breach.proposed,
+                            "unit": breach.unit,
+                        }
+                        for breach in week.breaches
+                    ],
+                }
+                for week in plan.volume_exception.weeks
+            ],
+        }
+
+    @router.post("/plans/volume-exception/approve")
+    def approve_volume_exception(
+        request: Request, payload: VolumeExceptionApproval
+    ) -> dict[str, object]:
+        require_csrf(request)
+        try:
+            plan = services.plan_service.approve_volume_exception(
+                plan_id=payload.plan_id
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {"status": "accepted", "planId": str(plan.id)}
+
     @router.get("/dashboard")
     def dashboard(days: int = 28) -> dict[str, object]:
         if days not in {28, 84}:
-            raise HTTPException(status_code=422, detail="Dashboard days must be 28 or 84.")
+            raise HTTPException(
+                status_code=422, detail="Dashboard days must be 28 or 84."
+            )
         as_of = services.today()
         data = services.dashboard_service.get_dashboard_data(end_date=as_of, days=days)
         return _dashboard(data, days, as_of)
@@ -211,13 +267,30 @@ def install_api_v1(
         preference = services.preference_service.get_preference()
         zones = services.zone_service.get_profile(sport_type="ride")
         return {
-            "sportRole": (
-                "balanced" if preference is None else preference.sport_role
-            ),
+            "sportRole": ("balanced" if preference is None else preference.sport_role),
             "ambition": (
                 "balanced" if preference is None else preference.coaching_ambition
             ),
             "availability": _availability(preference),
+            "volumeBoundaries": {
+                "runningKmPerWeek": (
+                    None
+                    if preference is None
+                    else getattr(preference, "base_running_distance_ceiling_km", None)
+                ),
+                "cyclingHoursPerWeek": (
+                    None
+                    if preference is None
+                    else getattr(
+                        preference, "base_cycling_duration_ceiling_hours", None
+                    )
+                ),
+                "totalHoursPerWeek": (
+                    None
+                    if preference is None
+                    else getattr(preference, "base_total_duration_ceiling_hours", None)
+                ),
+            },
             "cyclingZones": _zones(zones),
             "zonesConfirmed": zones is not None,
             "connections": [
@@ -235,7 +308,9 @@ def install_api_v1(
                     "id": "openai",
                     "label": "OpenAI",
                     "state": (
-                        "connected" if resolve_openai_api_key(settings) else "not_connected"
+                        "connected"
+                        if resolve_openai_api_key(settings)
+                        else "not_connected"
                     ),
                     "detail": "The API key remains in the local Pace secrets file.",
                 },
@@ -252,7 +327,9 @@ def install_api_v1(
             "session": _plan_session(session),
             "planLabel": f"Plan {plan.id} · {plan.goal_mode}",
             "paceFacts": [
-                _fact("planned-date", "Planned date", session.scheduled_date.isoformat()),
+                _fact(
+                    "planned-date", "Planned date", session.scheduled_date.isoformat()
+                ),
                 _fact("planned-target", "Planned target", session.target_display),
             ],
             "garminFacts": [],
@@ -295,9 +372,7 @@ def _find_session(plans: Any, session_id: int) -> tuple[Any | None, Any | None]:
 def _all_races(services: Any, as_of: date) -> list[Any]:
     list_races = getattr(services.race_service, "list_races", None)
     if callable(list_races):
-        return list_races(
-            as_of_date=as_of, include_past=True, include_cancelled=True
-        )
+        return list_races(as_of_date=as_of, include_past=True, include_cancelled=True)
     return list(services.race_service.list_upcoming_races(as_of_date=as_of))
 
 
@@ -305,7 +380,9 @@ def _race_for_plan(services: Any, plan: Any | None, as_of: date) -> Any | None:
     race_id = None if plan is None else getattr(plan, "race_id", None)
     if race_id is None:
         return None
-    return next((item for item in _all_races(services, as_of) if item.id == race_id), None)
+    return next(
+        (item for item in _all_races(services, as_of) if item.id == race_id), None
+    )
 
 
 def _sport(value: str) -> str:
@@ -430,9 +507,19 @@ def _duration(seconds: int) -> str:
 
 def _goal(plan: Any | None, race: Any | None, as_of: date) -> dict[str, object]:
     if plan is None:
-        return {"label": "No active plan", "raceDate": None, "daysToRace": None, "priority": None}
+        return {
+            "label": "No active plan",
+            "raceDate": None,
+            "daysToRace": None,
+            "priority": None,
+        }
     if race is None:
-        return {"label": "General training", "raceDate": None, "daysToRace": None, "priority": None}
+        return {
+            "label": "General training",
+            "raceDate": None,
+            "daysToRace": None,
+            "priority": None,
+        }
     return {
         "label": race.name,
         "raceDate": race.race_date.isoformat(),
@@ -441,7 +528,9 @@ def _goal(plan: Any | None, race: Any | None, as_of: date) -> dict[str, object]:
     }
 
 
-def _plan(plan: Any, race: Any | None, checkpoint: Any, as_of: date) -> dict[str, object]:
+def _plan(
+    plan: Any, race: Any | None, checkpoint: Any, as_of: date
+) -> dict[str, object]:
     assessment = plan.coach_assessment
     goal = _goal(plan, race, as_of)
     goal.update(
@@ -468,7 +557,8 @@ def _plan(plan: Any, race: Any | None, checkpoint: Any, as_of: date) -> dict[str
         "timeline": _timeline(plan, race, as_of),
         "sessions": [_plan_session(item) for item in plan.sessions],
         "facts": _text_facts("observed", getattr(assessment, "observed_facts", ())),
-        "assessment": list(getattr(assessment, "inferences", ())) + [assessment.rationale],
+        "assessment": list(getattr(assessment, "inferences", ()))
+        + [assessment.rationale],
         "uncertainty": list(getattr(assessment, "uncertainties", ())),
     }
 
@@ -480,14 +570,21 @@ def _timeline(plan: Any, race: Any | None, as_of: date) -> list[dict[str, object
         end = date.fromisoformat(str(week["week_end"]))
         focus = str(week.get("focus", "Training block"))
         lowered = focus.casefold()
-        phase = "taper" if "taper" in lowered else "specific" if plan.goal_mode == "race" else "base"
+        phase = (
+            "taper"
+            if "taper" in lowered
+            else "specific"
+            if plan.goal_mode == "race"
+            else "base"
+        )
         payload: dict[str, object] = {
             "id": f"week-{index + 1}",
             "label": f"Week {index + 1}",
             "range": f"{start.isoformat()} – {end.isoformat()}",
             "phase": phase,
             "focus": focus,
-            "detailed": start <= plan.detailed_end_date and end >= plan.detailed_start_date,
+            "detailed": start <= plan.detailed_end_date
+            and end >= plan.detailed_start_date,
             "current": start <= as_of <= end,
         }
         if race is not None and start <= race.race_date <= end:
@@ -512,9 +609,16 @@ def _desired_time(race: Any | None) -> str | None:
 
 def _today_facts(analysis: Any, state: Any) -> list[dict[str, object]]:
     facts = [
-        _fact("duration", "Training · 28 days", f"{analysis.total_duration_hours:.1f}", "hours"),
+        _fact(
+            "duration",
+            "Training · 28 days",
+            f"{analysis.total_duration_hours:.1f}",
+            "hours",
+        ),
         _fact("active-days", "Active days", str(analysis.total_active_days), "days"),
-        _fact("feedback", "Explicit feedback", str(analysis.feedback_records), "records"),
+        _fact(
+            "feedback", "Explicit feedback", str(analysis.feedback_records), "records"
+        ),
     ]
     for item in state.data_quality.recovery:
         if item.metric == "hrv":
@@ -550,7 +654,10 @@ def _fact(
 
 
 def _text_facts(prefix: str, values: Any) -> list[dict[str, object]]:
-    return [_fact(f"{prefix}-{index}", "Observation", str(value)) for index, value in enumerate(values, 1)]
+    return [
+        _fact(f"{prefix}-{index}", "Observation", str(value))
+        for index, value in enumerate(values, 1)
+    ]
 
 
 def _freshness(state: Any, as_of: date) -> str:
@@ -580,7 +687,8 @@ def _data_quality(state: Any, as_of: date) -> dict[str, object]:
         "coverageNote": " · ".join(
             f"{item.metric}: {item.baseline_data_points}/{item.expected_baseline_days}"
             for item in recovery
-        ) or "Recovery coverage is unknown.",
+        )
+        or "Recovery coverage is unknown.",
         "warnings": warnings,
     }
 
@@ -597,7 +705,9 @@ def _today_rationale(plan: Any | None, session: Any | None) -> str:
 def _action_needed(freshness: str, plan: Any | None, session: Any | None) -> list[str]:
     actions = []
     if freshness in {"stale", "unknown"}:
-        actions.append("Garmin data is not current. Start an explicit sync before making a new training decision.")
+        actions.append(
+            "Garmin data is not current. Start an explicit sync before making a new training decision."
+        )
     if plan is None:
         actions.append("No active plan exists.")
     elif session is None:
@@ -627,13 +737,78 @@ def _dashboard(data: Any, days: int, as_of: date) -> dict[str, object]:
             "hours",
             dates,
             (
-                ("run", "Running", "run", [seconds[day, "run"] / 3_600 for day in dates]),
-                ("ride", "Cycling", "ride", [seconds[day, "ride"] / 3_600 for day in dates]),
+                (
+                    "run",
+                    "Running",
+                    "run",
+                    [seconds[day, "run"] / 3_600 for day in dates],
+                ),
+                (
+                    "ride",
+                    "Cycling",
+                    "ride",
+                    [seconds[day, "ride"] / 3_600 for day in dates],
+                ),
             ),
         ),
-        _chart("hrv", "HRV", "line", "ms", dates, (("hrv", "HRV", "forest", [recovery.get(day).hrv_value if day in recovery else None for day in dates]),)),
-        _chart("rhr", "Resting heart rate", "line", "bpm", dates, (("rhr", "Resting heart rate", "warning", [recovery.get(day).resting_heart_rate if day in recovery else None for day in dates]),)),
-        _chart("sleep", "Sleep duration", "line", "hours", dates, (("sleep", "Sleep", "accent", [recovery.get(day).sleep_duration_hours if day in recovery else None for day in dates]),)),
+        _chart(
+            "hrv",
+            "HRV",
+            "line",
+            "ms",
+            dates,
+            (
+                (
+                    "hrv",
+                    "HRV",
+                    "forest",
+                    [
+                        recovery.get(day).hrv_value if day in recovery else None
+                        for day in dates
+                    ],
+                ),
+            ),
+        ),
+        _chart(
+            "rhr",
+            "Resting heart rate",
+            "line",
+            "bpm",
+            dates,
+            (
+                (
+                    "rhr",
+                    "Resting heart rate",
+                    "warning",
+                    [
+                        recovery.get(day).resting_heart_rate
+                        if day in recovery
+                        else None
+                        for day in dates
+                    ],
+                ),
+            ),
+        ),
+        _chart(
+            "sleep",
+            "Sleep duration",
+            "line",
+            "hours",
+            dates,
+            (
+                (
+                    "sleep",
+                    "Sleep",
+                    "accent",
+                    [
+                        recovery.get(day).sleep_duration_hours
+                        if day in recovery
+                        else None
+                        for day in dates
+                    ],
+                ),
+            ),
+        ),
     ]
     state = data.state
     return {
@@ -641,21 +816,53 @@ def _dashboard(data: Any, days: int, as_of: date) -> dict[str, object]:
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "runTiles": [
             _fact("run-count", "Running sessions", str(count["run"])),
-            _fact("run-hours", "Running time", f"{sum(seconds[day, 'run'] for day in dates) / 3_600:.1f}", "hours"),
-            _fact("run-distance", "Known running distance", f"{distance['run'] / 1_000:.1f}", "km"),
+            _fact(
+                "run-hours",
+                "Running time",
+                f"{sum(seconds[day, 'run'] for day in dates) / 3_600:.1f}",
+                "hours",
+            ),
+            _fact(
+                "run-distance",
+                "Known running distance",
+                f"{distance['run'] / 1_000:.1f}",
+                "km",
+            ),
         ],
         "rideTiles": [
             _fact("ride-count", "Cycling sessions", str(count["ride"])),
-            _fact("ride-hours", "Cycling time", f"{sum(seconds[day, 'ride'] for day in dates) / 3_600:.1f}", "hours"),
-            _fact("ride-distance", "Known cycling distance", f"{distance['ride'] / 1_000:.1f}", "km"),
+            _fact(
+                "ride-hours",
+                "Cycling time",
+                f"{sum(seconds[day, 'ride'] for day in dates) / 3_600:.1f}",
+                "hours",
+            ),
+            _fact(
+                "ride-distance",
+                "Known cycling distance",
+                f"{distance['ride'] / 1_000:.1f}",
+                "km",
+            ),
         ],
         "recoveryTiles": [
-            _fact(item.metric, item.metric.replace("_", " ").title(), str(item.baseline_data_points), "days", coverage=f"{item.baseline_data_points}/{item.expected_baseline_days}")
+            _fact(
+                item.metric,
+                item.metric.replace("_", " ").title(),
+                str(item.baseline_data_points),
+                "days",
+                coverage=f"{item.baseline_data_points}/{item.expected_baseline_days}",
+            )
             for item in state.data_quality.recovery
         ],
         "charts": charts,
         "coverage": [
-            _fact(item.metric, item.metric.replace("_", " ").title(), str(item.baseline_data_points), "days", coverage=f"{item.baseline_data_points}/{item.expected_baseline_days}")
+            _fact(
+                item.metric,
+                item.metric.replace("_", " ").title(),
+                str(item.baseline_data_points),
+                "days",
+                coverage=f"{item.baseline_data_points}/{item.expected_baseline_days}",
+            )
             for item in state.data_quality.recovery
         ],
         "dataQuality": _data_quality(state, as_of),
@@ -664,7 +871,9 @@ def _dashboard(data: Any, days: int, as_of: date) -> dict[str, object]:
     }
 
 
-def _chart(identifier: str, title: str, kind: str, unit: str, dates: Any, series: Any) -> dict[str, object]:
+def _chart(
+    identifier: str, title: str, kind: str, unit: str, dates: Any, series: Any
+) -> dict[str, object]:
     return {
         "id": identifier,
         "title": title,
@@ -710,7 +919,11 @@ def _race(item: Any, active_race_id: int | None) -> dict[str, object]:
 
 
 def _availability(preference: Any | None) -> list[dict[str, object]]:
-    selected = {} if preference is None else {item["day"]: item.get("minutes") for item in preference.available_days}
+    selected = (
+        {}
+        if preference is None
+        else {item["day"]: item.get("minutes") for item in preference.available_days}
+    )
     labels = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
     return [
         {"day": day, "available": day in selected, "capMinutes": selected.get(day)}
