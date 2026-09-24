@@ -111,11 +111,12 @@ class CoachDialogueService:
             knowledge_briefs=knowledge_briefs,
         )
         context["active_plan"] = _serialize_active_plan(plan)
-        context["plan_lineage"] = _serialize_plan_lineage(
+        plan_lineage = _serialize_plan_lineage(
             plans=self._plan_history_source.list_plans(),
             active_plan=plan,
             end_date=end_date,
         )
+        context["plan_lineage"] = plan_lineage
         context["training_response_trends"] = asdict(
             self._training_response_trend_service.get_trends(end_date=end_date)
         )
@@ -153,12 +154,21 @@ class CoachDialogueService:
                 adjustment=answer.adjustment_draft,
             )
         if answer.feedback_draft is not None:
-            self._validate_feedback_draft(plan=plan, feedback=answer.feedback_draft)
+            self._validate_feedback_draft(
+                plan=plan,
+                plan_lineage=plan_lineage,
+                feedback=answer.feedback_draft,
+            )
         return answer
 
-    def _validate_feedback_draft(self, *, plan, feedback) -> None:
-        if not any(session.id == feedback.planned_session_id for session in plan.sessions):
-            raise ValueError("Coach feedback draft referenced a session outside the active plan.")
+    def _validate_feedback_draft(self, *, plan, plan_lineage, feedback) -> None:
+        effective_session_ids = {
+            session["session_id"] for session in plan_lineage["effective_schedule"]
+        }
+        if feedback.planned_session_id not in effective_session_ids:
+            raise ValueError(
+                "Coach feedback draft referenced a session outside the effective plan."
+            )
 
     def _validate_adjustment(self, *, plan, end_date, adjustment) -> None:
         if adjustment.action == "keep_plan":
@@ -300,6 +310,16 @@ def _serialize_plan_lineage(
         parent_id = parent.parent_plan_id
 
     versions: list[dict[str, object]] = []
+    effective_by_date: dict[str, list[dict[str, object]]] = {}
+    for session in active_plan.sessions:
+        if start_date <= session.scheduled_date <= history_end_date:
+            effective_by_date.setdefault(session.scheduled_date.isoformat(), []).append(
+                _serialize_effective_session(
+                    session=session,
+                    source_plan_id=active_plan.id,
+                    inherited=False,
+                )
+            )
     for plan in lineage:
         sessions = [
             session
@@ -308,6 +328,16 @@ def _serialize_plan_lineage(
         ]
         if not sessions:
             continue
+        for session in sessions:
+            session_date = session.scheduled_date.isoformat()
+            if session_date not in effective_by_date:
+                effective_by_date[session_date] = [
+                    _serialize_effective_session(
+                        session=session,
+                        source_plan_id=plan.id,
+                        inherited=True,
+                    )
+                ]
         versions.append(
             {
                 "plan_id": plan.id,
@@ -335,14 +365,37 @@ def _serialize_plan_lineage(
         "active_plan_id": active_plan.id,
         "start_date": start_date.isoformat(),
         "end_date": history_end_date.isoformat(),
+        "effective_schedule": [
+            session
+            for session_date in sorted(effective_by_date)
+            for session in effective_by_date[session_date]
+        ],
         "earlier_revisions": versions,
         "interpretation": (
             "These are earlier revisions of the same logical training plan, not separate "
-            "plans. A session omitted by the active revision is not proof of an intentional "
-            "cancellation because Pace has no explicit cancellation fact. State the revision "
-            "conflict instead of calling the date a rest day. Earlier prescriptions do not "
-            "prove completion; use Garmin activity facts or athlete feedback for that."
+            "plans. effective_schedule is the deterministic current prescription: the latest "
+            "revision wins on dates it specifies, while an omitted same-plan session remains "
+            "inherited because Pace has no explicit cancellation fact. Do not present that as "
+            "a conflict. Prescriptions do not prove completion; use Garmin activity facts or "
+            "athlete feedback for that."
         ),
+    }
+
+
+def _serialize_effective_session(
+    *, session, source_plan_id: int, inherited: bool
+) -> dict[str, object]:
+    return {
+        "session_id": session.id,
+        "scheduled_date": session.scheduled_date.isoformat(),
+        "sport_type": session.sport_type,
+        "purpose": session.purpose,
+        "distance_meters": session.distance_meters,
+        "duration_seconds": session.duration_seconds,
+        "target_display": session.target_display,
+        "feedback_outcome": session.feedback_outcome,
+        "source_revision_id": source_plan_id,
+        "inherited_from_ancestor_revision": inherited,
     }
 
 

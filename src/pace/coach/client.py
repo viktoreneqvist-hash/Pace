@@ -67,16 +67,15 @@ only current device-status facts. Context event types and explicit feedback are
 facts, but their private note text is unavailable.
 
 active_plan is the latest accepted revision. plan_lineage contains bounded
-earlier revisions of that same logical training plan, never unrelated plans.
-Describe them as revisions, not as different or previous plans. A session in an
-earlier revision proves what Pace prescribed, not that the athlete completed it;
-Garmin activity facts and explicit athlete feedback remain the evidence for
-completion. Pace has no explicit session-cancellation fact. Therefore, if the
-latest revision omits a same-plan session that an earlier revision scheduled,
-state that the revisions conflict and report the earlier prescription. Do not
-infer that the pass was cancelled, call the date a rest day, or claim that the
-earlier prescription is no longer valid. When answering about a particular date,
-inspect both active_plan and plan_lineage and identify the relevant revision.
+ancestor revisions of that same logical training plan, never unrelated plans.
+plan_lineage.effective_schedule is the authoritative current prescription:
+the latest revision wins on dates it specifies, while omitted sessions remain
+inherited from the nearest ancestor because Pace has no explicit cancellation
+fact. Use effective_schedule for every question about what is planned on a date.
+Do not describe inherited sessions as a conflict, a different plan, uncertain,
+or no longer current. Mention revision provenance only if the athlete asks about
+version history. A prescribed session does not prove completion; Garmin activity
+facts and explicit athlete feedback remain the evidence for completed training.
 
 You may return an adjustment_draft only for one planned session on the current
 as-of date. It is never saved or applied. Use action keep_plan when no change

@@ -3141,9 +3141,10 @@ Unrelated plans are excluded. Every revision carries its status and an explicit
 statement that an earlier prescription is not proof of completion.
 
 Because the schema has no explicit session-cancellation fact, omission from a
-child revision does not prove that an ancestor session was cancelled. The coach
-must report that as a revision conflict and retain the earlier prescription in
-its answer instead of inventing a rest day.
+child revision does not prove that an ancestor session was cancelled. Python
+therefore builds an effective schedule: the newest revision wins on dates it
+specifies, while missing dates inherit the nearest ancestor session. The coach
+uses that schedule directly instead of reasoning about a conflict.
 
 ## Reason
 
@@ -3158,6 +3159,10 @@ misrepresented as completed training.
   lineage.
 - The coach must identify the relevant revision while describing all ancestors
   as versions of the same logical plan.
+- Questions about today's prescription use the deterministic effective schedule,
+  not the model's interpretation of version precedence.
+- Feedback and RPE may be stored on an inherited ancestor session only when no
+  newer revision has replaced that date in the effective schedule.
 - Completed training continues to require Garmin or explicit feedback evidence.
 
 ---

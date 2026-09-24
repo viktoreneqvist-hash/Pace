@@ -20,6 +20,7 @@ from pace.planning.draft_models import (
 )
 from pace.planning.models import HistoryCoverage, PlanReadiness
 from pace.repositories.training_plan_repository import (
+    get_sessions_for_plan,
     get_training_plan,
     list_training_plans,
 )
@@ -562,6 +563,48 @@ def test_feedback_creates_a_bounded_revision_without_overwriting_parent():
         == "insufficient_data"
     )
     assert "target" in revision_catalog["parent_plan"]["value"]["sessions"][0]
+
+
+def test_feedback_can_be_saved_for_an_inherited_session_in_the_active_lineage():
+    generator = SequenceGenerator([_generated_plan(), _generated_revision_plan()])
+    service = _service(generator)
+    parent = service.generate_draft(
+        as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
+    )
+    inherited_parent_session = parent.sessions[1]
+    revision = service.generate_revision(
+        plan_id=parent.id,
+        as_of_date=date(2026, 7, 26),
+        detailed_days=14,
+    )
+
+    with pytest.raises(ValueError, match="effective plan"):
+        service.add_feedback(
+            session_id=inherited_parent_session.id,
+            outcome="completed",
+            perceived_exertion=4,
+        )
+
+    with session_scope() as session:
+        copied = next(
+            item
+            for item in get_sessions_for_plan(session, plan_id=revision.id)
+            if item.scheduled_date == inherited_parent_session.scheduled_date
+        )
+        session.delete(copied)
+
+    service.add_feedback(
+        session_id=inherited_parent_session.id,
+        outcome="completed",
+        perceived_exertion=4,
+    )
+
+    refreshed_parent = service.get_plan(plan_id=parent.id)
+    saved = next(
+        item for item in refreshed_parent.sessions if item.id == inherited_parent_session.id
+    )
+    assert saved.feedback_outcome == "completed"
+    assert saved.feedback_perceived_exertion == 4
 
 
 def test_feedback_rejects_rpe_or_reason_for_an_incompatible_outcome():

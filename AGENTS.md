@@ -136,11 +136,14 @@ Garmin provider
 - K2 coach dialogue treats exactly one accepted, active plan as the current
   prescription. It may also read a bounded 28-day-past/14-day-future window
   from up to six ancestor revisions in the same plan lineage so it can answer
-  what Pace previously scheduled. An omitted ancestor session is a revision
-  conflict unless an explicit cancellation exists; omission alone must not be
-  called a rest day. Earlier prescriptions are never evidence
+  what Pace previously scheduled. The effective schedule overlays revisions:
+  the newest revision wins on dates it specifies, while omitted ancestor
+  sessions remain current unless an explicit cancellation exists. Earlier
+  prescriptions are never evidence
   that training was completed; only Garmin observations or explicit athlete
-  feedback establish that. Its in-terminal dialogue history exists only in process memory
+  feedback establish that. Feedback may be saved against an inherited ancestor
+  session only when no newer revision specifies a session on that date. Its
+  in-terminal dialogue history exists only in process memory
   and is discarded on exit; it is not application memory. A same-day
   replacement or skip is only a validated, unsaved draft. It must never alter,
   accept, or overwrite a plan; persistent changes require a separate explicit

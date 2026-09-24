@@ -170,6 +170,14 @@ def test_dialogue_sends_only_an_active_accepted_plan_and_keeps_history_bounded(m
     assert session["sport_type"] == "ride"
     assert "same_plan" in history["earlier_revisions"][0]["meaning"]
     assert "not separate plans" in history["interpretation"]
+    inherited = next(
+        item
+        for item in history["effective_schedule"]
+        if item["scheduled_date"] == "2026-07-24"
+    )
+    assert inherited["sport_type"] == "ride"
+    assert inherited["source_revision_id"] == 8
+    assert inherited["inherited_from_ancestor_revision"] is True
     assert len(request.conversation) == 8
     assert request.conversation[0]["text"] == "fråga 2"
 

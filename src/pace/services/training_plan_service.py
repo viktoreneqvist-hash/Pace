@@ -387,9 +387,13 @@ class TrainingPlanService:
             if planned_session is None:
                 raise ValueError(f"No planned session exists with id {session_id}.")
             plan = get_training_plan(session, plan_id=planned_session.plan_id)
-            if plan is None or plan.status != "accepted":
+            if plan is None or not _is_effective_feedback_session(
+                session=session,
+                planned_session=planned_session,
+                source_plan=plan,
+            ):
                 raise ValueError(
-                    "Feedback can only be saved for an accepted plan session."
+                    "Feedback can only be saved for a session in the effective plan."
                 )
             upsert_session_feedback(
                 session,
@@ -400,7 +404,6 @@ class TrainingPlanService:
                 note=clean_note,
                 share_note_with_ai=share_note_with_ai,
             )
-
     def get_plan(self, *, plan_id: int) -> TrainingPlanFact:
         with session_scope() as session:
             plan = get_training_plan(session, plan_id=plan_id)
@@ -740,6 +743,40 @@ class TrainingPlanService:
         if self._generator is None:
             raise RuntimeError("A plan draft generator is required.")
         return self._generator
+
+
+def _is_effective_feedback_session(
+    *, session, planned_session: PlannedSession, source_plan: TrainingPlan
+) -> bool:
+    """Allow inherited ancestor sessions only when no newer revision replaces the date."""
+
+    if source_plan.status == "accepted":
+        return True
+    if source_plan.status != "superseded":
+        return False
+    plans_by_id = {plan.id: plan for plan in list_training_plans(session)}
+    for active_plan in plans_by_id.values():
+        if active_plan.status != "accepted":
+            continue
+        current: TrainingPlan | None = active_plan
+        visited: set[int] = set()
+        while current is not None and current.id not in visited:
+            visited.add(current.id)
+            sessions_on_date = [
+                item
+                for item in get_sessions_for_plan(session, plan_id=current.id)
+                if item.scheduled_date == planned_session.scheduled_date
+            ]
+            if sessions_on_date:
+                return any(item.id == planned_session.id for item in sessions_on_date)
+            if current.id == source_plan.id:
+                break
+            current = (
+                plans_by_id.get(current.parent_plan_id)
+                if current.parent_plan_id is not None
+                else None
+            )
+    return False
 
 
 def _supersede_replaced_active_plans(
