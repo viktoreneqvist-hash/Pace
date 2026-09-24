@@ -221,6 +221,15 @@ Plans describe a longer block direction while detailing only 7–14 days.
 Checkpoint logic can recommend another explicit revision as the detailed window
 ends; it cannot invoke the model automatically.
 
+Coach dialogue receives the active plan as the current prescription plus a
+bounded plan-lineage window covering 28 days before and 14 days after the
+conversation date, from at most six ancestor revisions of the same plan. This lets it answer
+questions about sessions that disappeared when a version was superseded.
+An omission is not an explicit cancellation because the current schema has no
+such fact; the coach reports it as a revision conflict instead of inventing a
+rest day. Earlier revision entries prove only what Pace previously prescribed; Garmin
+activity facts and explicit athlete feedback remain the evidence of completion.
+
 An early revision is an extension, not a rewrite of current days. The model's
 writable range begins after the accepted detailed window. The new immutable
 version carries forward uncompleted current sessions unchanged, appends the

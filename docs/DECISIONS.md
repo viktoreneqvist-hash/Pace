@@ -3118,6 +3118,50 @@ overlapping active plans.
 
 ---
 
+# Decision 69: Give Coach Dialogue Bounded Same-Plan Revision History
+
+## Problem
+
+After a plan revision, coach dialogue saw only the newest accepted version. It
+could therefore call a date a rest day even when an earlier accepted plan had
+scheduled a session on that date.
+
+## Options
+
+1. Keep exposing only the active plan.
+2. Expose every stored plan and session.
+3. Expose the active revision plus a bounded window of its ancestor revisions.
+
+## Chosen solution
+
+Option 3. The active plan remains the latest accepted revision. Coach dialogue
+additionally receives sessions within 28 days before and 14 days after the
+conversation date from at most six ancestor revisions in the same parent chain.
+Unrelated plans are excluded. Every revision carries its status and an explicit
+statement that an earlier prescription is not proof of completion.
+
+Because the schema has no explicit session-cancellation fact, omission from a
+child revision does not prove that an ancestor session was cancelled. The coach
+must report that as a revision conflict and retain the earlier prescription in
+its answer instead of inventing a rest day.
+
+## Reason
+
+Version history is required to answer what Pace previously scheduled, while a
+bounded window controls prompt size. Keeping prescription history separate from
+Garmin observations and athlete feedback prevents planned sessions from being
+misrepresented as completed training.
+
+## Future consequences
+
+- Date-specific answers must inspect both the active revision and its bounded
+  lineage.
+- The coach must identify the relevant revision while describing all ancestors
+  as versions of the same logical plan.
+- Completed training continues to require Garmin or explicit feedback evidence.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

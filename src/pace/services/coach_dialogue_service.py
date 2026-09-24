@@ -1,7 +1,7 @@
 """Build bounded plan-aware coach-dialogue requests without writing a plan."""
 
 from dataclasses import asdict
-from datetime import date
+from datetime import date, timedelta
 from typing import Protocol
 
 from pace.ai.context import build_ai_context, serialize_pace_facts
@@ -20,6 +20,7 @@ from pace.services.performance_history_service import PerformanceHistoryService
 from pace.services.rule_service import RuleService
 from pace.services.training_plan_service import (
     WEEKDAY_CODES,
+    TrainingPlanService,
     _validate_heart_rate_zone,
     _validate_session_target,
 )
@@ -31,10 +32,17 @@ from pace.services.personalization_evidence_service import PersonalizationEviden
 
 
 MAX_DIALOGUE_MESSAGES = 8
+PLAN_HISTORY_PAST_DAYS = 28
+PLAN_HISTORY_FUTURE_DAYS = 14
+MAX_PLAN_HISTORY_VERSIONS = 6
 
 
 class CoachDialogueClient(Protocol):
     def answer(self, request: CoachDialogueRequest) -> CoachDialogueAnswer: ...
+
+
+class PlanHistorySource(Protocol):
+    def list_plans(self) -> tuple[TrainingPlanFact, ...]: ...
 
 
 class CoachDialogueService:
@@ -51,6 +59,7 @@ class CoachDialogueService:
         training_history_service: CoachTrainingHistoryService | None = None,
         preference_service: TrainingPreferenceService | None = None,
         training_response_trend_service: TrainingResponseTrendService | None = None,
+        plan_history_source: PlanHistorySource | None = None,
     ) -> None:
         self._client = client
         self._athlete_state_service = athlete_state_service or AthleteStateService()
@@ -64,6 +73,7 @@ class CoachDialogueService:
         self._training_response_trend_service = (
             training_response_trend_service or TrainingResponseTrendService()
         )
+        self._plan_history_source = plan_history_source or TrainingPlanService()
 
     def ask(
         self,
@@ -101,6 +111,11 @@ class CoachDialogueService:
             knowledge_briefs=knowledge_briefs,
         )
         context["active_plan"] = _serialize_active_plan(plan)
+        context["plan_lineage"] = _serialize_plan_lineage(
+            plans=self._plan_history_source.list_plans(),
+            active_plan=plan,
+            end_date=end_date,
+        )
         context["training_response_trends"] = asdict(
             self._training_response_trend_service.get_trends(end_date=end_date)
         )
@@ -261,6 +276,73 @@ def _serialize_active_plan(plan: TrainingPlanFact) -> dict[str, object]:
             }
             for session in plan.sessions
         ],
+    }
+
+
+def _serialize_plan_lineage(
+    *,
+    plans: tuple[TrainingPlanFact, ...],
+    active_plan: TrainingPlanFact,
+    end_date: date,
+) -> dict[str, object]:
+    """Expose bounded revisions of the same logical plan, never unrelated plans."""
+
+    start_date = end_date - timedelta(days=PLAN_HISTORY_PAST_DAYS)
+    history_end_date = end_date + timedelta(days=PLAN_HISTORY_FUTURE_DAYS)
+    plans_by_id = {plan.id: plan for plan in plans}
+    lineage: list[TrainingPlanFact] = []
+    parent_id = active_plan.parent_plan_id
+    while parent_id is not None and len(lineage) < MAX_PLAN_HISTORY_VERSIONS:
+        parent = plans_by_id.get(parent_id)
+        if parent is None:
+            break
+        lineage.append(parent)
+        parent_id = parent.parent_plan_id
+
+    versions: list[dict[str, object]] = []
+    for plan in lineage:
+        sessions = [
+            session
+            for session in plan.sessions
+            if start_date <= session.scheduled_date <= history_end_date
+        ]
+        if not sessions:
+            continue
+        versions.append(
+            {
+                "plan_id": plan.id,
+                "parent_plan_id": plan.parent_plan_id,
+                "status": plan.status,
+                "meaning": "earlier_revision_of_the_same_plan_not_proof_of_completion",
+                "detailed_start_date": plan.detailed_start_date.isoformat(),
+                "detailed_end_date": plan.detailed_end_date.isoformat(),
+                "sessions": [
+                    {
+                        "session_id": session.id,
+                        "scheduled_date": session.scheduled_date.isoformat(),
+                        "sport_type": session.sport_type,
+                        "purpose": session.purpose,
+                        "distance_meters": session.distance_meters,
+                        "duration_seconds": session.duration_seconds,
+                        "target_display": session.target_display,
+                        "feedback_outcome": session.feedback_outcome,
+                    }
+                    for session in sessions
+                ],
+            }
+        )
+    return {
+        "active_plan_id": active_plan.id,
+        "start_date": start_date.isoformat(),
+        "end_date": history_end_date.isoformat(),
+        "earlier_revisions": versions,
+        "interpretation": (
+            "These are earlier revisions of the same logical training plan, not separate "
+            "plans. A session omitted by the active revision is not proof of an intentional "
+            "cancellation because Pace has no explicit cancellation fact. State the revision "
+            "conflict instead of calling the date a rest day. Earlier prescriptions do not "
+            "prove completion; use Garmin activity facts or athlete feedback for that."
+        ),
     }
 
 

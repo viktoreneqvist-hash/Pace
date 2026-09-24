@@ -31,10 +31,17 @@ class StubPerformanceReadiness:
     status: str = "ready"
 
 
-def _plan(*, status="accepted") -> TrainingPlanFact:
+def _plan(
+    *,
+    status="accepted",
+    plan_id=9,
+    parent_plan_id=8,
+    session_date=date(2026, 7, 26),
+    sport="run",
+) -> TrainingPlanFact:
     return TrainingPlanFact(
-        id=9,
-        parent_plan_id=None,
+        id=plan_id,
+        parent_plan_id=parent_plan_id,
         status=status,
         contract_version=2,
         goal_mode="general",
@@ -48,8 +55,8 @@ def _plan(*, status="accepted") -> TrainingPlanFact:
         sessions=(
             PlanSessionFact(
                 id=4,
-                scheduled_date=date(2026, 7, 26),
-                sport_type="run",
+                scheduled_date=session_date,
+                sport_type=sport,
                 purpose="Planerat pass.",
                 distance_meters=5_000,
                 duration_seconds=1_800,
@@ -109,6 +116,18 @@ def _service(monkeypatch, answer):
             }
         },
     )()
+    historical_plan = _plan(
+        status="superseded",
+        plan_id=8,
+        parent_plan_id=None,
+        session_date=date(2026, 7, 24),
+        sport="ride",
+    )
+    plan_history_source = type(
+        "Plans",
+        (),
+        {"list_plans": lambda *_args: (_plan(plan_id=9), historical_plan)},
+    )()
     return CoachDialogueService(
         client=StubClient(answer),
         athlete_state_service=state_service,
@@ -117,6 +136,7 @@ def _service(monkeypatch, answer):
         training_response_trend_service=trend_service,
         performance_service=performance_service,
         training_history_service=history_service,
+        plan_history_source=plan_history_source,
     )
 
 
@@ -141,6 +161,15 @@ def test_dialogue_sends_only_an_active_accepted_plan_and_keeps_history_bounded(m
     assert request.context["training_response_trends"]["status"] == "ready"
     assert request.context["training_history"]["weekly_history"] == []
     assert request.context["performance_readiness"]["status"] == "ready"
+    history = request.context["plan_lineage"]
+    assert history["start_date"] == "2026-06-28"
+    assert history["earlier_revisions"][0]["plan_id"] == 8
+    assert history["earlier_revisions"][0]["status"] == "superseded"
+    session = history["earlier_revisions"][0]["sessions"][0]
+    assert session["scheduled_date"] == "2026-07-24"
+    assert session["sport_type"] == "ride"
+    assert "same_plan" in history["earlier_revisions"][0]["meaning"]
+    assert "not separate plans" in history["interpretation"]
     assert len(request.conversation) == 8
     assert request.conversation[0]["text"] == "fråga 2"
 
