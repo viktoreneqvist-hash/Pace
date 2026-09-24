@@ -288,6 +288,33 @@ def _generated_plan(*, target_kind: str = "rpe") -> GeneratedPlanDraft:
     )
 
 
+def _generated_revision_plan() -> GeneratedPlanDraft:
+    return GeneratedPlanDraft(
+        block_outline=_outline(),
+        sessions=(
+            PlannedSessionDraft(
+                scheduled_date=date(2026, 8, 10),
+                sport_type="run",
+                purpose="Lugn fortsättning.",
+                distance_meters=5_000,
+                duration_seconds=None,
+                heart_rate_zone=None,
+                target=_target(),
+            ),
+            PlannedSessionDraft(
+                scheduled_date=date(2026, 8, 17),
+                sport_type="run",
+                purpose="Lugn fortsättning.",
+                distance_meters=5_000,
+                duration_seconds=None,
+                heart_rate_zone=None,
+                target=_target(),
+            ),
+        ),
+        coach_assessment=_assessment(),
+    )
+
+
 def _service(
     generator: StubGenerator,
     *,
@@ -484,7 +511,7 @@ def test_legacy_draft_cannot_be_accepted():
 
 
 def test_feedback_creates_a_bounded_revision_without_overwriting_parent():
-    generator = StubGenerator(_generated_plan())
+    generator = SequenceGenerator([_generated_plan(), _generated_revision_plan()])
     service = _service(generator)
     accepted = service.generate_draft(
         as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
@@ -509,9 +536,23 @@ def test_feedback_creates_a_bounded_revision_without_overwriting_parent():
     assert revision.block_start_date == accepted.block_start_date
     assert revision.block_end_date == accepted.block_end_date
     assert revision.block_outline == accepted.block_outline
+    assert revision.detailed_start_date == date(2026, 7, 26)
+    assert revision.detailed_end_date == date(2026, 8, 22)
+    assert [item.scheduled_date for item in revision.sessions] == [
+        date(2026, 8, 3),
+        date(2026, 8, 10),
+        date(2026, 8, 17),
+    ]
+    assert revision.sessions[0].purpose == accepted.sessions[1].purpose
+    assert revision.sessions[0].target_display == accepted.sessions[1].target_display
+    assert revision.sessions[0].workout_steps == accepted.sessions[1].workout_steps
     assert service.get_plan(plan_id=accepted.id).status == "superseded"
     assert generator.requests[-1].mode == "revision_draft"
     revision_catalog = generator.requests[-1].context["fact_catalog"]
+    assert revision_catalog["detailed_window"]["value"] == {
+        "start_date": "2026-08-09",
+        "end_date": "2026-08-22",
+    }
     assert revision_catalog["feedback"]["value"][0]["note"] is None
     assert revision_catalog["feedback"]["value"][0]["perceived_exertion"] == 7
     assert revision_catalog["feedback"]["value"][0]["reason_code"] == "fatigue"
@@ -544,7 +585,9 @@ def test_feedback_rejects_rpe_or_reason_for_an_incompatible_outcome():
 
 
 def test_revision_replaces_its_parent_and_blocks_a_second_sibling_revision():
-    service = _service(StubGenerator(_generated_plan()))
+    service = _service(
+        SequenceGenerator([_generated_plan(), _generated_revision_plan()])
+    )
     accepted = service.generate_draft(
         as_of_date=date(2026, 7, 26), detailed_days=14, race_id=None
     )

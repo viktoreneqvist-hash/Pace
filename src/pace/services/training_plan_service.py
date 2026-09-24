@@ -11,6 +11,7 @@ from pace.performance.models import PerformanceReadiness
 from pace.planning.draft_models import (
     GeneratedPlanDraft,
     PlanGenerationRequest,
+    PlannedSessionDraft,
     SessionTargetDraft,
     WorkoutStepDraft,
 )
@@ -179,9 +180,16 @@ class TrainingPlanService:
                 "The accepted plan's block has ended; create a new plan draft."
             )
         goal = _goal_from_parent(parent)
-        detailed_start_date = as_of_date
-        detailed_end_date = min(
-            detailed_start_date
+        extension_start_date = max(
+            parent.detailed_end_date + timedelta(days=1), as_of_date
+        )
+        if extension_start_date > parent.block_end_date:
+            raise ValueError(
+                "The accepted plan already covers the remaining block; create a new plan "
+                "when the block ends."
+            )
+        extension_end_date = min(
+            extension_start_date
             + timedelta(days=_validate_plan_days(detailed_days) - 1),
             parent.block_end_date,
         )
@@ -205,8 +213,8 @@ class TrainingPlanService:
         context = self._build_context(
             as_of_date=as_of_date,
             goal=goal,
-            detailed_start_date=detailed_start_date,
-            detailed_end_date=detailed_end_date,
+            detailed_start_date=extension_start_date,
+            detailed_end_date=extension_end_date,
             feedback=feedback,
             parent_plan=_parent_plan_context(
                 parent=parent,
@@ -230,8 +238,8 @@ class TrainingPlanService:
                     sessions=candidate.sessions,
                     coach_assessment=candidate.coach_assessment,
                 ),
-                detailed_start_date=detailed_start_date,
-                detailed_end_date=detailed_end_date,
+                detailed_start_date=extension_start_date,
+                detailed_end_date=extension_end_date,
                 block_start_date=goal["block_start_date"],
                 block_end_date=goal["block_end_date"],
                 performance_readiness=performance_readiness,
@@ -242,24 +250,41 @@ class TrainingPlanService:
             request=PlanGenerationRequest(mode="revision_draft", context=context),
             validate=validate_revision,
         )
-        generated = GeneratedPlanDraft(
+        carryover_sessions = tuple(
+            item
+            for item in sessions
+            if as_of_date <= item.scheduled_date <= parent.detailed_end_date
+            and item.id not in feedback_by_session
+        )
+        combined_generated = GeneratedPlanDraft(
             block_outline=parent_outline,
-            sessions=candidate.sessions,
+            sessions=(
+                *(_stored_session_draft(item) for item in carryover_sessions),
+                *candidate.sessions,
+            ),
             coach_assessment=candidate.coach_assessment,
         )
+        # The new immutable version keeps uncompleted sessions from the current
+        # window. The model only generates the extension after that window.
+        _validate_volume_boundaries(generated=combined_generated, context=context)
         volume_exception = _volume_exception_for_generated(
-            generated=generated, context=context
+            generated=combined_generated, context=context
         )
         return self._persist_plan(
             parent_plan_id=parent.id,
             goal=goal,
             as_of_date=as_of_date,
-            detailed_start_date=detailed_start_date,
-            detailed_end_date=detailed_end_date,
-            generated=generated,
+            detailed_start_date=as_of_date,
+            detailed_end_date=extension_end_date,
+            generated=GeneratedPlanDraft(
+                block_outline=parent_outline,
+                sessions=candidate.sessions,
+                coach_assessment=candidate.coach_assessment,
+            ),
             context=context,
             performance_readiness=performance_readiness,
             volume_exception=volume_exception,
+            carryover_sessions=carryover_sessions,
         )
 
     def approve_volume_exception(self, *, plan_id: int) -> TrainingPlanFact:
@@ -589,6 +614,7 @@ class TrainingPlanService:
         context: dict[str, object],
         performance_readiness: PerformanceReadiness,
         volume_exception: dict[str, object] | None,
+        carryover_sessions: tuple[PlannedSession, ...] = (),
     ) -> TrainingPlanFact:
         with session_scope() as session:
             if goal["race_id"] is not None:
@@ -635,6 +661,24 @@ class TrainingPlanService:
                     ),
                 ),
             )
+            for item in carryover_sessions:
+                create_planned_session(
+                    session,
+                    PlannedSession(
+                        plan_id=plan.id,
+                        scheduled_date=item.scheduled_date,
+                        sport_type=item.sport_type,
+                        purpose=item.purpose,
+                        distance_meters=item.distance_meters,
+                        duration_seconds=item.duration_seconds,
+                        intensity_type=item.intensity_type,
+                        intensity_zone=item.intensity_zone,
+                        intensity_target=item.intensity_target,
+                        heart_rate_zone=item.heart_rate_zone,
+                        target=item.target,
+                        workout_steps=item.workout_steps,
+                    ),
+                )
             for item in generated.sessions:
                 create_planned_session(
                     session,
@@ -1613,6 +1657,49 @@ def _serialize_stored_workout_steps(session) -> list[dict[str, object]]:
 
     return (
         list(session.workout_steps) if isinstance(session.workout_steps, list) else []
+    )
+
+
+def _stored_session_draft(session) -> PlannedSessionDraft:
+    """Copy one still-current immutable session into the next plan version."""
+
+    return PlannedSessionDraft(
+        scheduled_date=session.scheduled_date,
+        sport_type=session.sport_type,
+        purpose=session.purpose,
+        distance_meters=session.distance_meters,
+        duration_seconds=session.duration_seconds,
+        heart_rate_zone=session.heart_rate_zone,
+        target=_session_target_draft(session),
+        workout_steps=tuple(
+            WorkoutStepDraft(
+                kind=step.kind,
+                repetitions=step.repetitions,
+                distance_meters=step.distance_meters,
+                duration_seconds=step.duration_seconds,
+                target=_target_draft_from_fact(step.target),
+                recovery_distance_meters=step.recovery_distance_meters,
+                recovery_duration_seconds=step.recovery_duration_seconds,
+                recovery_target=(
+                    None
+                    if step.recovery_target is None
+                    else _target_draft_from_fact(step.recovery_target)
+                ),
+                instruction=step.instruction,
+            )
+            for step in _workout_steps_fact(session)
+        ),
+    )
+
+
+def _target_draft_from_fact(target: SessionTargetFact) -> SessionTargetDraft:
+    return SessionTargetDraft(
+        kind=target.kind,
+        rpe_min=target.rpe_min,
+        rpe_max=target.rpe_max,
+        pace_seconds_per_km=target.pace_seconds_per_km,
+        power_watts=target.power_watts,
+        evidence_reference_id=target.evidence_reference_id,
     )
 
 

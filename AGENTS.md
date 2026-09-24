@@ -181,6 +181,10 @@ Garmin provider
   detailed window ends or a race approaches. It must never generate, accept, or
   overwrite a plan. Every active race inside a generated detailed window must
   remain visible as a same-date, same-sport session with its stored A/B/C role.
+- A bounded revision extends the accepted detailed window; it does not
+  regenerate remaining current days. Uncompleted sessions from today through
+  the old window end are copied unchanged into the new immutable version, and
+  the AI may generate only from the following day (or from today when late).
 - Workout form is model-owned coaching judgment over selected Pace facts and
   block purpose. Do not add a fixed workout-template rotation for cosmetic
   variety. Python continues to own all availability, sport, target, evidence,

@@ -3073,6 +3073,51 @@ may temporarily require more, and the trade-off remains visible.
 
 ---
 
+# Decision 68: Extend Detailed Plans Without Replanning Current Days
+
+## Problem
+
+Creating the next detailed window shortly before the current one ended replaced
+the accepted plan immediately. Because the generated revision began on the
+revision date, remaining sessions from the current window disappeared from the
+active Plan view.
+
+## Options
+
+1. Let every revision regenerate from today.
+2. Keep two simultaneously active plan versions.
+3. Generate only after the current detailed window and create one new version
+   containing both unchanged remaining sessions and the new extension.
+
+## Chosen solution
+
+Option 3. An early revision starts generation on the day after the accepted
+plan's detailed end date. If revision is late, generation starts today instead
+of creating sessions in the past. Uncompleted sessions from today through the
+old detailed end date are copied unchanged into the new immutable version.
+Sessions with recorded outcomes stay in history and are not duplicated.
+
+The new plan version therefore presents the remaining current schedule followed
+by up to 7 or 14 newly generated days. Volume boundaries are validated across
+both the carried schedule and the extension before activation.
+
+## Reason
+
+Generating the future should not silently reconsider already accepted current
+days. A single active version keeps the UI and feedback boundary simple, while
+copying unchanged sessions preserves plan stability and avoids ambiguous
+overlapping active plans.
+
+## Future consequences
+
+- Carried sessions retain their exact purpose, target display, heart-rate zone,
+  and workout blocks.
+- The AI receives only the extension dates as its writable detailed window.
+- A revision cannot extend beyond the longer block end; a new draft is required
+  after the block is fully detailed.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

@@ -221,6 +221,11 @@ Plans describe a longer block direction while detailing only 7–14 days.
 Checkpoint logic can recommend another explicit revision as the detailed window
 ends; it cannot invoke the model automatically.
 
+An early revision is an extension, not a rewrite of current days. The model's
+writable range begins after the accepted detailed window. The new immutable
+version carries forward uncompleted current sessions unchanged, appends the
+validated generated sessions, and only then supersedes its parent.
+
 ### Dialogue and feedback
 
 ```text
