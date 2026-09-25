@@ -44,6 +44,7 @@ from pace.services.heart_rate_zone_service import HeartRateZoneInput
 from pace.services.personalization_evidence_service import (
     PersonalizationEvidenceService,
 )
+from pace.services.performance_history_service import PerformanceHistoryService
 from pace.services.plan_checkpoint_service import PlanCheckpointService
 from pace.services.race_service import RaceInput, RaceService, resolved_taper
 from pace.services.training_plan_service import TrainingPlanService
@@ -57,6 +58,7 @@ from pace.services.transparent_training_analysis_service import (
 from pace.services.coach_dialogue_service import CoachDialogueService
 from pace.services.dashboard_service import DashboardService
 from pace.services.garmin_sync_service import GarminSyncService
+from pace.services.garmin_workout_export_service import GarminWorkoutExportService
 from pace.services.weekly_review_service import WeeklyReviewService
 from pace.web.presentation import (
     render_plan_revision_control,
@@ -195,6 +197,8 @@ class WebServices:
     sync_service_factory: Callable[[], GarminSyncService] | None = None
     weekly_review_service_factory: Callable[[], WeeklyReviewService] | None = None
     plan_generation_service_factory: Callable[[], TrainingPlanService] | None = None
+    workout_export_service_factory: Callable[[], GarminWorkoutExportService] | None = None
+    performance_service_factory: Callable[[], PerformanceHistoryService] | None = None
     today: Callable[[], date] = date.today
 
     def coach_service(self) -> CoachDialogueService:
@@ -237,6 +241,25 @@ class WebServices:
         return TrainingPlanService(
             generator=OpenAIPlanClient(api_key=api_key, model=settings.openai_model)
         )
+
+    def workout_export_service(self) -> GarminWorkoutExportService:
+        """Create the Garmin writer only after an explicit browser confirmation."""
+
+        if self.workout_export_service_factory is not None:
+            return self.workout_export_service_factory()
+        client = GarminConnectClient.from_saved_tokens(settings.garmin_token_dir)
+        return GarminWorkoutExportService(
+            destination=client,
+            plan_service=self.plan_service,
+        )
+
+    def performance_service(self) -> PerformanceHistoryService:
+        """Create the bounded detail importer only after explicit confirmation."""
+
+        if self.performance_service_factory is not None:
+            return self.performance_service_factory()
+        client = GarminConnectClient.from_saved_tokens(settings.garmin_token_dir)
+        return PerformanceHistoryService(client)
 
 
 def create_app(

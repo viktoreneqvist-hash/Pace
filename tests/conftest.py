@@ -35,6 +35,7 @@ def clear_database() -> None:
         ContextEvent,
         DailyMetric,
         HeartRateZoneProfile,
+        GarminWorkoutExport,
         PerformanceEvidence,
         PerformanceSyncRun,
         PlannedSession,
@@ -50,6 +51,7 @@ def clear_database() -> None:
         for model in (
             PerformanceEvidence,
             SessionFeedback,
+            GarminWorkoutExport,
             PlannedSession,
             TrainingPlan,
             TrainingPreference,

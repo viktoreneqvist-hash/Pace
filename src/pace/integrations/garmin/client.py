@@ -211,6 +211,46 @@ class GarminConnectClient:
             activity_id,
         )
 
+    def get_activity_heart_rate_zones(
+        self, activity_id: str
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        """Fetch aggregate time in heart-rate zones for one activity."""
+
+        return self._call_activity_endpoint(
+            "activity heart-rate zones",
+            self._api.get_activity_hr_in_timezones,
+            activity_id,
+        )
+
+    def upload_planned_workout(self, workout: Any, *, sport_type: str) -> dict[str, Any]:
+        """Upload one typed Pace workout after an explicit athlete confirmation."""
+
+        method = (
+            self._api.upload_running_workout
+            if sport_type == "run"
+            else self._api.upload_cycling_workout
+        )
+        return self._call_workout_endpoint("upload the workout", method, workout)
+
+    def schedule_workout(self, workout_id: str, scheduled_date: date) -> dict[str, Any]:
+        """Put an uploaded workout on the Garmin calendar."""
+
+        return self._call_workout_endpoint(
+            "schedule the workout",
+            self._api.schedule_workout,
+            workout_id,
+            scheduled_date.isoformat(),
+        )
+
+    def push_workout_to_device(self, workout_id: str) -> dict[str, Any]:
+        """Ask Garmin to send one workout to the athlete's last-used device."""
+
+        return self._call_workout_endpoint(
+            "send the workout to the device",
+            self._api.push_workout_to_device,
+            workout_id,
+        )
+
     def get_daily_summary(self, metric_date: date) -> dict[str, Any]:
         """Fetch Garmin's daily summary, including resting HR and stress."""
 
@@ -281,4 +321,22 @@ class GarminConnectClient:
         except GarminConnectConnectionError as error:
             raise GarminIntegrationError(
                 f"Could not fetch {label} from Garmin. Try again later."
+            ) from error
+
+    def _call_workout_endpoint(self, label: str, method, *args):
+        """Translate provider failures without exposing credentials or payloads."""
+
+        try:
+            return method(*args)
+        except GarminConnectTooManyRequestsError as error:
+            raise GarminRateLimitError(
+                "Garmin is rate-limiting workout requests. Wait and try again later."
+            ) from error
+        except GarminConnectAuthenticationError as error:
+            raise GarminAuthenticationRequiredError(
+                "The Garmin session is no longer valid. Connect Garmin again."
+            ) from error
+        except GarminConnectConnectionError as error:
+            raise GarminIntegrationError(
+                f"Could not {label} in Garmin. Try again later."
             ) from error

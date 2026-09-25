@@ -16,11 +16,12 @@ import {
 import { getPaceClient, IS_PROTOTYPE_DATA } from "@/lib/pace/client";
 import {
   paceKeys,
+  garminWorkoutExportsQuery,
   pendingVolumeExceptionQuery,
   planHistoryQuery,
   planQuery,
 } from "@/lib/pace/queries";
-import type { RevisionResult } from "@/lib/pace/types";
+import type { PlanView, RevisionResult } from "@/lib/pace/types";
 
 export const Route = createFileRoute("/plan")({
   head: () => ({
@@ -324,6 +325,8 @@ function PlanPage() {
               ))}
             </div>
 
+            <GarminExportPanel plan={plan.data} />
+
             <section className="border border-rule bg-surface px-4 py-4">
               <div className="grid gap-4 lg:grid-cols-2">
                 <EvidenceList kind="assessment" items={plan.data.assessment} />
@@ -375,5 +378,151 @@ function PlanPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function GarminExportPanel({ plan }: { plan: PlanView }) {
+  const queryClient = useQueryClient();
+  const status = useQuery(garminWorkoutExportsQuery(plan.planId));
+  const [selected, setSelected] = useState<string[]>([]);
+  const [pushToDevice, setPushToDevice] = useState(false);
+
+  const exportMutation = useMutation({
+    mutationFn: () => getPaceClient().exportGarminWorkouts(plan.planId, selected, pushToDevice),
+    onSuccess: (value) => {
+      queryClient.setQueryData(paceKeys.garminWorkoutExports(plan.planId), value);
+      setSelected([]);
+    },
+  });
+
+  const statusBySession = new Map(
+    (status.data?.sessions ?? []).map((item) => [item.sessionId, item]),
+  );
+  const available = plan.sessions.filter(
+    (session) =>
+      !statusBySession.has(session.id) ||
+      ["not_exported", "uploaded"].includes(statusBySession.get(session.id)!.status),
+  );
+
+  return (
+    <Panel
+      title="Garmin workouts"
+      note="Nothing is sent automatically. Select sessions, review the dates, then confirm one external write. Retrying never creates duplicates."
+      aside={<StatusBadge kind="current" label="Explicit export" />}
+    >
+      {status.isPending && <LoadingState label="Reading Garmin export status" />}
+      {status.isError && (
+        <FailedState
+          title="Garmin export status could not be read"
+          description="No workout was sent."
+          action={
+            <button type="button" className={BTN} onClick={() => status.refetch()}>
+              Retry
+            </button>
+          }
+        />
+      )}
+      {status.data && (
+        <div className="space-y-3">
+          {plan.sessions.map((session) => {
+            const item = statusBySession.get(session.id);
+            const exported = item && ["scheduled", "scheduled_and_pushed"].includes(item.status);
+            const needsRetry = item?.status === "uploaded";
+            return (
+              <label
+                key={session.id}
+                className="grid cursor-pointer grid-cols-[auto_1fr_auto] items-start gap-3 border-b border-rule py-2 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  className="mt-1 size-4"
+                  disabled={Boolean(exported) || exportMutation.isPending}
+                  checked={selected.includes(session.id)}
+                  onChange={(event) =>
+                    setSelected((current) =>
+                      event.target.checked
+                        ? [...current, session.id]
+                        : current.filter((id) => id !== session.id),
+                    )
+                  }
+                />
+                <span>
+                  <span className="font-semibold">
+                    {session.date} · {session.title}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {session.scope} · {session.mainTarget}
+                  </span>
+                </span>
+                <span className="font-mono text-xs uppercase tracking-[0.08em]">
+                  {exported
+                    ? item.pushedToDevice
+                      ? "On device"
+                      : "Scheduled"
+                    : needsRetry
+                      ? "Retry schedule"
+                      : "Local only"}
+                </span>
+              </label>
+            );
+          })}
+
+          {available.length > 0 && (
+            <button
+              type="button"
+              className={BTN}
+              disabled={exportMutation.isPending}
+              onClick={() => setSelected(available.map((session) => session.id))}
+            >
+              Select all not exported
+            </button>
+          )}
+
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1 size-4"
+              checked={pushToDevice}
+              disabled={exportMutation.isPending}
+              onChange={(event) => setPushToDevice(event.target.checked)}
+            />
+            <span>
+              Also send to my last-used Garmin device
+              <span className="block text-xs text-muted-foreground">
+                Scheduling in the Garmin calendar works without this extra device push.
+              </span>
+            </span>
+          </label>
+
+          <button
+            type="button"
+            className={BTN_PRIMARY}
+            disabled={selected.length === 0 || exportMutation.isPending}
+            onClick={() => exportMutation.mutate()}
+          >
+            {exportMutation.isPending
+              ? "Sending to Garmin"
+              : `Confirm export of ${selected.length} session${selected.length === 1 ? "" : "s"}`}
+          </button>
+          {exportMutation.isError && (
+            <FailedState
+              title="Garmin export did not complete"
+              description={
+                exportMutation.error instanceof Error
+                  ? exportMutation.error.message
+                  : "No duplicate will be created when you retry."
+              }
+            />
+          )}
+          {exportMutation.isSuccess && (
+            <NoticeState
+              kind="completed"
+              title="Garmin export completed"
+              description="The confirmed sessions are now marked as scheduled."
+            />
+          )}
+        </div>
+      )}
+    </Panel>
   );
 }

@@ -31,3 +31,6 @@ class ActivityPerformanceDetail(TimestampMixin, Base):
     average_cadence: Mapped[float | None] = mapped_column(Float, nullable=True)
     average_power: Mapped[float | None] = mapped_column(Float, nullable=True)
     splits: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    heart_rate_zones: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )

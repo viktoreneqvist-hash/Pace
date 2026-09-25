@@ -256,6 +256,27 @@ replace a plan directly. Explicit feedback is the durable statement of whether
 a session was completed; Garmin activity matching is supporting evidence, not
 an automatic claim of compliance.
 
+### Garmin activity detail and workout export
+
+```text
+explicit seven-day detail sync
+    -> Garmin aggregate detail/splits/time-in-zone endpoints
+    -> privacy-minimizing normalizer
+    -> activity_performance_details
+    -> local dashboard and session detail
+
+accepted Pace session
+    -> athlete selects and confirms export in Plan
+    -> typed Garmin running/cycling workout
+    -> upload -> calendar schedule -> optional device push
+    -> garmin_workout_exports idempotency mapping
+```
+
+Normal Garmin sync deliberately does not call every activity-detail endpoint.
+The separate action bounds rate-limit exposure. Garmin workout export is an
+external mutation and therefore never runs from plan generation, coach dialogue,
+page load, or background work.
+
 ### Weekly review
 
 A weekly review is an explicit, dated AI snapshot. The generated result is
@@ -274,6 +295,8 @@ different retrospective story each time it is opened.
 - Local Garmin deletion is not inferred from absence in a later response;
   v0.1 is an append/update archive.
 - Default tests cannot contact Garmin or OpenAI.
+- Garmin workout retries use a unique per-session mapping and cannot silently
+  create a second upload for the same planned session.
 
 ## Package map
 

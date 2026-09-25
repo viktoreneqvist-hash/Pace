@@ -10,6 +10,7 @@ from pace.database.models.base import Base, TimestampMixin
 from pace.database.models.context_event import ContextEvent
 from pace.database.models.daily_metric import DailyMetric
 from pace.database.models.heart_rate_zone_profile import HeartRateZoneProfile
+from pace.database.models.garmin_workout_export import GarminWorkoutExport
 from pace.database.models.race import Race
 from pace.database.models.performance_evidence import PerformanceEvidence
 from pace.database.models.performance_sync_run import PerformanceSyncRun
@@ -25,6 +26,7 @@ __all__ = [
     "ContextEvent",
     "DailyMetric",
     "HeartRateZoneProfile",
+    "GarminWorkoutExport",
     "PerformanceEvidence",
     "PerformanceSyncRun",
     "Race",

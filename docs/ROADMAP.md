@@ -169,7 +169,6 @@ release:
 
 - mobile application or hosted service;
 - multi-user accounts and cloud synchronization;
-- direct Garmin workout export;
 - calendar integrations and notifications;
 - embeddings or a vector database;
 - additional providers such as COROS or Strava;

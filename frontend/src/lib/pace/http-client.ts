@@ -4,6 +4,7 @@ import type {
   DashboardView,
   DashboardWindow,
   FeedbackDraft,
+  GarminWorkoutExportView,
   MutationResult,
   OnboardingView,
   PaceClient,
@@ -218,6 +219,20 @@ export class HttpPaceClient implements PaceClient {
   async pollSync() {
     return { ...this.sync };
   }
+  async syncActivityDetails(): Promise<MutationResult> {
+    try {
+      const result = await this.mutate<JsonObject>("/api/v1/garmin/activity-details/sync", {
+        days: 7,
+      });
+      const errors = asStrings(result["errors"]);
+      return ok(
+        "Detailed Garmin facts synced.",
+        `${String(result["message"] ?? "Sync completed.")}${errors?.length ? ` ${errors.join(" ")}` : ""}`,
+      );
+    } catch (error) {
+      return failed(error);
+    }
+  }
 
   async getPlan(): Promise<PlanView> {
     const plan = await this.get<PlanView | null>("/api/v1/plans/active");
@@ -226,6 +241,26 @@ export class HttpPaceClient implements PaceClient {
   }
   getPlanHistory() {
     return this.get<PlanHistoryEntry[]>("/api/v1/plans/history");
+  }
+  getGarminWorkoutExports(planId: string) {
+    return this.get<GarminWorkoutExportView>(
+      `/api/v1/plans/${encodeURIComponent(planId)}/garmin-workouts`,
+    );
+  }
+  async exportGarminWorkouts(
+    planId: string,
+    sessionIds: string[],
+    pushToDevice: boolean,
+  ): Promise<GarminWorkoutExportView> {
+    const result = await this.mutate<GarminWorkoutExportView & JsonObject>(
+      "/api/v1/garmin-workouts/export",
+      {
+        plan_id: Number(planId),
+        session_ids: sessionIds.map(Number),
+        push_to_device: pushToDevice,
+      },
+    );
+    return { sessions: result.sessions };
   }
   getPendingVolumeException() {
     return this.get<PendingVolumeException | null>("/api/v1/plans/pending-volume-exception");

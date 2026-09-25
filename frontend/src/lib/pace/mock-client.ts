@@ -19,6 +19,8 @@ import type {
   DashboardView,
   DashboardWindow,
   FeedbackDraft,
+  GarminWorkoutExportStatus,
+  GarminWorkoutExportView,
   MutationResult,
   OnboardingView,
   PaceClient,
@@ -80,10 +82,59 @@ export class MockPaceClient implements PaceClient {
   private onboarding: OnboardingView = clone(onboardingFixture);
   private onboardingAttempts: Record<string, number> = {};
   private raceCounter = 0;
+  private workoutExports = new Map<string, GarminWorkoutExportStatus>();
 
   async getToday(): Promise<TodayView> {
     await delay(220);
     return clone(this.today);
+  }
+
+  async syncActivityDetails(): Promise<MutationResult> {
+    await delay(700);
+    return {
+      status: "saved",
+      message: "Detailed Garmin facts synced.",
+      detail: "Synthetic activity heart-rate zones are now current.",
+    };
+  }
+
+  async getGarminWorkoutExports(): Promise<GarminWorkoutExportView> {
+    await delay(120);
+    return {
+      sessions: this.plan.sessions.map((session) =>
+        clone(
+          this.workoutExports.get(session.id) ?? {
+            sessionId: session.id,
+            status: "not_exported",
+            garminWorkoutId: null,
+            scheduledDate: session.date,
+            pushedToDevice: false,
+            message: "Not exported to Garmin.",
+          },
+        ),
+      ),
+    };
+  }
+
+  async exportGarminWorkouts(
+    _planId: string,
+    sessionIds: string[],
+    pushToDevice: boolean,
+  ): Promise<GarminWorkoutExportView> {
+    await delay(800);
+    for (const sessionId of sessionIds) {
+      const session = this.plan.sessions.find((item) => item.id === sessionId);
+      if (!session) continue;
+      this.workoutExports.set(sessionId, {
+        sessionId,
+        status: pushToDevice ? "scheduled_and_pushed" : "scheduled",
+        garminWorkoutId: `mock-${sessionId}`,
+        scheduledDate: session.date,
+        pushedToDevice: pushToDevice,
+        message: "Workout created and scheduled in Garmin.",
+      });
+    }
+    return this.getGarminWorkoutExports();
   }
 
   async getConversation(): Promise<CoachMessage[]> {

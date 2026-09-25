@@ -3167,6 +3167,83 @@ misrepresented as completed training.
 
 ---
 
+# Decision 70: Separate Detailed Garmin Facts From Normal Sync
+
+## Problem
+
+Garmin exposes aggregate activity heart-rate-zone time through a separate
+endpoint. Fetching it for every historical activity during every normal sync
+would substantially increase request volume and rate-limit risk.
+
+## Options
+
+1. Fetch detailed activity facts during every normal sync.
+2. Never import time in zones.
+3. Add a separate, explicit, seven-day detail sync.
+
+## Chosen solution
+
+Option 3. The ordinary activity/recovery sync remains unchanged. A separate UI
+action imports normalized activity detail, split summaries, and aggregate time
+in heart-rate zones for at most seven days. Pace stores no route, coordinate,
+chart stream, or second-by-second heart-rate data. Failed zone requests preserve
+previously valid zone facts.
+
+## Reason
+
+This provides useful intensity distribution while keeping Garmin request volume,
+local data retention, and partial-failure behavior bounded and understandable.
+
+## Future consequences
+
+- Dashboard and session detail may show normalized zone minutes.
+- These zone facts remain local and are not added to OpenAI prompts without a
+  separate privacy decision.
+- Longer backfills require repeated explicit seven-day detail syncs.
+
+---
+
+# Decision 71: Explicit, Idempotent Garmin Workout Export
+
+## Problem
+
+Pace sessions were readable but could not be placed on a Garmin calendar or
+sent to a device. Automatic export would create external state silently, and
+retries could create duplicates.
+
+## Options
+
+1. Export every accepted plan automatically.
+2. Export only after explicit session selection and confirmation.
+3. Keep Garmin export outside Pace.
+
+## Chosen solution
+
+Option 2. The Plan page lists every session and its export status. The athlete
+selects sessions, confirms the external write, and separately chooses whether
+to push them to the last-used device. Pace uploads typed running/cycling
+workouts, schedules them by date, and stores one local mapping per planned
+session. A retry reuses that mapping instead of creating a duplicate.
+
+RPE remains human-readable workout guidance. Pace does not invent a Garmin
+numeric target from an RPE value. Structured time/distance/repeat/recovery
+blocks and athlete-confirmed cycling heart-rate zones are exported when present.
+
+## Reason
+
+The workflow makes external mutations visible and recoverable while preserving
+Pace's existing principle that AI output never writes external state directly.
+
+## Future consequences
+
+- Garmin calendar scheduling and device push are unofficial-provider features
+  and can break independently.
+- Plan revisions do not silently delete previously scheduled Garmin workouts.
+  A future reconciliation feature must present removals explicitly.
+- The local export table is the source of idempotency and audit status.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

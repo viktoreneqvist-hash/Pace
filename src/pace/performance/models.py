@@ -28,6 +28,7 @@ class DetailedActivityFact:
     scalar_source: str
     duration_seconds: int | None
     distance_meters: float | None
+    heart_rate_zones: tuple[dict[str, int | float], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

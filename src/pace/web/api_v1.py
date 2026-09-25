@@ -11,8 +11,14 @@ from pydantic import BaseModel, Field
 
 from pace.config.settings import resolve_openai_api_key, settings
 from pace.integrations.garmin.client import GARMIN_TOKEN_FILENAME
+from pace.database.session import session_scope
+from pace.repositories.activity_repository import get_activities_in_date_range
+from pace.repositories.activity_performance_detail_repository import (
+    get_details_for_activities,
+)
 from pace.presentation.weekly_review import load_weekly_review_snapshot
 from pace.services.race_service import RaceInput, resolved_taper
+from pace.services.garmin_workout_export_service import GarminWorkoutExportService
 from pace.timezones import athlete_local_date
 
 
@@ -28,6 +34,16 @@ class RaceMutation(BaseModel):
 
 class VolumeExceptionApproval(BaseModel):
     plan_id: int = Field(gt=0)
+
+
+class GarminWorkoutExportRequest(BaseModel):
+    plan_id: int = Field(gt=0)
+    session_ids: list[int] = Field(min_length=1, max_length=30)
+    push_to_device: bool = False
+
+
+class GarminDetailSyncRequest(BaseModel):
+    days: int = Field(default=7, ge=1, le=7)
 
 
 def install_api_v1(
@@ -104,6 +120,65 @@ def install_api_v1(
                 }
             )
         return result
+
+    @router.get("/plans/{plan_id}/garmin-workouts")
+    def garmin_workout_status(plan_id: int) -> dict[str, object]:
+        try:
+            facts = GarminWorkoutExportService(
+                plan_service=services.plan_service
+            ).get_status(plan_id=plan_id)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {"sessions": [_workout_export(item) for item in facts]}
+
+    @router.post("/garmin-workouts/export")
+    def export_garmin_workouts(
+        request: Request, payload: GarminWorkoutExportRequest
+    ) -> dict[str, object]:
+        require_csrf(request)
+        try:
+            facts = services.workout_export_service().export(
+                plan_id=payload.plan_id,
+                session_ids=tuple(payload.session_ids),
+                push_to_device=payload.push_to_device,
+            )
+        except (RuntimeError, ValueError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except Exception as error:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Garmin could not complete the workout export. "
+                    "No duplicate will be created when you retry."
+                ),
+            ) from error
+        return {
+            "status": "saved",
+            "message": "Selected workouts were scheduled in Garmin.",
+            "sessions": [_workout_export(item) for item in facts],
+        }
+
+    @router.post("/garmin/activity-details/sync")
+    def sync_garmin_activity_details(
+        request: Request, payload: GarminDetailSyncRequest
+    ) -> dict[str, object]:
+        require_csrf(request)
+        end_date = services.today()
+        start_date = end_date - timedelta(days=payload.days - 1)
+        try:
+            result = services.performance_service().sync_details(
+                start_date=start_date, end_date=end_date
+            )
+        except (RuntimeError, ValueError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {
+            "status": result.status,
+            "message": (
+                f"Read detailed facts for {result.details_fetched} activities; "
+                f"{result.details_inserted} new and {result.details_updated} updated."
+            ),
+            "errors": list(result.errors),
+        }
 
     @router.get("/plans/pending-volume-exception")
     def pending_volume_exception() -> dict[str, object] | None:
@@ -323,6 +398,7 @@ def install_api_v1(
         plan, session = _find_session(services.plan_service.list_plans(), session_id)
         if plan is None or session is None:
             return None
+        garmin_facts, garmin_note = _garmin_facts_for_session(session)
         return {
             "session": _plan_session(session),
             "planLabel": f"Plan {plan.id} · {plan.goal_mode}",
@@ -332,11 +408,8 @@ def install_api_v1(
                 ),
                 _fact("planned-target", "Planned target", session.target_display),
             ],
-            "garminFacts": [],
-            "garminNote": (
-                "A matched Garmin activity confirms that activity happened. It does "
-                "not prove that prescribed interval targets were met."
-            ),
+            "garminFacts": garmin_facts,
+            "garminNote": garmin_note,
             "feedbackNote": "Explicit athlete feedback is the durable outcome.",
         }
 
@@ -352,6 +425,82 @@ def _active_plan(plans: Any, as_of: date) -> Any | None:
             and plan.block_start_date <= as_of <= plan.block_end_date
         ),
         None,
+    )
+
+
+def _workout_export(item: Any) -> dict[str, object]:
+    return {
+        "sessionId": str(item.session_id),
+        "status": item.status,
+        "garminWorkoutId": item.garmin_workout_id,
+        "scheduledDate": item.scheduled_date,
+        "pushedToDevice": item.pushed_to_device,
+        "message": item.message,
+    }
+
+
+def _garmin_facts_for_session(session: Any) -> tuple[list[dict[str, object]], str]:
+    """Show same-day, same-sport Garmin facts without claiming interval compliance."""
+
+    with session_scope() as database:
+        activities = [
+            item
+            for item in get_activities_in_date_range(
+                database,
+                start_date=session.scheduled_date,
+                end_date=session.scheduled_date,
+            )
+            if item.sport_type == session.sport_type
+        ]
+        details = get_details_for_activities(
+            database, activity_ids=[item.id for item in activities]
+        )
+    if not activities:
+        return (
+            [
+                _fact(
+                    "garmin-activity",
+                    "Same-day Garmin activity",
+                    None,
+                    detail="No same-sport activity is available for this date.",
+                )
+            ],
+            "No Garmin activity is linked by date and sport. Missing data is unknown, not zero.",
+        )
+
+    zone_seconds = defaultdict(float)
+    for activity in activities:
+        detail = details.get(activity.id)
+        if detail is None:
+            continue
+        for item in detail.heart_rate_zones:
+            zone = item.get("zone")
+            seconds = item.get("seconds")
+            if isinstance(zone, int) and isinstance(seconds, (int, float)):
+                zone_seconds[zone] += float(seconds)
+
+    facts = [
+        _fact(
+            "garmin-activity",
+            "Same-day Garmin activities",
+            str(len(activities)),
+            detail="Matched by local date and sport, not by interval execution.",
+        )
+    ]
+    for zone in range(1, 6):
+        seconds = zone_seconds.get(zone)
+        facts.append(
+            _fact(
+                f"garmin-zone-{zone}",
+                f"Heart-rate zone {zone}",
+                None if seconds is None else f"{seconds / 60:.1f}",
+                "min",
+                detail="Garmin aggregate time in zone.",
+            )
+        )
+    return (
+        facts,
+        "Same-day, same-sport Garmin data confirms recorded activity and aggregate zone time. It does not prove that prescribed interval targets were met.",
     )
 
 
@@ -729,6 +878,17 @@ def _dashboard(data: Any, days: int, as_of: date) -> dict[str, object]:
             distance[activity.sport_type] += activity.distance_meters
         count[activity.sport_type] += 1
     recovery = {item.date: item for item in data.recovery_observations}
+    zone_minutes = defaultdict(float)
+    for activity in data.activities:
+        detail = data.performance_details.get(activity.id)
+        if detail is None:
+            continue
+        day = athlete_local_date(activity.start_time)
+        for zone in detail.heart_rate_zones:
+            zone_number = zone.get("zone")
+            zone_seconds = zone.get("seconds")
+            if isinstance(zone_number, int) and isinstance(zone_seconds, (int, float)):
+                zone_minutes[day, zone_number] += float(zone_seconds) / 60
     charts = [
         _chart(
             "training",
@@ -807,6 +967,22 @@ def _dashboard(data: Any, days: int, as_of: date) -> dict[str, object]:
                         for day in dates
                     ],
                 ),
+            ),
+        ),
+        _chart(
+            "heart-rate-zones",
+            "Training time in heart-rate zones",
+            "bar",
+            "minutes",
+            dates,
+            tuple(
+                (
+                    f"zone-{zone}",
+                    f"Zone {zone}",
+                    ("forest", "ride", "accent", "warning", "run")[zone - 1],
+                    [zone_minutes[day, zone] for day in dates],
+                )
+                for zone in range(1, 6)
             ),
         ),
     ]

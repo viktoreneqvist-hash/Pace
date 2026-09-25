@@ -446,6 +446,38 @@ function Connections({ settings }: { settings: SettingsView }) {
   );
 }
 
+function DetailedGarminSync() {
+  const queryClient = useQueryClient();
+  const sync = useMutation({
+    mutationFn: () => getPaceClient().syncActivityDetails(),
+    onSuccess: (result) => {
+      if (result.status === "saved") {
+        queryClient.invalidateQueries({ queryKey: ["pace", "dashboard"] });
+      }
+    },
+  });
+  return (
+    <Panel
+      title="Activity detail and heart-rate zones"
+      note="Separate from the normal sync to limit Garmin requests. Reads only the latest seven days and stores normalized summaries, splits and aggregate time in zones — never routes or second-by-second streams."
+    >
+      <button
+        type="button"
+        className={BUTTON}
+        disabled={sync.isPending}
+        onClick={() => sync.mutate()}
+      >
+        {sync.isPending ? "Syncing detailed facts" : "Sync latest 7 days of detailed facts"}
+      </button>
+      {sync.data && !sync.isPending && (
+        <div className="mt-3">
+          <ResultNotice result={sync.data} title="Detailed Garmin sync failed" />
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function SettingsPage() {
   const { data, isPending, isError, refetch } = useQuery(settingsQuery());
 
@@ -487,6 +519,7 @@ function SettingsPage() {
             <SettingsForm settings={data} />
             <Connections settings={data} />
             <SyncCard />
+            <DetailedGarminSync />
           </>
         )}
       </div>

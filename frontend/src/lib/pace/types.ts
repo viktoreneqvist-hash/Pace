@@ -209,6 +209,19 @@ export interface PlanHistoryEntry {
   note: string;
 }
 
+export interface GarminWorkoutExportStatus {
+  sessionId: string;
+  status: "not_exported" | "uploaded" | "scheduled" | "scheduled_and_pushed";
+  garminWorkoutId: string | null;
+  scheduledDate: string;
+  pushedToDevice: boolean;
+  message: string;
+}
+
+export interface GarminWorkoutExportView {
+  sessions: GarminWorkoutExportStatus[];
+}
+
 export interface RevisionResult {
   status: "saved" | "pending_approval" | "failed";
   message: string;
@@ -455,8 +468,15 @@ export interface PaceClient {
   getSyncState(): Promise<SyncState>;
   startSync(window: 7 | 80): Promise<SyncState>;
   pollSync(): Promise<SyncState>;
+  syncActivityDetails(): Promise<MutationResult>;
   getPlan(): Promise<PlanView>;
   getPlanHistory(): Promise<PlanHistoryEntry[]>;
+  getGarminWorkoutExports(planId: string): Promise<GarminWorkoutExportView>;
+  exportGarminWorkouts(
+    planId: string,
+    sessionIds: string[],
+    pushToDevice: boolean,
+  ): Promise<GarminWorkoutExportView>;
   getPendingVolumeException(): Promise<PendingVolumeException | null>;
   approveVolumeException(planId: string): Promise<MutationResult>;
   /** Prototype-only switch between the revision-not-due and revision-due states. */

@@ -1,7 +1,7 @@
 """Bounded Garmin detail import and read-only race-evidence history."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from typing import Any, Protocol
 
@@ -21,7 +21,10 @@ from pace.integrations.garmin.client import (
     GarminIntegrationError,
     GarminRateLimitError,
 )
-from pace.integrations.garmin.performance import normalize_garmin_performance_detail
+from pace.integrations.garmin.performance import (
+    normalize_garmin_heart_rate_zones,
+    normalize_garmin_performance_detail,
+)
 from pace.performance.models import (
     BenchmarkEvidenceFact,
     DetailedActivityFact,
@@ -73,6 +76,10 @@ class GarminPerformanceDataSource(Protocol):
     def get_activity_performance_detail(self, activity_id: str) -> dict[str, Any]: ...
 
     def get_activity_splits(self, activity_id: str) -> dict[str, Any]: ...
+
+    def get_activity_heart_rate_zones(
+        self, activity_id: str
+    ) -> dict[str, Any] | list[dict[str, Any]]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,9 +138,41 @@ class PerformanceHistoryService:
                     splits_payload = self._data_source.get_activity_splits(
                         activity.provider_activity_id
                     )
+                    zones_payload = None
+                    zone_fetch = getattr(
+                        self._data_source, "get_activity_heart_rate_zones", None
+                    )
+                    zone_stop_reason = None
+                    if callable(zone_fetch):
+                        try:
+                            zones_payload = zone_fetch(activity.provider_activity_id)
+                        except GarminIntegrationError as error:
+                            errors.append(
+                                f"{activity.provider_activity_id} heart-rate zones: {error}"
+                            )
+                            if isinstance(error, GarminRateLimitError):
+                                zone_stop_reason = "rate_limit"
+                            elif isinstance(error, GarminAuthenticationRequiredError):
+                                zone_stop_reason = "authentication"
+                        except ValueError as error:
+                            errors.append(
+                                f"{activity.provider_activity_id} heart-rate zones: {error}"
+                            )
                     normalized = normalize_garmin_performance_detail(
                         detail_payload, splits_payload
                     )
+                    if zones_payload is not None:
+                        try:
+                            normalized = replace(
+                                normalized,
+                                heart_rate_zones=normalize_garmin_heart_rate_zones(
+                                    zones_payload
+                                ),
+                            )
+                        except ValueError as error:
+                            errors.append(
+                                f"{activity.provider_activity_id} heart-rate zones: {error}"
+                            )
                     created, changed = self._store_detail(
                         activity_id=activity.id,
                         normalized=normalized,
@@ -141,6 +180,9 @@ class PerformanceHistoryService:
                     details_fetched += 1
                     details_inserted += int(created)
                     details_updated += int(changed)
+                    if zone_stop_reason is not None:
+                        stop_reason = zone_stop_reason
+                        break
                 except GarminIntegrationError as error:
                     errors.append(f"{activity.provider_activity_id}: {error}")
                     if isinstance(error, GarminRateLimitError):
@@ -430,7 +472,9 @@ class PerformanceHistoryService:
                     average_cadence=normalized.average_cadence,
                     average_power=normalized.average_power,
                     splits=normalized.splits,
+                    heart_rate_zones=normalized.heart_rate_zones or [],
                 ),
+                update_heart_rate_zones=normalized.heart_rate_zones is not None,
             )
             return created, changed
 
@@ -472,6 +516,7 @@ class PerformanceHistoryService:
             scalar_source=scalar_source,
             duration_seconds=scalar_values["duration_seconds"],
             distance_meters=scalar_values["distance_meters"],
+            heart_rate_zones=tuple(detail.heart_rate_zones),
         )
 
     @staticmethod

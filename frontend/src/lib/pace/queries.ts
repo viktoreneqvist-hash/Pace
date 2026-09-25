@@ -10,6 +10,7 @@ export const paceKeys = {
   sync: ["pace", "sync"] as const,
   plan: ["pace", "plan"] as const,
   planHistory: ["pace", "plan-history"] as const,
+  garminWorkoutExports: (planId: string) => ["pace", "garmin-workout-exports", planId] as const,
   pendingVolumeException: ["pace", "pending-volume-exception"] as const,
   dashboard: (window: DashboardWindow) => ["pace", "dashboard", window] as const,
   weeklyReview: ["pace", "weekly-review"] as const,
@@ -54,6 +55,12 @@ export const planHistoryQuery = () =>
   queryOptions({
     queryKey: paceKeys.planHistory,
     queryFn: () => getPaceClient().getPlanHistory(),
+  });
+
+export const garminWorkoutExportsQuery = (planId: string) =>
+  queryOptions({
+    queryKey: paceKeys.garminWorkoutExports(planId),
+    queryFn: () => getPaceClient().getGarminWorkoutExports(planId),
   });
 
 export const pendingVolumeExceptionQuery = () =>

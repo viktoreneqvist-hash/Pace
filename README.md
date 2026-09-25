@@ -51,6 +51,10 @@ you explicitly request or confirm every saved change
 - Athlete context such as illness, pain, travel, and schedule constraints
 - Race-aware or general 14-day detailed training plans
 - Structured workouts, including intervals and recovery steps
+- Explicit export of selected running and cycling sessions to the Garmin
+  calendar, with an optional device push and duplicate-safe retries
+- Local activity time-in-heart-rate-zone charts after a separate, bounded
+  seven-day detail sync
 - Session feedback through normal language in the Coach view
 - Training dashboard, active plan, and stable weekly review pages
 - Personalization from explicit feedback rather than hidden guesswork
@@ -160,6 +164,8 @@ Stored only on your computer:
 External connections happen only for:
 
 - **Garmin Connect:** login and the syncs you request;
+- **Garmin Connect:** workout uploads, calendar scheduling, and optional device
+  delivery only after you confirm selected sessions on the Plan page;
 - **OpenAI:** plan generation, coach questions, and weekly reviews you request.
 
 Pace sends OpenAI a bounded catalog of normalized training facts and selected
@@ -173,6 +179,8 @@ those rules or upload those directories when reporting a bug.
 
 - Pace is not affiliated with or endorsed by Garmin. It uses an unofficial
   community library and Garmin may change the underlying service.
+- Garmin workout export is therefore best-effort. Pace records its local export
+  mapping so a retry does not create a duplicate workout for the same session.
 - Pace is not medical care and does not diagnose injury or illness.
 - The current application is single-athlete and local-only. It has no accounts,
   cloud sync, mobile app, or hosted service.

@@ -692,7 +692,8 @@ def test_react_frontend_and_v1_read_contract_use_real_service_boundaries(tmp_pat
     assert active_plan.json()["planId"] == "7"
     assert active_plan.json()["goal"]["priority"] == "A"
     assert dashboard.json()["window"] == 84
-    assert len(dashboard.json()["charts"]) == 4
+    assert len(dashboard.json()["charts"]) == 5
+    assert dashboard.json()["charts"][-1]["id"] == "heart-rate-zones"
     assert races.json()["activeTargetId"] == "3"
     assert settings.json()["sportRole"] == "ride_primary"
     assert session.json()["session"]["id"] == "12"
