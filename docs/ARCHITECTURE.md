@@ -160,6 +160,16 @@ small same-origin JavaScript and CSS assets. `pace serve` binds Uvicorn to
 `127.0.0.1` only. Accepted host names are restricted, state-changing requests
 require a session CSRF token, and responses add restrictive browser headers.
 
+An explicit `pace serve --tailscale` pilot mode may add this device's validated
+Tailscale MagicDNS hostname to the Host allowlist and mark its session cookie
+Secure. Pace still binds only to `127.0.0.1`; Tailscale Serve is a separate,
+HTTPS-terminating, tailnet-only reverse proxy. Uvicorn trusts forwarded headers
+only from loopback so Pace can validate HTTPS origins and issue Secure cookies
+behind that local proxy. Do not use Tailscale Funnel or bind Pace to a network
+interface. Tailnet membership is the remote access boundary in this single-user
+pilot, with the Serve-provided owner identity also checked by Pace. Other
+tailnet users are denied by the application.
+
 The web layer may compose read models and call services. It must not contain
 training calculations, arbitrary file access, arbitrary command execution, raw
 provider payloads, or credentials. Coach conversation is bounded process
@@ -286,9 +296,11 @@ OpenAI key must not be logged or returned to the browser.
 
 Loopback binding, host validation, CSRF, content-security policy, and related
 headers reduce local browser risk. They do not make the application safe to
-bind to `0.0.0.0` or publish behind a public URL. Hosted or multi-user operation
-requires a new identity, authorization, secret-management, isolation, and data
-retention design.
+bind to `0.0.0.0` or publish behind a public URL. The opt-in Tailscale mode is
+intended only for trusted devices in one private tailnet and is not
+application-level authentication or multi-user isolation. Hosted or multi-user
+operation requires a new identity, authorization, secret-management, isolation,
+and data retention design.
 
 ## Test strategy
 

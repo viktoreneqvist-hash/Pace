@@ -16,7 +16,7 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="pace-csrf" content="{safe_csrf}">
   <title>Pace — Local Coach</title>
-  <link rel="stylesheet" href="/static/pace.css?v=20260820-1">
+  <link rel="stylesheet" href="/static/pace.css?v=20261019-3">
 </head>
 <body>
   <header class="masthead">
@@ -80,7 +80,7 @@ def render_web_onboarding(*, state: dict[str, object], csrf_token: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="pace-csrf" content="{safe_csrf}">
   <title>Pace — First Run</title>
-  <link rel="stylesheet" href="/static/pace.css?v=20261019-2">
+  <link rel="stylesheet" href="/static/pace.css?v=20261019-3">
 </head>
 <body class="onboarding-page">
   <header class="masthead">
@@ -195,7 +195,7 @@ def render_web_settings(*, state: dict[str, object], csrf_token: str) -> str:
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="pace-csrf" content="{safe_csrf}"><title>Pace — Settings</title>
-  <link rel="stylesheet" href="/static/pace.css?v=20260820-1">
+  <link rel="stylesheet" href="/static/pace.css?v=20261019-3">
 </head>
 <body>
   <header class="masthead">
@@ -293,7 +293,7 @@ def render_web_report_page(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   {csrf_meta}
   <title>Pace — {escape(title)}</title>
-  <link rel="stylesheet" href="/static/pace.css?v=20260820-1">
+  <link rel="stylesheet" href="/static/pace.css?v=20261019-3">
   <link rel="stylesheet" href="/static/reports.css?v=20260728-2">
 </head>
 <body>

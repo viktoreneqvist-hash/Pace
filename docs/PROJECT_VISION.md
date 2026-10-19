@@ -132,9 +132,13 @@ new data and feedback for the next explicitly requested version.
 ## Product experience
 
 The primary interface is a loopback-only local web application started with
-`pace serve` or the macOS launcher. It provides onboarding, settings, sync,
-Coach, Dashboard, Plan, and Weekly review views. The CLI remains a supported
-fallback for diagnostics, automation, and reproducible development workflows.
+`pace serve` or the macOS launcher. An explicit single-user pilot may provide
+private phone access through Tailscale Serve without changing Pace's loopback
+binding or creating a cloud copy. Its views adapt to desktop and phone screens
+while continuing to use the same local database and services. It provides
+onboarding, settings, sync, Coach, Dashboard, Plan, and Weekly review views.
+The CLI remains a supported fallback for diagnostics, automation, and
+reproducible development workflows.
 
 The interface should be information-dense and direct rather than a generic AI
 chat shell. Users should be able to inspect the evidence behind a recommendation
@@ -146,6 +150,11 @@ The database, Garmin session, API key, reports, and private context remain local
 by default. External connections occur only for explicit Garmin and OpenAI
 operations. Garmin credentials, tokens, raw payloads, and database dumps must
 never be sent to the model.
+
+Private Tailscale access is opt-in, is limited to the owner's trusted tailnet,
+and does not make Pace safe for public access. Pace also checks Tailscale
+Serve's identity header and permits only the owner identity reported by the
+server Mac. This does not replace per-user accounts for a multi-user product.
 
 Pace is not medical care. Injury diagnosis, medication, nutrition, and
 supplement advice remain outside v0.1. The application must not be exposed as

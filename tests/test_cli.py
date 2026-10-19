@@ -42,6 +42,128 @@ def test_version_comes_from_the_installed_package_metadata(capsys):
     assert capsys.readouterr().out == f"pace {app.__version__}\n"
 
 
+def test_serve_can_enable_private_tailscale_access():
+    args = app.build_parser().parse_args(["serve", "--tailscale", "--no-browser"])
+
+    assert args.tailscale is True
+    assert args.no_browser is True
+
+
+def test_tailscale_dns_name_comes_from_connected_device_status(monkeypatch):
+    monkeypatch.setattr(app.shutil, "which", lambda _name: "/usr/bin/tailscale")
+    monkeypatch.setattr(
+        app.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "Self": {
+                        "Online": True,
+                        "DNSName": "pace.home-net.ts.net.",
+                        "UserID": 123,
+                    },
+                    "User": {"123": {"LoginName": "owner@example.com"}},
+                }
+            ),
+        ),
+    )
+
+    assert app._tailscale_access_identity() == (
+        "pace.home-net.ts.net",
+        "owner@example.com",
+    )
+
+
+def test_tailscale_dns_name_rejects_offline_or_non_magicdns_hosts(monkeypatch):
+    monkeypatch.setattr(app.shutil, "which", lambda _name: "/usr/bin/tailscale")
+    monkeypatch.setattr(
+        app.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {"Self": {"Online": True, "DNSName": "pace.example.com"}}
+            ),
+        ),
+    )
+
+    try:
+        app._tailscale_access_identity()
+    except RuntimeError as error:
+        assert "valid Tailscale HTTPS MagicDNS name" in str(error)
+    else:
+        raise AssertionError("Non-Tailscale hostnames must not be allowlisted.")
+
+
+def test_tailscale_serve_mode_keeps_loopback_and_enables_secure_proxy_settings(
+    monkeypatch, capsys
+):
+    captured = {}
+
+    class FakeApp:
+        pass
+
+    monkeypatch.setattr(
+        app,
+        "_tailscale_access_identity",
+        lambda: ("pace.home-net.ts.net", "owner@example.com"),
+    )
+    monkeypatch.setattr(app, "initialize_database", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        "pace.web.app.create_app",
+        lambda **kwargs: captured.update(app_options=kwargs) or FakeApp(),
+    )
+    monkeypatch.setattr(
+        "uvicorn.run",
+        lambda application, **kwargs: captured.update(
+            application=application, server_options=kwargs
+        ),
+    )
+
+    exit_code = app.run_serve(
+        Namespace(port=8765, no_browser=True, tailscale=True)
+    )
+
+    assert exit_code == 0
+    assert captured["app_options"] == {
+        "allowed_hosts": ("127.0.0.1", "localhost", "pace.home-net.ts.net"),
+        "secure_cookies": True,
+        "tailscale_host": "pace.home-net.ts.net",
+        "tailscale_user": "owner@example.com",
+    }
+    assert captured["server_options"] == {
+        "host": "127.0.0.1",
+        "port": 8765,
+        "log_level": "warning",
+        "proxy_headers": True,
+        "forwarded_allow_ips": "127.0.0.1",
+    }
+    output = capsys.readouterr().out
+    assert "https://pace.home-net.ts.net" in output
+    assert "Do not use Tailscale Funnel" in output
+
+
+def test_tailscale_serve_mode_fails_before_database_start_if_not_connected(
+    monkeypatch, capsys
+):
+    def disconnected():
+        raise RuntimeError("Tailscale is not online.")
+
+    def unexpected_database_init(**_kwargs):
+        raise AssertionError("Database should not be initialized.")
+
+    monkeypatch.setattr(app, "_tailscale_access_identity", disconnected)
+    monkeypatch.setattr(app, "initialize_database", unexpected_database_init)
+
+    exit_code = app.run_serve(
+        Namespace(port=8765, no_browser=True, tailscale=True)
+    )
+
+    assert exit_code == 2
+    assert "Tailscale is not online." in capsys.readouterr().out
+
+
 def test_login_prompts_for_credentials_and_uses_local_token_directory(
     monkeypatch, capsys
 ):

@@ -5,7 +5,10 @@ from dataclasses import asdict
 from datetime import date, timedelta
 from getpass import getpass
 import json
+import re
 import shlex
+import shutil
+import subprocess
 from threading import Timer
 import webbrowser
 
@@ -692,6 +695,14 @@ def build_parser() -> ArgumentParser:
         "--no-browser",
         action="store_true",
         help="do not open the browser automatically",
+    )
+    serve_parser.add_argument(
+        "--tailscale",
+        action="store_true",
+        help=(
+            "allow only this device owner's validated Tailscale identity through "
+            "a private Tailscale Serve reverse proxy"
+        ),
     )
     serve_parser.set_defaults(handler=run_serve)
 
@@ -1576,11 +1587,20 @@ def run_home(args: Namespace, *, today: date | None = None) -> int:
 
 
 def run_serve(args: Namespace) -> int:
-    """Run Pace only on loopback; no cloud hosting or external access exists."""
+    """Run Pace on loopback, optionally behind a private Tailscale Serve proxy."""
 
     import uvicorn
 
     from pace.web.app import create_app
+
+    tailscale_host = None
+    tailscale_user = None
+    if getattr(args, "tailscale", False):
+        try:
+            tailscale_host, tailscale_user = _tailscale_access_identity()
+        except (OSError, RuntimeError, ValueError) as error:
+            print(f"Private Tailscale access could not be prepared: {error}")
+            return 2
 
     try:
         initialize_database(database_url=settings.database_url)
@@ -1589,11 +1609,93 @@ def run_serve(args: Namespace) -> int:
         return 1
     url = f"http://127.0.0.1:{args.port}"
     print(f"Pace Home is running locally at {url}")
-    print("Stop it with Ctrl+C. No data is published to the internet.")
+    if tailscale_host:
+        print("Pace remains bound to loopback; no public network port is opened.")
+        print(
+            "For private HTTPS access, run this in a second terminal on this Mac:"
+        )
+        print(f"tailscale serve --https=443 http://127.0.0.1:{args.port}")
+        print(f"Then open https://{tailscale_host} on a device in your tailnet.")
+        print("Do not use Tailscale Funnel; it would publish Pace to the internet.")
+    else:
+        print("Stop it with Ctrl+C. No data is published to the internet.")
     if not args.no_browser:
         Timer(0.5, lambda: webbrowser.open(url)).start()
-    uvicorn.run(create_app(), host="127.0.0.1", port=args.port, log_level="warning")
+    app_options = {}
+    if tailscale_host:
+        app_options = {
+            "allowed_hosts": ("127.0.0.1", "localhost", tailscale_host),
+            "secure_cookies": True,
+            "tailscale_host": tailscale_host,
+            "tailscale_user": tailscale_user,
+        }
+    uvicorn.run(
+        create_app(**app_options),
+        host="127.0.0.1",
+        port=args.port,
+        log_level="warning",
+        proxy_headers=True,
+        forwarded_allow_ips="127.0.0.1",
+    )
     return 0
+
+
+def _tailscale_access_identity() -> tuple[str, str]:
+    """Return this connected node's validated host and owner login."""
+
+    executable = shutil.which("tailscale")
+    if executable is None:
+        raise RuntimeError(
+            "Install and connect the Tailscale app, then make its CLI available "
+            "as 'tailscale'."
+        )
+
+    try:
+        result = subprocess.run(
+            [executable, "status", "--json"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError("Tailscale status check timed out.") from error
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Tailscale is not connected or could not report this device's status."
+        )
+    try:
+        status = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError("Tailscale returned an unreadable status response.") from error
+
+    self_node = status.get("Self") if isinstance(status, dict) else None
+    if not isinstance(self_node, dict) or self_node.get("Online") is not True:
+        raise RuntimeError("This Mac is not online in Tailscale.")
+
+    dns_name = self_node.get("DNSName")
+    if not isinstance(dns_name, str):
+        raise RuntimeError("Tailscale did not provide a MagicDNS name for this Mac.")
+    host = dns_name.rstrip(".").lower()
+    if not re.fullmatch(
+        r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+ts\.net",
+        host,
+    ):
+        raise RuntimeError(
+            "This device does not have a valid Tailscale HTTPS MagicDNS name."
+        )
+    if len(host) > 253:
+        raise RuntimeError("This device's Tailscale MagicDNS name is too long.")
+
+    user_id = self_node.get("UserID")
+    profiles = status.get("User")
+    profile = profiles.get(str(user_id)) if isinstance(profiles, dict) else None
+    login = profile.get("LoginName") if isinstance(profile, dict) else None
+    if not isinstance(login, str) or not login.strip():
+        raise RuntimeError(
+            "Tailscale did not provide the signed-in owner's identity."
+        )
+    return host, login.strip()
 
 
 def run_eval_scenarios(_args: Namespace) -> int:
