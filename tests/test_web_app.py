@@ -373,11 +373,37 @@ def test_first_run_onboarding_contains_the_complete_local_setup_path():
         csrf_token="local-csrf",
     )
 
-    assert "Build your" in page
+    assert "Your training," in page
+    assert "LOCAL · THIS COMPUTER" in page
+    assert "No Pace account or cloud workspace" in page
+    assert 'id="setup-required-progress"' in page
+    assert "data-setup-step=\"welcome\"" in page
+    assert "data-setup-step=\"garmin\"" in page
+    assert "data-setup-step=\"history\"" in page
+    assert "data-setup-step=\"ai\"" in page
     assert "Running only" in page
     assert "Cycling only" in page
+    assert "Continue without AI for now" in page
+    assert "A ChatGPT login or subscription is not an API key" in page
+    assert "https://platform.openai.com/api-keys" in page
+    assert "href=\"/dashboard\"" in page
     assert "/api/setup/history/confirm" not in page
     assert "onboarding.js" in page
+
+
+def test_local_dashboard_remains_available_without_a_plan_or_ai_key(tmp_path, monkeypatch):
+    client, plans, _context, coach, _sync, _review = _web_client(tmp_path)
+    plans.plan = ()
+    monkeypatch.setattr("pace.web.app.resolve_openai_api_key", lambda _settings: None)
+
+    onboarding = client.get("/")
+    dashboard = client.get("/dashboard")
+
+    assert onboarding.status_code == 200
+    assert "Your training," in onboarding.text
+    assert dashboard.status_code == 200
+    assert "CURRENT FACT VIEW" in dashboard.text
+    assert coach.calls == []
 
 
 def test_chat_keeps_conversation_in_server_memory_and_returns_confirmation_drafts(tmp_path):

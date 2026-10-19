@@ -85,16 +85,27 @@ The app opens at `http://127.0.0.1:8765`. It is bound to your own computer,
 not published to the internet. Keep the terminal window open while Pace runs.
 
 On macOS, you can use Finder after the first clone: double-click
-`Start Pace.command` in the repository folder.
+`Start Pace.command` in the repository folder. It prepares the local
+environment, starts Pace, and opens your browser. Keep the Terminal window open
+while using Pace; close it or press Ctrl+C to stop Pace. If `uv` is not found,
+the launcher explains how to install it. This is a convenient source-checkout
+launcher, not a standalone installer.
 
-The first-run screen guides you through:
+The first-run wizard walks through one step at a time and saves completed
+settings locally:
 
-1. storing your OpenAI key locally;
-2. connecting Garmin, including MFA when required;
+1. connecting Garmin, including a verification code if Garmin requests one;
+2. importing the recommended 80-day history window;
 3. choosing sport balance, coaching ambition, and available days;
-4. entering cycling heart-rate zones when relevant;
-5. importing the standard 80-day history window;
-6. adding optional races and creating the first plan.
+4. confirming cycling heart-rate zones when cycling is enabled;
+5. optionally adding a race;
+6. optionally saving an OpenAI API key, required only for AI features such as
+   plan creation and coach questions.
+
+You can skip AI setup and still browse local Pace pages. Pace needs an OpenAI
+API key before it can make an AI request; a ChatGPT login or subscription is
+not an API key, and API usage may be billed separately. The wizard links to
+OpenAI's API key page and does not ask for your ChatGPT password.
 
 After setup, normal use happens in four views:
 

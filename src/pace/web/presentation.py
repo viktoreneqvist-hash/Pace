@@ -69,7 +69,7 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
 
 
 def render_web_onboarding(*, state: dict[str, object], csrf_token: str) -> str:
-    """Render a resumable first-run checklist; all writes stay same-origin."""
+    """Render a guided, resumable local setup wizard."""
 
     safe_state = json.dumps(state, ensure_ascii=False).replace("<", "\\u003c")
     safe_csrf = escape(csrf_token)
@@ -80,76 +80,107 @@ def render_web_onboarding(*, state: dict[str, object], csrf_token: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="pace-csrf" content="{safe_csrf}">
   <title>Pace — First Run</title>
-  <link rel="stylesheet" href="/static/pace.css?v=20260820-1">
+  <link rel="stylesheet" href="/static/pace.css?v=20261019-2">
 </head>
-<body>
+<body class="onboarding-page">
   <header class="masthead">
     <a class="wordmark" href="/">PACE<span>LOCAL COACHING SYSTEM</span></a>
-    <div class="masthead-meta"><span>FIRST RUN</span><span>LOCAL ONLY</span></div>
+    <nav class="setup-nav" aria-label="Local Pace pages">
+      <a href="/dashboard">Explore local data</a>
+      <a href="/settings">Settings</a>
+    </nav>
+    <div class="masthead-meta"><span class="local-badge"><span aria-hidden="true">●</span> LOCAL · THIS COMPUTER</span></div>
   </header>
   <main class="onboarding-shell">
     <section class="onboarding-intro">
-      <p class="kicker">STEP 1 OF 1 — YOUR LOCAL COACH</p>
-      <h1>Build your<br><em>starting point.</em></h1>
-      <p>Pace stores data on this computer. You decide whether Garmin, AI, and races are used. No plan is created until you choose its goal.</p>
+      <p class="kicker">PACE · YOUR PERSONAL TRAINING DESK</p>
+      <h1>Your training,<br><em>on your terms.</em></h1>
+      <p>Get Pace ready in a few clear steps. Connect Garmin, bring in your history, then set the preferences that shape your plans.</p>
+      <div class="setup-local-note"><span aria-hidden="true">●</span><div><b>Local by design</b><p>No Pace account or cloud workspace. Your database and saved credentials stay on this computer. Garmin and OpenAI are contacted only when you explicitly use those connections.</p></div></div>
+      <div class="setup-intro-points" role="list" aria-label="Setup overview">
+        <span role="listitem"><b>01</b> Connect Garmin</span>
+        <span role="listitem"><b>02</b> Import your history</span>
+        <span role="listitem"><b>03</b> Set your preferences</span>
+      </div>
     </section>
     <section class="onboarding-workspace">
-      <div id="setup-status" class="setup-status" aria-live="polite"></div>
-      <div id="setup-error" class="setup-error" aria-live="polite"></div>
-      <form id="setup-openai" class="setup-card">
-        <p class="kicker">1 · AI KEY</p><h2>Enable the coach</h2>
-        <p class="muted-copy">Your OpenAI key is stored only in Pace's private local settings file. It is never shown here again.</p>
-        <label>OpenAI API key<input name="api_key" type="password" autocomplete="off" required></label>
-        <button class="primary" type="submit">Save AI key</button>
-      </form>
-      <form id="setup-garmin" class="setup-card">
-        <p class="kicker">2 · GARMIN</p><h2>Connect training data</h2>
-        <p class="muted-copy">Your email and password are sent only to Garmin for login and are not stored by Pace. Enter an MFA code only when Garmin asks for one.</p>
-        <label>Garmin email<input name="email" type="email" autocomplete="username" required></label>
-        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
-        <label>MFA code (optional)<input name="mfa_code" inputmode="numeric" autocomplete="one-time-code"></label>
-        <button class="primary" type="submit">Connect Garmin</button>
-      </form>
-      <form id="setup-preferences" class="setup-card wide-card">
-        <p class="kicker">3 · YOUR FRAME</p><h2>Choose what you actually want to train</h2>
+      <div class="setup-progress-heading"><p id="setup-step-label" class="kicker">YOUR SETUP</p><span id="setup-step-count"></span></div>
+      <div class="setup-progress-summary">
+        <div><p class="kicker">CORE SETUP</p><span id="setup-required-copy">0 core steps complete</span></div>
+        <progress id="setup-required-progress" max="3" value="0" aria-label="Core setup progress"></progress>
+      </div>
+      <ol id="setup-status" class="setup-status" aria-label="Setup progress"></ol>
+      <div id="setup-error" class="setup-error" role="alert" hidden></div>
+      <section class="setup-card setup-step-card" data-setup-step="welcome">
+        <p class="kicker">WELCOME</p><h2>Let’s get your local coach ready.</h2>
+        <p class="muted-copy">We’ll connect Garmin, bring in your recent training, and set a few preferences. You can stop and come back; each completed step is saved on this computer.</p>
+        <div class="setup-action-row"><button class="primary" type="button" data-go-step="garmin">Start setup <span aria-hidden="true">→</span></button><a class="quiet-link" href="/dashboard">Look around first</a></div>
+      </section>
+      <section class="setup-card setup-step-card" data-setup-step="garmin" hidden>
+        <p class="kicker">GARMIN ACCOUNT</p><h2>Connect your training data.</h2>
+        <p class="muted-copy">Pace uses Garmin to import activity and recovery history. Your email and password are sent to Garmin for sign-in and are not saved by Pace. Pace keeps the reusable Garmin session on this computer.</p>
+        <form id="setup-garmin">
+          <label>Garmin email<input name="email" type="email" autocomplete="username" required></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+          <label id="garmin-mfa-label" hidden>One-time code from Garmin<input name="mfa_code" inputmode="numeric" autocomplete="one-time-code"></label>
+          <p id="garmin-mfa-hint" class="field-hint" hidden>If Garmin asks for a verification code, enter it above and try again.</p>
+          <div class="setup-action-row"><button class="primary" type="submit">Connect to Garmin</button><button class="quiet-link" type="button" data-go-step="history">Do this later</button></div>
+        </form>
+      </section>
+      <section class="setup-card setup-step-card" data-setup-step="history" hidden>
+        <p class="kicker">TRAINING HISTORY</p><h2>Bring your recent training into Pace.</h2>
+        <p class="muted-copy">An 80-day import gives Pace more history to work from. It can take a few minutes; progress is saved as each safe batch finishes, so you can retry if the connection is interrupted.</p>
+        <div class="history-progress-wrap"><progress id="history-progress" max="1" value="0" hidden></progress><p id="history-message" class="field-hint" aria-live="polite">Pace will connect to Garmin only after you start the import.</p></div>
+        <div class="setup-action-row"><button id="history-button" class="primary" type="button">Import 80 days</button><button class="quiet-link" type="button" data-go-step="preferences">Skip for now</button></div>
+      </section>
+      <form id="setup-preferences" class="setup-card setup-step-card" data-setup-step="preferences" hidden>
+        <p class="kicker">YOUR TRAINING</p><h2>Tell Pace what fits your week.</h2>
+        <p class="muted-copy">These are your preferences, not a training prescription. You can change them later in Settings.</p>
         <div class="choice-grid" role="radiogroup" aria-label="Training mode">
           <label><input type="radio" name="sport_role" value="run_only" required><b>Running only</b><span>No cycling sessions.</span></label>
-          <label><input type="radio" name="sport_role" value="run_primary"><b>Running primary</b><span>Running leads; cycling may support it.</span></label>
-          <label><input type="radio" name="sport_role" value="balanced" checked><b>Balanced</b><span>The coach chooses the sport from the evidence.</span></label>
-          <label><input type="radio" name="sport_role" value="ride_primary"><b>Cycling primary</b><span>Cycling leads; running may support it.</span></label>
+          <label><input type="radio" name="sport_role" value="run_primary"><b>Running first</b><span>Cycling may support running.</span></label>
+          <label><input type="radio" name="sport_role" value="balanced" checked><b>Balanced</b><span>Either sport may lead.</span></label>
+          <label><input type="radio" name="sport_role" value="ride_primary"><b>Cycling first</b><span>Running may support cycling.</span></label>
           <label><input type="radio" name="sport_role" value="ride_only"><b>Cycling only</b><span>No running sessions.</span></label>
         </div>
-        <fieldset><legend>Coaching ambition</legend><label><input type="radio" name="coaching_ambition" value="cautious"> Cautious</label><label><input type="radio" name="coaching_ambition" value="balanced" checked> Balanced</label><label><input type="radio" name="coaching_ambition" value="ambitious"> Ambitious</label></fieldset>
-        <fieldset><legend>Available days</legend><div class="weekday-grid">{''.join(f'<label><input type="checkbox" name="day" value="{key}:any" checked> {label}</label>' for key, label in (("mon", "Mon"), ("tue", "Tue"), ("wed", "Wed"), ("thu", "Thu"), ("fri", "Fri"), ("sat", "Sat"), ("sun", "Sun")))}</div></fieldset>
-        <button class="primary" type="submit">Save training frame</button>
+        <fieldset><legend>How ambitious should proposals feel?</legend><label><input type="radio" name="coaching_ambition" value="cautious"> Cautious</label><label><input type="radio" name="coaching_ambition" value="balanced" checked> Balanced</label><label><input type="radio" name="coaching_ambition" value="ambitious"> Ambitious</label></fieldset>
+        <fieldset><legend>Which days can usually work for training?</legend><div class="weekday-grid">{''.join(f'<label><input type="checkbox" name="day" value="{key}:any" checked> {label}</label>' for key, label in (("mon", "Mon"), ("tue", "Tue"), ("wed", "Wed"), ("thu", "Thu"), ("fri", "Fri"), ("sat", "Sat"), ("sun", "Sun")))}</div></fieldset>
+        <div class="setup-action-row"><button class="primary" type="submit">Save preferences</button></div>
       </form>
-      <form id="setup-zones" class="setup-card wide-card">
-        <p class="kicker">4 · CYCLING HEART RATE</p><h2>Confirm your Garmin zones</h2>
-        <p class="muted-copy">Required only when cycling is allowed. Enter the boundaries shown in Garmin, for example Z2 119–138.</p>
-        <div class="zone-inputs">{''.join(f'<label>Z{number}<input name="zone_{number}" placeholder="{default}" inputmode="numeric"></label>' for number, default in ((1,"99-118"),(2,"119-138"),(3,"139-158"),(4,"159-177"),(5,"178-197")))}</div>
-        <button class="primary" type="submit">Save cycling zones</button>
+      <form id="setup-zones" class="setup-card setup-step-card" data-setup-step="zones" hidden>
+        <p class="kicker">CYCLING HEART-RATE ZONES</p><h2>Use the zones shown in Garmin.</h2>
+        <p class="muted-copy">Pace needs a manually confirmed local copy when cycling is part of your plan. Find the five ranges in Garmin Connect and enter them here; do not guess. You can change them later in Settings.</p>
+        <div class="zone-inputs">{''.join(f'<label>Zone {number}<input name="zone_{number}" placeholder="e.g. {example}" inputmode="numeric"></label>' for number, example in ((1,"99–118"),(2,"119–138"),(3,"139–158"),(4,"159–177"),(5,"178–197")))}</div>
+        <div class="setup-action-row"><button class="primary" type="submit">Save my zones</button></div>
       </form>
-      <section id="setup-history" class="setup-card wide-card">
-        <p class="kicker">5 · EVIDENCE</p><h2>Import 80 days of history</h2>
-        <p class="muted-copy">Pace normally imports 80 days in twelve consecutive Garmin batches. Each individual batch covers at most seven days.</p>
-        <button id="history-button" class="primary" type="button">Import 80 days from Garmin</button>
+      <section class="setup-card setup-step-card" data-setup-step="ai" hidden>
+        <p class="kicker">AI COACH · OPTIONAL UNTIL YOU ASK FOR AI</p><h2>Enable AI coaching when you’re ready.</h2>
+        <p class="muted-copy">Pace uses an OpenAI API key for AI questions, reviews, and plans. A ChatGPT login or subscription is not an API key; API usage may be billed separately by OpenAI. Pace stores the key in its private local settings file. When you explicitly request an AI feature, selected Pace facts are sent to OpenAI.</p>
+        <p class="field-hint">Need a key? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Open OpenAI’s API key page</a>, create a key, then return here. You do not need to give Pace your ChatGPT password.</p>
+        <form id="setup-openai">
+          <label>OpenAI API key<input name="api_key" type="password" autocomplete="off" required></label>
+          <div class="setup-action-row"><button class="primary" type="submit">Save API key</button><button class="quiet-link" type="button" data-go-step="race">Continue without AI for now</button></div>
+        </form>
+        <p id="ai-saved-message" class="setup-success" aria-live="polite" hidden>Key saved locally. Pace will contact OpenAI only when you explicitly request an AI feature.</p>
       </section>
-      <form id="setup-race" class="setup-card wide-card">
-        <p class="kicker">6 · OPTIONAL</p><h2>Add a future race</h2>
-        <p class="muted-copy">You can add more races later. A race never becomes the plan goal until you select it when creating a plan.</p>
-        <div class="race-inputs"><label>Name<input name="name" placeholder="Example 10K"></label><label>Date<input name="race_date" type="date"></label><label>Distance (km)<input name="distance_km" type="number" min="0.1" step="0.1"></label><label>Sport<select name="sport_type"><option value="run">Running</option><option value="ride">Cycling</option></select></label><label>Priority<select name="priority"><option value="A">A</option><option value="B">B</option><option value="C">C</option></select></label></div>
-        <button class="secondary" type="submit">Save race</button>
+      <form id="setup-race" class="setup-card setup-step-card" data-setup-step="race" hidden>
+        <p class="kicker">RACE GOAL · OPTIONAL</p><h2>Training for a particular event?</h2>
+        <p class="muted-copy">Add a future race if you want to use it as a plan option. It will not guide a plan unless you select it. You can also skip this and add races later.</p>
+        <div class="race-inputs"><label>Race name<input name="name" placeholder="e.g. Spring 10K"></label><label>Date<input name="race_date" type="date"></label><label>Distance (km)<input name="distance_km" type="number" min="0.1" step="0.1"></label><label>Sport<select name="sport_type"><option value="run">Running</option><option value="ride">Cycling</option></select></label><label>Priority<select name="priority"><option value="A">A</option><option value="B">B</option><option value="C">C</option></select></label></div>
+        <div class="setup-action-row"><button class="secondary" type="submit">Save race</button><button class="quiet-link" type="button" data-go-step="plan">Skip race setup</button></div>
       </form>
-      <section id="setup-plan" class="setup-card wide-card setup-final">
-        <p class="kicker">7 · PLAN</p><h2>Create your first plan</h2>
-        <p class="muted-copy">Once the checklist is complete, choose whether the plan is general or directed at one saved race. Your click is the explicit authorization: Pace activates the plan only after fully validating the AI response.</p>
+      <section id="setup-plan" class="setup-card setup-step-card setup-final" data-setup-step="plan" hidden>
+        <p class="kicker">READY WHEN YOU ARE</p><h2>Your setup, at a glance.</h2>
+        <p class="muted-copy">Pace only creates a plan when you explicitly choose a goal. Python checks the complete result before it becomes active.</p>
         <div id="setup-plan-actions"></div>
+        <p class="field-hint"><a href="/dashboard">Open your local dashboard</a> at any time. No AI call is made by browsing local pages.</p>
       </section>
+      <div class="setup-step-controls"><button id="setup-back" class="quiet-link" type="button">← Back</button><span>Progress is saved on this computer.</span></div>
     </section>
   </main>
-  <footer>PACE RUNS ON YOUR COMPUTER · YOU CAN CHANGE SETTINGS LATER</footer>
+  <footer>PACE RUNS ON THIS COMPUTER · YOU CAN CHANGE SETTINGS LATER</footer>
   <script id="pace-state" type="application/json">{safe_state}</script>
-  <script src="/static/onboarding.js?v=20260915-1" defer></script>
+  <script src="/static/onboarding.js?v=20261019-2" defer></script>
 </body>
 </html>"""
 
