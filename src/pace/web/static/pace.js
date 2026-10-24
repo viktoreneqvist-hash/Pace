@@ -96,7 +96,13 @@ function renderFacts() {
 
 async function api(path, options = {}) {
   const response = await fetch(path, {headers:{"Content-Type":"application/json", "X-Pace-CSRF":csrf, ...(options.headers || {})}, ...options});
-  const data = await response.json(); if (!response.ok) throw new Error(data.detail || "Pace could not complete the action."); return data;
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data.detail || "Pace could not complete the action.");
+    error.needsRefresh = response.status === 403 && data.detail === "Invalid local confirmation.";
+    throw error;
+  }
+  return data;
 }
 
 function responseExtras(answer) {
@@ -131,13 +137,20 @@ async function submitQuestion(question) {
     const answer = await api(path, {method:"POST", body:JSON.stringify(payload)});
     addMessage("coach", answer.answer, isCommand ? commandExtras(answer) : responseExtras(answer));
   }
-  catch (error) { addMessage("coach", `Could not answer: ${error.message}`); }
+  catch (error) {
+    if (error.needsRefresh) {
+      addMessage("coach", "Pace restarted after this page was opened. Refresh the page, then send your question again.", '<button class="text-button" data-action="reload">Refresh Pace now ↻</button>');
+    } else {
+      addMessage("coach", `Could not answer: ${error.message}`);
+    }
+  }
 }
 
 document.getElementById("chat-form").addEventListener("submit", event => { event.preventDefault(); const question = document.getElementById("chat-question").value.trim(); if (question) submitQuestion(question); });
 document.querySelectorAll("[data-prompt]").forEach(button => button.addEventListener("click", () => submitQuestion(button.dataset.prompt)));
 document.addEventListener("click", async event => {
   const button = event.target.closest("button"); if (!button) return;
+  if (button.dataset.action === "reload") { window.location.reload(); return; }
   if (button.dataset.planGeneral === "true" || button.dataset.planRaceId) {
     const raceId = button.dataset.planGeneral === "true" ? null : Number(button.dataset.planRaceId);
     const race = state.races.find(item => item.id === raceId);

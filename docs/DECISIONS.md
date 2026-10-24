@@ -2985,6 +2985,147 @@ changing Pace's default startup.
 
 ---
 
+# Decision 66: Ship a Static Browser-Only Pace Lite Path
+
+**Status: superseded by Decision 67.** The original persistent manual logger
+was replaced before release because it created a second source of truth.
+
+## Problem
+
+The full Python/FastAPI/SQLite product is capable but asks a new user to clone
+source, install tooling, run a local server, configure provider credentials and
+import history before reaching a useful screen. That setup cost obstructs fast
+validation of the simplest local-first product loop.
+
+## Options
+
+1. Continue treating the loopback Python application as the only product.
+2. Rewrite Garmin sync, deterministic analysis and AI coaching in browser code.
+3. Preserve the full application and add a deliberately smaller static browser
+   edition with no secrets or external-provider access.
+
+## Chosen solution
+
+Add `browser/` as Pace Lite: a buildless static application for manually
+recording runs and rides, viewing a seven-day summary and recent history, and
+exporting or replacing its dataset through versioned JSON backups.
+
+Structured athlete records use IndexedDB behind a small replaceable storage
+interface. `localStorage` holds only small presentation preferences. A service
+worker uses Cache Storage for the static application shell and offline reloads;
+cached assets are never treated as user-data persistence. The backup schema is
+validated before one atomic IndexedDB transaction replaces local records.
+
+Pace Lite contains no Garmin or OpenAI integration. Private provider secrets
+must not be shipped in static JavaScript or persisted in browser storage. The
+existing Python application remains the advanced product path for Garmin sync,
+canonical analysis, AI coaching and validated plans.
+
+## Reason
+
+This is the shortest complete browser workflow that is honest about a static
+application's security and integration limits. It tests whether local capture,
+review and portability are useful without discarding the substantial working
+backend or attempting an unsafe client-side port of credentialed services.
+
+## Consequences
+
+- Any static host can deploy Pace Lite without an operated backend or build
+  step.
+- Data is normally isolated to one origin, browser profile and device. Clearing
+  site data can delete it; private browsing is unreliable; backups are manual.
+- There is no account, recovery, shared access or automatic multi-device sync.
+- IndexedDB schema upgrades must be versioned and migrated as the contract
+  evolves. JSON imports reject unknown schema versions.
+- Pace Lite facts are separate from the Python SQLite archive. JSON interchange
+  is the future bridge; automatic synchronization is not implied.
+
+---
+
+# Decision 67: Static Viewer Uses Volatile Pasted Data Only
+
+**Status: superseded by Decision 68.** The paste-only viewer did not solve
+secure cross-device access and was replaced by a private hosted projection.
+
+## Problem
+
+The first Pace Lite implementation introduced IndexedDB records, preferences,
+backup/restore and manual editing. That duplicated the local application's data
+model and contradicted the desired role of a faithful viewing companion.
+
+## Chosen solution
+
+The static `browser/` application is read-only. It accepts deliberate pasted
+JSON containing Pace's normalized activity fields and validated plan-session
+fields, renders activity metrics, splits, charts and the upcoming structured
+program, and keeps the parsed value only in JavaScript memory.
+
+It uses no localStorage, sessionStorage, IndexedDB, cookies, service worker,
+Cache Storage, URL state, analytics, remote API or automatic clipboard access.
+Clear, refresh, close, reopen and back-forward-cache restoration all return to
+the empty paste screen. A restrictive static content-security policy disallows
+network connections.
+
+The viewer calculates only deterministic display conversions such as duration,
+distance, running pace and cycling speed. Coaching targets and workout structure
+must already come from the local Pace application. Raw provider payloads, GPS,
+provider IDs, credentials and private notes are outside the input contract.
+
+## Consequences
+
+- The local Pace installation and SQLite database remain the sole source of
+  truth; the viewer cannot edit or synchronize anything.
+- Static hosting is safe from accidental application writes, but users remain
+  responsible for what they deliberately paste into a browser tab.
+- No pasted snapshot survives navigation or moves between devices.
+- A future local export command may produce the documented schema, but it must
+  preserve the same privacy-minimized normalized boundary.
+
+---
+
+# Decision 68: Private Hosted Pace Light Mirror
+
+## Problem
+
+The owner needs read-only access to current Pace facts from any device without
+keeping the Mac awake, exposing the loopback server, transferring JSON files,
+or placing Garmin and OpenAI credentials in a browser application.
+
+## Chosen solution
+
+Pace Light is a private hosted Codex Site protected by Sign in with ChatGPT.
+The local Pace installation remains the source of truth and uploads one bounded,
+replaceable snapshot through a service-authenticated endpoint. Hosted storage
+contains only the last snapshot: normalized run/ride summaries from the 28-day
+window ending on the most recent locally stored activity (never later than the
+snapshot date), capped at 84 records, plus the active plan's upcoming structured
+sessions. Anchoring the bounded window to the latest stored activity keeps a
+stale or infrequently synced archive visible without exporting broader history.
+
+The snapshot excludes raw Garmin payloads, GPS and routes, provider IDs,
+credentials, private notes, recovery history, chat, database rows and AI input.
+The hosted UI is server-rendered and read-only. It has no plan, feedback,
+context, Garmin or AI write route.
+
+Human access requires the Site's ChatGPT identity and owner-private access
+policy. The local uploader uses a separate Sites service credential kept in the
+owner's macOS Keychain. A once-daily local scheduler may invoke the same
+explicit snapshot service; failed uploads never change local Pace data.
+
+## Consequences
+
+- Selected training and plan facts leave the Mac and are stored by the hosted
+  Site. This is an explicit exception to the previous all-local privacy boundary.
+- The local SQLite database remains canonical; Pace Light is a replaceable
+  projection and cannot synchronize changes back.
+- Revoking or rotating the service credential stops future local uploads.
+- Sign in with ChatGPT proves the visitor identity but does not give Pace Light
+  access to ChatGPT conversations, memory, files, tokens or billing data.
+- Multi-user access, public sharing and externally mutable coaching remain out
+  of scope.
+
+---
+
 # Current Core Decisions Summary
 
 | Area | Decision |

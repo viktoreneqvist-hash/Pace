@@ -74,6 +74,17 @@ brew install uv
 
 ## Quick start
 
+### Private Pace Light companion
+
+Pace Light is an optional private hosted mirror for viewing current normalized
+training facts and the active plan on any device. The local installation stays
+canonical and uploads a bounded read-only snapshot; browser visitors must sign
+in with ChatGPT. No Garmin/OpenAI credentials, raw payloads, GPS, provider IDs,
+private notes, database dumps or AI context are uploaded. Pace Light cannot edit
+or synchronize data back to the local application.
+
+### Full Garmin and AI path
+
 ```bash
 git clone https://github.com/viktoreneqvist-hash/Pace.git
 cd Pace

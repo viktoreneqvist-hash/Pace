@@ -216,6 +216,13 @@ footer{border-top:1px solid var(--ink);font:700 .66rem ui-monospace,SFMono-Regul
 .setup-step-controls .quiet-link{background:transparent;border:0;cursor:pointer;padding:8px 0}
 .setup-final{background:var(--white)}
 .setup-final .notice{font-size:.9rem;line-height:1.5}
+.plan-generation-status{align-items:center;background:#e1f0dc;border:1px solid #9bb9a0;display:flex;gap:15px;margin-top:20px;padding:16px}
+.plan-generation-status[hidden]{display:none}
+.plan-generation-status b{display:block;font-size:.9rem}
+.plan-generation-status p{color:var(--muted);font-size:.8rem;line-height:1.45;margin:4px 0 0}
+.plan-generation-spinner{animation:pace-spin .9s linear infinite;border:3px solid rgba(49,93,70,.2);border-radius:50%;border-top-color:var(--green);flex:0 0 auto;height:24px;width:24px}
+@keyframes pace-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.plan-generation-spinner{animation:none;border-color:var(--green)}}
 .setup-final .field-hint{border-top:1px solid var(--line);margin-top:28px;padding-top:16px}
 .setup-nav a:focus-visible,.setup-status button:focus-visible,.setup-step-card button:focus-visible,.setup-step-controls button:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
 

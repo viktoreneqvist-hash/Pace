@@ -48,6 +48,7 @@ from pace.services.heart_rate_zone_service import HeartRateZoneService
 from pace.services.heart_rate_zone_service import HeartRateZoneInput
 from pace.services.personalization_evidence_service import PersonalizationEvidenceService
 from pace.services.plan_checkpoint_service import PlanCheckpointService
+from pace.services.plan_readiness_service import PlanReadinessService
 from pace.services.race_service import RaceInput, RaceService, resolved_taper
 from pace.services.training_plan_service import TrainingPlanService
 from pace.services.training_preference_service import (
@@ -171,6 +172,7 @@ class WebServices:
     personalization_service: Any = field(default_factory=PersonalizationEvidenceService)
     race_service: Any = field(default_factory=RaceService)
     analysis_service: Any = field(default_factory=TransparentTrainingAnalysisService)
+    plan_readiness_service: Any = field(default_factory=PlanReadinessService)
     dashboard_service: Any = field(default_factory=DashboardService)
     context_service: Any = field(default_factory=ContextService)
     reports_directory: Path = REPORTS_DIRECTORY
@@ -892,7 +894,10 @@ def _home_state(services: WebServices) -> dict[str, object]:
     preference_payload = _preference_payload(preference)
     zones_payload = None if zones is None else _jsonable(zones.zones)
     analysis_payload = _jsonable(analysis)
-    history_ready = _history_is_ready(analysis_payload)
+    plan_readiness = services.plan_readiness_service.get_readiness(
+        as_of_date=as_of_date
+    )
+    history_ready = plan_readiness.history.is_contiguous
     needs_ride_zones = preference is not None and preference.sport_role != "run_only"
     onboarding_active = not plans
     return {
@@ -965,18 +970,6 @@ def _selected_draft(plans, requested_id: str | None):
         if requested is not None:
             return requested
     return None
-
-
-def _history_is_ready(analysis: object) -> bool:
-    """The onboarding minimum is 28 locally observed recovery days, never raw data."""
-
-    if not isinstance(analysis, dict):
-        return False
-    coverage = analysis.get("recovery_coverage")
-    if not isinstance(coverage, list):
-        return False
-    observed = [item[1] for item in coverage if isinstance(item, list) and len(item) >= 2]
-    return bool(observed) and min(observed) >= 28
 
 
 def _plan_payload(plan) -> dict[str, object] | None:

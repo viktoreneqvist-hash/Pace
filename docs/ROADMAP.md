@@ -18,6 +18,13 @@ The product is now moving from a private prototype to a documented public
 alpha. The detailed history of product decisions remains in
 [DECISIONS.md](DECISIONS.md); this file describes the forward plan.
 
+Pace Light now has a private hosted, read-only architecture: ChatGPT identity
+for cross-device viewing, one replaceable hosted snapshot, and a local bounded
+snapshot uploader. The owner-only service credential is stored in the macOS
+Keychain and the daily local schedule is installed for the current deployment.
+Additional testers need explicit Site access and their own local test setup;
+credentials are never distributed through Git.
+
 ## Completed foundation
 
 ### Data and integrity

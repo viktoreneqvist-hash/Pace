@@ -9,6 +9,15 @@ presentation must remain separate so that each can be tested and reviewed.
 The application is not a generic autonomous agent and not an internet-facing
 web service.
 
+Pace Light is an optional private hosted read-only projection. The local Python
+application selects a bounded snapshot and uploads it through service access to
+a private Codex Site; visitors authenticate with ChatGPT. Hosted storage keeps
+only the latest normalized snapshot and has no route back into local Pace.
+Garmin and OpenAI credentials, raw payloads, GPS, provider IDs, private notes,
+database dumps and AI context are excluded. The Python service architecture
+below remains the only source of truth for provider sync, canonical analysis,
+coaching, plans, and SQLite data.
+
 ## System overview
 
 ```text

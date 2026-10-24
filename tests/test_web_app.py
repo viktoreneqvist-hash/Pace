@@ -10,6 +10,7 @@ from pace.ai.models import ContextEventDraft
 from pace.coach.models import CoachDialogueAnswer, SessionFeedbackDraft
 from pace.personalization.models import PersonalizationEvidence
 from pace.planning.checkpoint_models import PlanCheckpoint
+from pace.planning.models import HistoryCoverage
 from pace.training_analysis.models import SportWindowAnalysis, TransparentTrainingAnalysis
 from pace.web.app import WebServices, create_app
 from pace.web.presentation import render_web_onboarding
@@ -242,6 +243,18 @@ def _web_client(
             )
         ),
         analysis_service=SimpleNamespace(get_analysis=lambda **_kwargs: analysis),
+        plan_readiness_service=SimpleNamespace(
+            get_readiness=lambda **_kwargs: SimpleNamespace(
+                history=HistoryCoverage(
+                    required_calendar_days=28,
+                    covered_calendar_days=28,
+                    required_start_date=date(2026, 6, 30),
+                    covered_start_date=date(2026, 6, 30),
+                    covered_end_date=date(2026, 7, 27),
+                    is_contiguous=True,
+                )
+            )
+        ),
         dashboard_service=SimpleNamespace(
             get_dashboard_data=lambda **_kwargs: SimpleNamespace(
                 state=dashboard_state,
@@ -456,6 +469,8 @@ def test_first_run_onboarding_contains_the_complete_local_setup_path():
     assert "Continue without AI for now" in page
     assert "A ChatGPT login or subscription is not an API key" in page
     assert "https://platform.openai.com/api-keys" in page
+    assert 'id="plan-generation-status"' in page
+    assert 'role="status"' in page
     assert "href=\"/dashboard\"" in page
     assert "/api/setup/history/confirm" not in page
     assert "onboarding.js" in page
@@ -474,6 +489,16 @@ def test_local_dashboard_remains_available_without_a_plan_or_ai_key(tmp_path, mo
     assert dashboard.status_code == 200
     assert "CURRENT FACT VIEW" in dashboard.text
     assert coach.calls == []
+
+
+def test_onboarding_uses_canonical_sync_coverage_for_import_status(tmp_path):
+    client, plans, _context, _coach, _sync, _review = _web_client(tmp_path)
+    plans.plan = ()
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert '"history_ready": true' in response.text
 
 
 def test_chat_keeps_conversation_in_server_memory_and_returns_confirmation_drafts(tmp_path):

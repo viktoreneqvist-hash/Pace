@@ -348,12 +348,40 @@ document.addEventListener("click", async event => {
   const button = event.target.closest("[data-draft]");
   if (!button) return;
   clearError();
+  const planActions = document.getElementById("setup-plan-actions");
+  const status = document.getElementById("plan-generation-status");
+  const title = document.getElementById("plan-generation-title");
+  const message = document.getElementById("plan-generation-message");
+  const messages = [
+    "Pace is selecting your verified training facts and preferences.",
+    "The coach is building your sessions. This can take a minute.",
+    "Python will check every date, target, and workout before the plan is activated.",
+    "Still working. Keep this page open; no second click is needed.",
+  ];
+  let messageIndex = 0;
+  planActions.setAttribute("aria-busy", "true");
+  planActions.querySelectorAll("button").forEach(choice => { choice.disabled = true; });
   start(button, "Creating your plan…");
+  status.hidden = false;
+  title.textContent = "Your plan is under way";
+  message.textContent = messages[messageIndex];
+  status.scrollIntoView({behavior:"smooth", block:"nearest"});
+  const progressTimer = window.setInterval(() => {
+    messageIndex = Math.min(messageIndex + 1, messages.length - 1);
+    message.textContent = messages[messageIndex];
+  }, 8_000);
   const raw = button.dataset.draft;
   try {
     const result = await api("/api/plan/draft/confirm", {race_id:raw === "general" ? null : Number(raw)});
+    window.clearInterval(progressTimer);
+    title.textContent = "Plan complete";
+    message.textContent = "The plan passed validation. Opening it now…";
     window.location.assign(`/plan?draft=${result.plan.id}`);
   } catch (error) {
+    window.clearInterval(progressTimer);
+    planActions.removeAttribute("aria-busy");
+    planActions.querySelectorAll("button").forEach(choice => { choice.disabled = false; });
+    status.hidden = true;
     showError(error);
     stop(button);
   }

@@ -63,7 +63,7 @@ def render_web_home(*, state: dict[str, object], csrf_token: str) -> str:
   </main>
   <footer>PACE RUNS ON YOUR COMPUTER · GARMIN AND OPENAI ARE CONTACTED ONLY WHEN YOU EXPLICITLY ASK</footer>
   <script id="pace-state" type="application/json">{safe_state}</script>
-  <script src="/static/pace.js?v=20260915-1" defer></script>
+  <script src="/static/pace.js?v=20261023-1" defer></script>
 </body>
 </html>"""
 
@@ -173,6 +173,10 @@ def render_web_onboarding(*, state: dict[str, object], csrf_token: str) -> str:
         <p class="kicker">READY WHEN YOU ARE</p><h2>Your setup, at a glance.</h2>
         <p class="muted-copy">Pace only creates a plan when you explicitly choose a goal. Python checks the complete result before it becomes active.</p>
         <div id="setup-plan-actions"></div>
+        <div id="plan-generation-status" class="plan-generation-status" role="status" aria-live="polite" hidden>
+          <span class="plan-generation-spinner" aria-hidden="true"></span>
+          <div><b id="plan-generation-title">Creating your plan…</b><p id="plan-generation-message">Pace is selecting your facts and asking the coach to build the plan.</p></div>
+        </div>
         <p class="field-hint"><a href="/dashboard">Open your local dashboard</a> at any time. No AI call is made by browsing local pages.</p>
       </section>
       <div class="setup-step-controls"><button id="setup-back" class="quiet-link" type="button">← Back</button><span>Progress is saved on this computer.</span></div>
@@ -180,7 +184,7 @@ def render_web_onboarding(*, state: dict[str, object], csrf_token: str) -> str:
   </main>
   <footer>PACE RUNS ON THIS COMPUTER · YOU CAN CHANGE SETTINGS LATER</footer>
   <script id="pace-state" type="application/json">{safe_state}</script>
-  <script src="/static/onboarding.js?v=20261019-2" defer></script>
+  <script src="/static/onboarding.js?v=20261023-1" defer></script>
 </body>
 </html>"""
 
