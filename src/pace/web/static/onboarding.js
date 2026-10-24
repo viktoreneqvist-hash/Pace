@@ -242,11 +242,12 @@ document.addEventListener("click", event => {
 document.getElementById("setup-openai").addEventListener("submit", async event => {
   event.preventDefault();
   clearError();
-  const button = event.currentTarget.querySelector('button[type="submit"]');
+  const formElement = event.currentTarget;
+  const button = formElement.querySelector('button[type="submit"]');
   start(button);
   try {
-    update(await api("/api/setup/openai", {api_key:new FormData(event.currentTarget).get("api_key")}));
-    event.currentTarget.reset();
+    update(await api("/api/setup/openai", {api_key:new FormData(formElement).get("api_key")}));
+    formElement.reset();
     document.getElementById("ai-saved-message").hidden = false;
     nextAfter("ai");
   } catch (error) {
@@ -258,16 +259,17 @@ document.getElementById("setup-openai").addEventListener("submit", async event =
 document.getElementById("setup-garmin").addEventListener("submit", async event => {
   event.preventDefault();
   clearError();
-  const button = event.currentTarget.querySelector('button[type="submit"]');
+  const formElement = event.currentTarget;
+  const button = formElement.querySelector('button[type="submit"]');
   start(button, "Connecting…");
-  const form = new FormData(event.currentTarget);
+  const form = new FormData(formElement);
   try {
     update(await api("/api/setup/garmin", {
       email:form.get("email"),
       password:form.get("password"),
       mfa_code:form.get("mfa_code") || null,
     }));
-    event.currentTarget.reset();
+    formElement.reset();
     document.getElementById("garmin-mfa-label").hidden = true;
     document.getElementById("garmin-mfa-hint").hidden = true;
     nextAfter("garmin");
@@ -316,16 +318,17 @@ document.getElementById("setup-zones").addEventListener("submit", async event =>
 document.getElementById("setup-race").addEventListener("submit", async event => {
   event.preventDefault();
   clearError();
-  const form = new FormData(event.currentTarget);
+  const formElement = event.currentTarget;
+  const form = new FormData(formElement);
   if (!form.get("name") && !form.get("race_date") && !form.get("distance_km")) {
     nextAfter("race");
     return;
   }
-  const button = event.currentTarget.querySelector('button[type="submit"]');
+  const button = formElement.querySelector('button[type="submit"]');
   start(button);
   try {
     update(await api("/api/setup/races", Object.fromEntries(form)));
-    event.currentTarget.reset();
+    formElement.reset();
     nextAfter("race");
   } catch (error) {
     showError(error);

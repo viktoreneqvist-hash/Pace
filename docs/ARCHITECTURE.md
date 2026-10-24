@@ -164,15 +164,23 @@ the selected Pace facts.
 
 ### Presentation
 
-The primary interface is `pace.web`: a server-rendered FastAPI application with
-small same-origin JavaScript and CSS assets. `pace serve` binds Uvicorn to
-`127.0.0.1` only. Accepted host names are restricted, state-changing requests
-require a session CSRF token, and responses add restrictive browser headers.
+The primary interface is a React/TypeScript single-page application generated
+as static assets under `src/pace/web/frontend_dist`. FastAPI serves those assets
+and a normalized same-origin `/api/v1/*` presentation API. Editable source
+lives under `frontend/`; end users do not need Node.js. The previous
+server-rendered onboarding remains available as the hardened local setup
+fallback while React feature parity is completed.
+
+`pace serve` binds Uvicorn to `127.0.0.1` only. Accepted host names are
+restricted, state-changing requests require the same session CSRF token in both
+frontends, and responses add restrictive browser headers.
 
 The web layer may compose read models and call services. It must not contain
 training calculations, arbitrary file access, arbitrary command execution, raw
 provider payloads, or credentials. Coach conversation is bounded process
-memory and disappears when the server stops.
+memory and disappears when the server stops. React talks only to the same
+origin through `HttpPaceClient`; synthetic fixtures are used solely when the
+frontend is explicitly built with `VITE_PACE_USE_MOCKS=true`.
 
 The CLI remains a supported adapter for diagnostics and advanced reproducible
 workflows. It may parse arguments, call services, format results, and return
@@ -208,17 +216,36 @@ explicit athlete goal selection
     -> structured model request
     -> complete structured plan response
     -> Python validation
-    -> atomic accepted plan version
-    -> previous overlapping version marked superseded
+    -> accepted plan OR inactive race-volume exception awaiting approval
+    -> previous overlapping version superseded only after activation
 ```
 
-The explicit create or revise action is the authorization. There is no second
-normal acceptance click. If generation or validation fails, no partial plan is
-stored and the active version remains unchanged.
+The explicit create or revise action is normally the authorization. General
+plans that cross athlete-defined weekly base ceilings fail validation. A
+race-directed plan may instead be stored as `volume_exception_pending`; a
+separate approval is then required and the active plan remains unchanged until
+approval. If ordinary generation or validation fails, no partial plan is stored.
 
 Plans describe a longer block direction while detailing only 7–14 days.
 Checkpoint logic can recommend another explicit revision as the detailed window
 ends; it cannot invoke the model automatically.
+
+Coach dialogue receives the active plan as the current prescription plus a
+bounded plan-lineage window covering 28 days before and 14 days after the
+conversation date, from at most six ancestor revisions of the same plan. This lets it answer
+questions about sessions that disappeared when a version was superseded.
+An omission is not an explicit cancellation because the current schema has no
+such fact. A deterministic effective schedule overlays the lineage: the newest
+revision wins for dates it specifies and otherwise inherits the nearest ancestor
+session. Earlier revision entries prove only what Pace prescribed; Garmin
+activity facts and explicit athlete feedback remain the evidence of completion.
+An inherited session remains a valid feedback target unless a newer revision
+contains a replacement on the same date.
+
+An early revision is an extension, not a rewrite of current days. The model's
+writable range begins after the accepted detailed window. The new immutable
+version carries forward uncompleted current sessions unchanged, appends the
+validated generated sessions, and only then supersedes its parent.
 
 ### Dialogue and feedback
 
@@ -238,6 +265,27 @@ replace a plan directly. Explicit feedback is the durable statement of whether
 a session was completed; Garmin activity matching is supporting evidence, not
 an automatic claim of compliance.
 
+### Garmin activity detail and workout export
+
+```text
+explicit seven-day detail sync
+    -> Garmin aggregate detail/splits/time-in-zone endpoints
+    -> privacy-minimizing normalizer
+    -> activity_performance_details
+    -> local dashboard and session detail
+
+accepted Pace session
+    -> athlete selects and confirms export in Plan
+    -> typed Garmin running/cycling workout
+    -> upload -> calendar schedule -> optional device push
+    -> garmin_workout_exports idempotency mapping
+```
+
+Normal Garmin sync deliberately does not call every activity-detail endpoint.
+The separate action bounds rate-limit exposure. Garmin workout export is an
+external mutation and therefore never runs from plan generation, coach dialogue,
+page load, or background work.
+
 ### Weekly review
 
 A weekly review is an explicit, dated AI snapshot. The generated result is
@@ -256,6 +304,8 @@ different retrospective story each time it is opened.
 - Local Garmin deletion is not inferred from absence in a later response;
   v0.1 is an append/update archive.
 - Default tests cannot contact Garmin or OpenAI.
+- Garmin workout retries use a unique per-session mapping and cannot silently
+  create a second upload for the same planned session.
 
 ## Package map
 

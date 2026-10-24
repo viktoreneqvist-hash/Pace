@@ -15,6 +15,7 @@ DETAIL_UPDATE_FIELDS = (
     "average_cadence",
     "average_power",
     "splits",
+    "heart_rate_zones",
 )
 
 
@@ -41,6 +42,8 @@ def get_details_for_activities(
 def upsert_activity_performance_detail(
     session: Session,
     detail: ActivityPerformanceDetail,
+    *,
+    update_heart_rate_zones: bool = True,
 ) -> tuple[ActivityPerformanceDetail, bool, bool]:
     """Upsert details so an identical retry has zero changed records."""
 
@@ -50,12 +53,17 @@ def upsert_activity_performance_detail(
         session.flush()
         return detail, True, False
 
+    update_fields = tuple(
+        field_name
+        for field_name in DETAIL_UPDATE_FIELDS
+        if update_heart_rate_zones or field_name != "heart_rate_zones"
+    )
     changed = any(
         getattr(existing, field_name) != getattr(detail, field_name)
-        for field_name in DETAIL_UPDATE_FIELDS
+        for field_name in update_fields
     )
     if changed:
-        for field_name in DETAIL_UPDATE_FIELDS:
+        for field_name in update_fields:
             setattr(existing, field_name, getattr(detail, field_name))
         session.flush()
     return existing, False, changed

@@ -53,6 +53,8 @@ credentials are never distributed through Git.
 - [x] Stored A/B/C races and explicit general-plan mode
 - [x] Five sport roles, weekly availability, coaching ambition, and cycling
   heart-rate zones
+- [x] Hard base-volume boundaries for running distance, cycling time, and total
+  time, with explicit per-version race-volume exceptions
 - [x] Historical capacity and privacy-minimized verified performance evidence
 - [x] Race-specific or general plan generation
 - [x] Structured workouts with continuous, warm-up, interval, recovery, and
@@ -90,8 +92,8 @@ pretending that the product is finished.
   and full-history secret scan
 - [x] Verify a clean installation in an isolated temporary environment
 - [x] Scan all Git history with Gitleaks before publication
-- [ ] Review the newest compatible `garminconnect` release with a real login and
-  read-only sync
+- [ ] Complete a real-login smoke test of the current `garminconnect==0.3.16`
+  integration, including read-only sync before testing explicit workout export
 - [x] Keep the real-login-tested `garminconnect==0.3.6` pin for the first alpha;
   evaluate newer versions as a separate compatibility change
 - [x] Add a synthetic-data product screenshot or short demo
@@ -147,14 +149,35 @@ Goal: reduce contributor friction after behavior has stabilized.
 - [ ] Add release notes and a documented deprecation policy
 - [ ] Add Linux or Windows support only with real maintainers and CI coverage
 
+## UI modernization — Lovable frontend
+
+Goal: substantially improve Pace's visual and interaction design without
+replacing its local Python, SQLite, Garmin, AI, or validation architecture.
+
+- [x] Choose Lovable as a frontend-only design and React implementation tool
+- [x] Create a synthetic-data handoff with product, screen, design, and
+  architecture specifications
+- [x] Build and review a separate `pace-ui` prototype in Lovable
+- [x] Freeze the approved component system and normalized view contracts
+- [x] Add a versioned same-origin local presentation API over existing services
+- [x] Integrate the exported React source under `frontend/`
+- [x] Preserve loopback binding, CSRF, Host restrictions, CSP, owner-only data,
+  and no-cache behaviour
+- [ ] Verify onboarding, sync progress, coach confirmations, plan creation,
+  feedback, settings, and weekly review feature parity
+- [ ] Add frontend unit and automated accessibility tests; Python API-contract
+  tests and local-browser smoke coverage are in place
+- [ ] Remove the replaced server-rendered pages only after the React interface
+  passes the release gate
+
 ## Deferred product areas
 
 These require separate design decisions and are not implied by the public-alpha
 release:
 
-- mobile application or hosted service;
+- mobile application or a fully hosted coaching service beyond the bounded,
+  read-only Pace Light mirror;
 - multi-user accounts and cloud synchronization;
-- direct Garmin workout export;
 - calendar integrations and notifications;
 - embeddings or a vector database;
 - additional providers such as COROS or Strava;

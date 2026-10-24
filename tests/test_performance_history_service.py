@@ -30,10 +30,17 @@ def _activity(identifier: str, activity_date: date, sport_type: str = "run") -> 
 
 
 class StubPerformanceSource:
-    def __init__(self, *, split_error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        split_error: Exception | None = None,
+        zone_error: Exception | None = None,
+    ) -> None:
         self.split_error = split_error
+        self.zone_error = zone_error
         self.detail_requests: list[str] = []
         self.split_requests: list[str] = []
+        self.zone_requests: list[str] = []
 
     def get_activity_performance_detail(self, activity_id: str):
         self.detail_requests.append(activity_id)
@@ -77,6 +84,19 @@ class StubPerformanceSource:
             ]
         }
 
+    def get_activity_heart_rate_zones(self, activity_id: str):
+        self.zone_requests.append(activity_id)
+        if self.zone_error is not None:
+            raise self.zone_error
+        return {
+            "activityId": activity_id,
+            "zone1": 300.0,
+            "zone2": 900.0,
+            "zone3": 600.0,
+            "zone4": 0.0,
+            "zone5": 0.0,
+        }
+
 
 def test_detail_sync_stores_only_normalized_run_ride_detail_and_splits():
     with session_scope() as session:
@@ -113,6 +133,11 @@ def test_detail_sync_stores_only_normalized_run_ride_detail_and_splits():
         "average_power": 245.0,
     }
     assert "latitude" not in str(details[0].splits)
+    assert details[0].heart_rate_zones[1] == {
+        "zone": 2,
+        "seconds": 900,
+        "percent": 50.0,
+    }
     assert audit is not None
     assert audit.status == "success"
     assert audit.candidate_activities == 2
@@ -149,6 +174,45 @@ def test_failed_split_preserves_an_existing_detail_and_marks_partial():
     assert result.details_fetched == 0
     assert detail is not None
     assert len(detail.splits) == 2
+
+
+def test_failed_zone_refresh_preserves_existing_zone_facts():
+    with session_scope() as session:
+        session.add(_activity("run-1", date(2026, 7, 20)))
+    PerformanceHistoryService(StubPerformanceSource()).sync_details(
+        start_date=date(2026, 7, 20), end_date=date(2026, 7, 20)
+    )
+
+    result = PerformanceHistoryService(
+        StubPerformanceSource(zone_error=GarminIntegrationError("zones unavailable"))
+    ).sync_details(start_date=date(2026, 7, 20), end_date=date(2026, 7, 20))
+
+    with SessionFactory() as session:
+        detail = session.scalar(select(ActivityPerformanceDetail))
+    assert result.status == "partial"
+    assert detail is not None
+    assert detail.heart_rate_zones[1]["seconds"] == 900
+
+
+def test_malformed_zone_payload_keeps_scalar_detail_and_marks_partial():
+    class MalformedZones(StubPerformanceSource):
+        def get_activity_heart_rate_zones(self, activity_id: str):
+            return {"unexpected": "shape"}
+
+    with session_scope() as session:
+        session.add(_activity("run-1", date(2026, 7, 20)))
+
+    result = PerformanceHistoryService(MalformedZones()).sync_details(
+        start_date=date(2026, 7, 20), end_date=date(2026, 7, 20)
+    )
+
+    with SessionFactory() as session:
+        detail = session.scalar(select(ActivityPerformanceDetail))
+    assert result.status == "partial"
+    assert result.details_inserted == 1
+    assert detail is not None
+    assert detail.average_heart_rate == 151
+    assert detail.heart_rate_zones == []
 
 
 def test_rate_limit_stops_remaining_candidates_after_preserving_prior_success():

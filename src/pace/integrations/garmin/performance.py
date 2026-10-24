@@ -16,6 +16,7 @@ class GarminPerformanceDetail:
     average_cadence: float | None
     average_power: float | None
     splits: list[dict[str, int | float | None]]
+    heart_rate_zones: list[dict[str, int | float]] | None
 
 
 def _value(payload: dict[str, Any], *keys: str) -> Any:
@@ -105,9 +106,58 @@ def _normalize_splits(splits_payload: dict[str, Any]) -> list[dict[str, int | fl
     return normalized_splits
 
 
+def normalize_garmin_heart_rate_zones(
+    payload: dict[str, Any] | list[dict[str, Any]],
+) -> list[dict[str, int | float]]:
+    """Normalize Garmin time-in-zone data without retaining provider payloads."""
+
+    seconds_by_zone: dict[int, float] = {}
+    if isinstance(payload, dict):
+        for zone in range(1, 6):
+            value = _value(payload, f"zone{zone}", f"zone_{zone}")
+            if value is not None:
+                seconds_by_zone[zone] = _optional_float(
+                    value, f"heart-rate zone {zone} seconds"
+                ) or 0.0
+        if not seconds_by_zone:
+            nested = _value(payload, "heartRateZones", "timeInZones", "zones")
+            if nested is not None:
+                payload = nested
+
+    if isinstance(payload, list):
+        for item in payload:
+            if not isinstance(item, dict):
+                raise ValueError("Garmin heart-rate zones have invalid entries.")
+            zone = _optional_int(
+                _value(item, "zone", "zoneNumber", "zoneIndex"), "heart-rate zone"
+            )
+            seconds = _optional_float(
+                _value(item, "seconds", "secsInZone", "timeInZone"),
+                "heart-rate zone seconds",
+            )
+            if zone is not None and seconds is not None and 1 <= zone <= 5:
+                seconds_by_zone[zone] = seconds
+
+    if not seconds_by_zone:
+        raise ValueError("Garmin heart-rate zones are missing zone durations.")
+
+    total_seconds = sum(seconds_by_zone.values())
+    return [
+        {
+            "zone": zone,
+            "seconds": round(seconds),
+            "percent": 0.0
+            if total_seconds <= 0
+            else round(seconds / total_seconds * 100, 1),
+        }
+        for zone, seconds in sorted(seconds_by_zone.items())
+    ]
+
+
 def normalize_garmin_performance_detail(
     detail_payload: dict[str, Any],
     splits_payload: dict[str, Any],
+    heart_rate_zones_payload: dict[str, Any] | list[dict[str, Any]] | None = None,
 ) -> GarminPerformanceDetail:
     """Create Pace's minimal detail contract without retaining provider payloads."""
 
@@ -135,4 +185,9 @@ def normalize_garmin_performance_detail(
             _value(summary, "averagePower", "avgPower"), "average power"
         ),
         splits=_normalize_splits(splits_payload),
+        heart_rate_zones=(
+            None
+            if heart_rate_zones_payload is None
+            else normalize_garmin_heart_rate_zones(heart_rate_zones_payload)
+        ),
     )

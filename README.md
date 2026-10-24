@@ -38,8 +38,8 @@ you explicitly request or confirm every saved change
 
 - **Python owns facts.** Time, distance, frequency, baselines, data quality,
   plan constraints, and validation are calculated in code.
-- **You own intent.** You choose sport balance, ambition, availability, races,
-  and report how sessions felt.
+- **You own intent.** You choose sport balance, ambition, availability, weekly
+  base-volume boundaries, races, and report how sessions felt.
 - **The model owns coaching judgment.** It selects and explains training using
   the supplied evidence. It cannot silently rewrite stored facts or plans.
 
@@ -51,6 +51,10 @@ you explicitly request or confirm every saved change
 - Athlete context such as illness, pain, travel, and schedule constraints
 - Race-aware or general 14-day detailed training plans
 - Structured workouts, including intervals and recovery steps
+- Explicit export of selected running and cycling sessions to the Garmin
+  calendar, with an optional device push and duplicate-safe retries
+- Local activity time-in-heart-rate-zone charts after a separate, bounded
+  seven-day detail sync
 - Session feedback through normal language in the Coach view
 - Training dashboard, active plan, and stable weekly review pages
 - Personalization from explicit feedback rather than hidden guesswork
@@ -118,15 +122,38 @@ API key before it can make an AI request; a ChatGPT login or subscription is
 not an API key, and API usage may be billed separately. The wizard links to
 OpenAI's API key page and does not ask for your ChatGPT password.
 
-After setup, normal use happens in four views:
+After setup, normal use happens in the browser:
 
 - **Coach** — ask questions and confirm context or session feedback.
 - **Dashboard** — inspect current training and recovery facts.
 - **Plan** — see the active plan and create the next detailed window.
 - **Weekly review** — read the most recently generated weekly review.
+- **Races** — add or cancel goals and explicitly choose a race for a new plan.
+- **Settings** — change sport role, ambition, availability, weekly base-volume
+  boundaries, cycling zones, and run a 7-day or 80-day Garmin sync.
+- **Onboarding** — inspect setup status and reopen the secure local setup flow.
 
 Settings, Garmin sync, races, zones, sport balance, and ambition are available
 in the browser. The CLI remains available for development and troubleshooting.
+
+The React interface is already packaged with Pace. Normal users do not install
+Node.js and do not run a separate frontend server.
+
+### Frontend development
+
+Only contributors changing the interface need Node.js:
+
+```bash
+cd frontend
+npm install
+npm run typecheck
+npm run lint
+npm run build
+```
+
+Production uses the same-origin Python API and real local Pace data. Synthetic
+fixtures are opt-in for isolated design work with
+`VITE_PACE_USE_MOCKS=true`; they are never the production default.
 
 ## Safe commands in the Coach chat
 
@@ -156,10 +183,18 @@ Stored only on your computer:
 - the locally saved OpenAI API key;
 - generated HTML reports in `reports/`.
 
+If you explicitly enable Pace Light, one privacy-minimized snapshot of recent
+run/ride summaries and the active plan is stored by that private hosted mirror.
+The local installation remains the source of truth.
+
 External connections happen only for:
 
 - **Garmin Connect:** login and the syncs you request;
+- **Garmin Connect:** workout uploads, calendar scheduling, and optional device
+  delivery only after you confirm selected sessions on the Plan page;
 - **OpenAI:** plan generation, coach questions, and weekly reviews you request.
+- **Pace Light:** an optional upload of one bounded read-only snapshot after
+  you configure its separate service credential.
 
 Pace sends OpenAI a bounded catalog of normalized training facts and selected
 context. It does **not** send Garmin credentials, Garmin tokens, raw Garmin
@@ -172,9 +207,12 @@ those rules or upload those directories when reporting a bug.
 
 - Pace is not affiliated with or endorsed by Garmin. It uses an unofficial
   community library and Garmin may change the underlying service.
+- Garmin workout export is therefore best-effort. Pace records its local export
+  mapping so a retry does not create a duplicate workout for the same session.
 - Pace is not medical care and does not diagnose injury or illness.
-- The current application is single-athlete and local-only. It has no accounts,
-  cloud sync, mobile app, or hosted service.
+- The full coaching application remains single-athlete and local-first. Pace
+  Light is an optional read-only hosted projection, not cloud synchronization
+  and not a remotely editable coaching account.
 - Model output can be wrong. Pace validates structure and fact references, but
   you remain responsible for training decisions.
 - Cycling power targets and running pace targets require suitable verified
