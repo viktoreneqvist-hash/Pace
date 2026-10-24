@@ -1,6 +1,7 @@
 """Validate athlete-controlled feasibility preferences without performance claims."""
 
 from dataclasses import dataclass
+import math
 
 from pace.database.models import TrainingPreference
 from pace.database.session import session_scope
@@ -23,16 +24,36 @@ class TrainingPreferenceInput:
     sport_role: str
     available_days: tuple[str, ...]
     coaching_ambition: str | None = None
+    base_running_distance_ceiling_km: float | None = None
+    base_cycling_duration_ceiling_hours: float | None = None
+    base_total_duration_ceiling_hours: float | None = None
 
 
 class TrainingPreferenceService:
     """Store availability and desired sport role separately from training capacity."""
 
-    def set_preference(self, preference_input: TrainingPreferenceInput) -> TrainingPreference:
+    def set_preference(
+        self, preference_input: TrainingPreferenceInput
+    ) -> TrainingPreference:
         sport_role = preference_input.sport_role.strip().lower()
         if sport_role not in SUPPORTED_SPORT_ROLES:
             raise ValueError(f"Unsupported sport role: {sport_role}.")
         available_days = _parse_available_days(preference_input.available_days)
+        running_ceiling = _validate_volume_ceiling(
+            preference_input.base_running_distance_ceiling_km,
+            label="Base running ceiling",
+            maximum=1_000,
+        )
+        cycling_ceiling = _validate_volume_ceiling(
+            preference_input.base_cycling_duration_ceiling_hours,
+            label="Base cycling ceiling",
+            maximum=168,
+        )
+        total_ceiling = _validate_volume_ceiling(
+            preference_input.base_total_duration_ceiling_hours,
+            label="Base total-time ceiling",
+            maximum=168,
+        )
         with session_scope() as session:
             existing = get_training_preference(session)
             coaching_ambition = _resolve_coaching_ambition(
@@ -44,6 +65,9 @@ class TrainingPreferenceService:
                 sport_role=sport_role,
                 coaching_ambition=coaching_ambition,
                 available_days=available_days,
+                base_running_distance_ceiling_km=running_ceiling,
+                base_cycling_duration_ceiling_hours=cycling_ceiling,
+                base_total_duration_ceiling_hours=total_ceiling,
             )
 
     def get_preference(self) -> TrainingPreference | None:
@@ -59,7 +83,9 @@ class TrainingPreferenceService:
                 session, coaching_ambition=ambition
             )
             if preference is None:
-                raise ValueError("Set training preferences before setting coaching ambition.")
+                raise ValueError(
+                    "Set training preferences before setting coaching ambition."
+                )
             return preference
 
 
@@ -78,7 +104,9 @@ def _parse_available_days(values: tuple[str, ...]) -> list[dict[str, object]]:
             try:
                 minutes = int(minutes_text)
             except ValueError as error:
-                raise ValueError("Available day minutes must be a whole number or 'any'.") from error
+                raise ValueError(
+                    "Available day minutes must be a whole number or 'any'."
+                ) from error
             if minutes <= 0:
                 raise ValueError("Available day minutes must be greater than zero.")
         if weekday in seen_days:
@@ -97,3 +125,16 @@ def _resolve_coaching_ambition(
     if ambition not in SUPPORTED_COACHING_AMBITIONS:
         raise ValueError(f"Unsupported coaching ambition: {ambition}.")
     return ambition
+
+
+def _validate_volume_ceiling(
+    value: float | None, *, label: str, maximum: float
+) -> float | None:
+    """Validate an athlete-owned weekly ceiling, never a training target."""
+
+    if value is None:
+        return None
+    normalized = float(value)
+    if not math.isfinite(normalized) or normalized <= 0 or normalized > maximum:
+        raise ValueError(f"{label} must be greater than zero and at most {maximum:g}.")
+    return normalized

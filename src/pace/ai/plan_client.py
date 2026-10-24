@@ -29,7 +29,11 @@ _TARGET_SCHEMA: dict[str, object] = {
     "type": "object",
     "additionalProperties": False,
     "required": [
-        "kind", "rpe_min", "rpe_max", "pace_seconds_per_km", "power_watts",
+        "kind",
+        "rpe_min",
+        "rpe_max",
+        "pace_seconds_per_km",
+        "power_watts",
         "evidence_reference_id",
     ],
     "properties": {
@@ -46,8 +50,14 @@ _WORKOUT_STEP_SCHEMA: dict[str, object] = {
     "type": "object",
     "additionalProperties": False,
     "required": [
-        "kind", "repetitions", "distance_meters", "duration_seconds", "target",
-        "recovery_distance_meters", "recovery_duration_seconds", "recovery_target",
+        "kind",
+        "repetitions",
+        "distance_meters",
+        "duration_seconds",
+        "target",
+        "recovery_distance_meters",
+        "recovery_duration_seconds",
+        "recovery_target",
         "instruction",
     ],
     "properties": {
@@ -133,6 +143,16 @@ compromise, and C is treated as a hard training session. Do not silently
 promote a B/C target into an A target.
 Availability null means no supplied time ceiling; it is never permission to
 prescribe unlimited training. Return a coach_assessment with fact_references
+The athlete's base-volume ceilings are hard weekly boundaries, not targets to
+fill. Running is bounded in kilometres, cycling in hours, and combined training
+in hours. Provide both distance and duration wherever Python needs them to
+validate the configured boundaries. A general plan must stay within every base
+ceiling. A plan for the explicitly selected race may propose a temporary
+race-volume exception only when the complete Pace facts support it; Python will
+hold that plan for separate athlete approval instead of activating it. Explain
+the reason for any proposed exception in the assessment. Race priority or an
+ambitious setting never grants the exception automatically.
+Return a coach_assessment with fact_references
 as exact ID strings selected only from the supplied fact_catalog, then your inferences, rationale,
 uncertainties, and general coaching_principles. The principles are not source
 citations. Curated knowledge briefs are optional local support: cite only
@@ -337,7 +357,9 @@ def _schema_for_request(request: PlanGenerationRequest) -> dict[str, object]:
     if not isinstance(fact_catalog, dict) or not fact_catalog:
         raise PaceAIResponseError("The plan draft lacks a valid Pace fact catalog.")
     knowledge_briefs = request.context.get("knowledge_briefs")
-    briefs = knowledge_briefs.get("briefs") if isinstance(knowledge_briefs, dict) else None
+    briefs = (
+        knowledge_briefs.get("briefs") if isinstance(knowledge_briefs, dict) else None
+    )
     knowledge_ids = (
         sorted(
             item["id"]
@@ -384,7 +406,9 @@ def _parse_plan(payload: object) -> GeneratedPlanDraft:
         "sessions",
     }:
         raise PaceAIResponseError("The AI plan had the wrong fields.")
-    if not isinstance(payload["block_outline"], list) or not isinstance(payload["sessions"], list):
+    if not isinstance(payload["block_outline"], list) or not isinstance(
+        payload["sessions"], list
+    ):
         raise PaceAIResponseError("The AI plan contained invalid content.")
     try:
         block_outline = tuple(
@@ -394,7 +418,8 @@ def _parse_plan(payload: object) -> GeneratedPlanDraft:
                 focus=_required_text(item, "focus"),
             )
             for item in payload["block_outline"]
-            if isinstance(item, dict) and set(item) == {"week_start", "week_end", "focus"}
+            if isinstance(item, dict)
+            and set(item) == {"week_start", "week_end", "focus"}
         )
         sessions = tuple(_parse_session(item) for item in payload["sessions"])
         coach_assessment = _parse_coach_assessment(payload["coach_assessment"])
@@ -434,12 +459,21 @@ def _parse_coach_assessment(item: object) -> CoachAssessmentDraft:
 
 def _parse_session(item: object) -> PlannedSessionDraft:
     if not isinstance(item, dict) or set(item) != {
-        "scheduled_date", "sport_type", "purpose", "distance_meters", "duration_seconds", "heart_rate_zone", "target", "workout_steps"
+        "scheduled_date",
+        "sport_type",
+        "purpose",
+        "distance_meters",
+        "duration_seconds",
+        "heart_rate_zone",
+        "target",
+        "workout_steps",
     }:
         raise PaceAIResponseError("The AI plan contained invalid session fields.")
     distance = item["distance_meters"]
     duration = item["duration_seconds"]
-    if distance is not None and (not isinstance(distance, (int, float)) or distance <= 0):
+    if distance is not None and (
+        not isinstance(distance, (int, float)) or distance <= 0
+    ):
         raise PaceAIResponseError("The AI plan contained an invalid session distance.")
     if duration is not None and (not isinstance(duration, int) or duration <= 0):
         raise PaceAIResponseError("The AI plan contained an invalid session duration.")
@@ -458,21 +492,33 @@ def _parse_session(item: object) -> PlannedSessionDraft:
         duration_seconds=duration,
         heart_rate_zone=heart_rate_zone,
         target=_parse_target(item["target"]),
-        workout_steps=tuple(_parse_workout_step(step) for step in item["workout_steps"]),
+        workout_steps=tuple(
+            _parse_workout_step(step) for step in item["workout_steps"]
+        ),
     )
 
 
 def _parse_workout_step(item: object) -> WorkoutStepDraft:
     required_fields = {
-        "kind", "repetitions", "distance_meters", "duration_seconds", "target",
-        "recovery_distance_meters", "recovery_duration_seconds", "recovery_target",
+        "kind",
+        "repetitions",
+        "distance_meters",
+        "duration_seconds",
+        "target",
+        "recovery_distance_meters",
+        "recovery_duration_seconds",
+        "recovery_target",
         "instruction",
     }
     if not isinstance(item, dict) or set(item) != required_fields:
         raise PaceAIResponseError("The AI plan contained invalid workout-block fields.")
     kind = item["kind"]
     repetitions = item["repetitions"]
-    if kind not in WORKOUT_STEP_KINDS or not isinstance(repetitions, int) or isinstance(repetitions, bool):
+    if (
+        kind not in WORKOUT_STEP_KINDS
+        or not isinstance(repetitions, int)
+        or isinstance(repetitions, bool)
+    ):
         raise PaceAIResponseError("The AI plan contained an invalid workout block.")
     distance = item["distance_meters"]
     duration = item["duration_seconds"]
@@ -480,18 +526,33 @@ def _parse_workout_step(item: object) -> WorkoutStepDraft:
     recovery_duration = item["recovery_duration_seconds"]
     for value in (distance, recovery_distance):
         if value is not None and (not isinstance(value, (int, float)) or value <= 0):
-            raise PaceAIResponseError("The AI plan contained an invalid block distance.")
+            raise PaceAIResponseError(
+                "The AI plan contained an invalid block distance."
+            )
     for value in (duration, recovery_duration):
-        if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value <= 0):
-            raise PaceAIResponseError("The AI plan contained an invalid block duration.")
+        if value is not None and (
+            not isinstance(value, int) or isinstance(value, bool) or value <= 0
+        ):
+            raise PaceAIResponseError(
+                "The AI plan contained an invalid block duration."
+            )
     if distance is None and duration is None:
         raise PaceAIResponseError("The AI plan contained a block with no scope.")
     recovery_target = item["recovery_target"]
     if kind == "interval":
-        if repetitions < 2 or (recovery_distance is None and recovery_duration is None) or recovery_target is None:
+        if (
+            repetitions < 2
+            or (recovery_distance is None and recovery_duration is None)
+            or recovery_target is None
+        ):
             raise PaceAIResponseError("The AI plan interval block lacks recovery.")
-    elif repetitions != 1 or any(value is not None for value in (recovery_distance, recovery_duration, recovery_target)):
-        raise PaceAIResponseError("The AI plan non-interval block has invalid recovery.")
+    elif repetitions != 1 or any(
+        value is not None
+        for value in (recovery_distance, recovery_duration, recovery_target)
+    ):
+        raise PaceAIResponseError(
+            "The AI plan non-interval block has invalid recovery."
+        )
     instruction = item["instruction"]
     if not isinstance(instruction, str) or not instruction.strip():
         raise PaceAIResponseError("The AI plan lacks a workout-block instruction.")
@@ -501,9 +562,13 @@ def _parse_workout_step(item: object) -> WorkoutStepDraft:
         distance_meters=None if distance is None else float(distance),
         duration_seconds=duration,
         target=_parse_target(item["target"]),
-        recovery_distance_meters=None if recovery_distance is None else float(recovery_distance),
+        recovery_distance_meters=None
+        if recovery_distance is None
+        else float(recovery_distance),
         recovery_duration_seconds=recovery_duration,
-        recovery_target=None if recovery_target is None else _parse_target(recovery_target),
+        recovery_target=None
+        if recovery_target is None
+        else _parse_target(recovery_target),
         instruction=instruction.strip(),
     )
 
@@ -527,8 +592,12 @@ def _parse_target(item: object) -> SessionTargetDraft:
         for field_name in ("rpe_min", "rpe_max", "pace_seconds_per_km", "power_watts")
     }
     for value in values.values():
-        if value is not None and (not isinstance(value, int) or isinstance(value, bool)):
-            raise PaceAIResponseError("The AI plan contained an invalid numeric target.")
+        if value is not None and (
+            not isinstance(value, int) or isinstance(value, bool)
+        ):
+            raise PaceAIResponseError(
+                "The AI plan contained an invalid numeric target."
+            )
     evidence_reference_id = item["evidence_reference_id"]
     if evidence_reference_id is not None and (
         not isinstance(evidence_reference_id, str) or not evidence_reference_id.strip()
@@ -554,7 +623,9 @@ def _required_text(item: dict[str, object], key: str) -> str:
 def _text_tuple(value: object, *, require_nonempty: bool = False) -> tuple[str, ...]:
     if not isinstance(value, list):
         raise ValueError("Expected a text list.")
-    texts = tuple(item.strip() for item in value if isinstance(item, str) and item.strip())
+    texts = tuple(
+        item.strip() for item in value if isinstance(item, str) and item.strip()
+    )
     if len(texts) != len(value):
         raise ValueError("Expected non-empty text items.")
     if require_nonempty and not texts:

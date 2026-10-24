@@ -133,8 +133,17 @@ Garmin provider
   active A, B, or C race may be selected and retains its stored priority and
   taper. A missing `race_id` means a general plan; never send or enforce other
   stored races as implicit targets.
-- K2 coach dialogue reads exactly one accepted, active plan and current selected
-  Pace facts. Its in-terminal dialogue history exists only in process memory
+- K2 coach dialogue treats exactly one accepted, active plan as the current
+  prescription. It may also read a bounded 28-day-past/14-day-future window
+  from up to six ancestor revisions in the same plan lineage so it can answer
+  what Pace previously scheduled. The effective schedule overlays revisions:
+  the newest revision wins on dates it specifies, while omitted ancestor
+  sessions remain current unless an explicit cancellation exists. Earlier
+  prescriptions are never evidence
+  that training was completed; only Garmin observations or explicit athlete
+  feedback establish that. Feedback may be saved against an inherited ancestor
+  session only when no newer revision specifies a session on that date. Its
+  in-terminal dialogue history exists only in process memory
   and is discarded on exit; it is not application memory. A same-day
   replacement or skip is only a validated, unsaved draft. It must never alter,
   accept, or overwrite a plan; persistent changes require a separate explicit
@@ -144,6 +153,11 @@ Garmin provider
   never a numerical volume/intensity rule or permission to bypass factual,
   availability, evidence, or acceptance boundaries. The coach model must
   explain how it affected a draft or why the facts prevented that effect.
+- Athlete-defined weekly running-distance, cycling-time, and combined-time
+  ceilings are hard boundaries for general plans and never training targets.
+  A selected-race plan may be `volume_exception_pending`, but the accepted plan
+  remains active until explicit approval. Approval never changes the saved
+  base ceiling.
 - Race records have an explicit `active`/`cancelled` lifecycle. Correct or
   delete only unused future races. Once a plan or Garmin evidence references a
   race, its facts and identity are historical. A cancelled race is retained for
@@ -176,6 +190,10 @@ Garmin provider
   detailed window ends or a race approaches. It must never generate, accept, or
   overwrite a plan. Every active race inside a generated detailed window must
   remain visible as a same-date, same-sport session with its stored A/B/C role.
+- A bounded revision extends the accepted detailed window; it does not
+  regenerate remaining current days. Uncompleted sessions from today through
+  the old window end are copied unchanged into the new immutable version, and
+  the AI may generate only from the following day (or from today when late).
 - Workout form is model-owned coaching judgment over selected Pace facts and
   block purpose. Do not add a fixed workout-template rotation for cosmetic
   variety. Python continues to own all availability, sport, target, evidence,
@@ -193,12 +211,17 @@ Garmin provider
 - Synthetic coach evaluation uses reviewed fake facts only. The deterministic
   contract runs in the normal test suite; a real-model evaluation requires an
   explicit live command and must never use real athlete data or run in CI.
-- Garmin workout export is deferred. Do not add calendar/device writes or other
-  externally mutating plan delivery without a new product and safety decision.
+- Garmin workout export is an explicit athlete-confirmed external mutation.
+  Export only selected accepted sessions, preserve duplicate-safe local
+  mappings, and never export from plan generation, dialogue, page load, or
+  background work. New reconciliation or deletion behavior requires another
+  product and safety decision.
 - `pace serve` is a loopback-only local presentation layer. Bind it only to
   `127.0.0.1`, restrict accepted Host headers, and retain restrictive browser
-  security headers; do not add hosted access, accounts, remote listeners, or
-  API keys/tokens in browser-delivered HTML or JavaScript without a new decision.
+  security headers. Pace Light is the sole decided hosted exception: a private,
+  read-only bounded snapshot with separate identity and service credentials.
+  Do not add remote listeners, remotely mutable coaching, or API keys/tokens in
+  browser-delivered HTML or JavaScript without a new decision.
   Browser coach dialogue is bounded in process memory only. Every durable UI
   write requires same-origin CSRF confirmation and must call the existing
   validated service; an LLM may prepare a card but must never write context,

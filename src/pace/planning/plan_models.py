@@ -56,6 +56,28 @@ class CoachAssessmentFact:
 
 
 @dataclass(frozen=True, slots=True)
+class VolumeBoundaryBreachFact:
+    metric: str
+    ceiling: float
+    proposed: float
+    unit: str
+
+
+@dataclass(frozen=True, slots=True)
+class WeeklyVolumeExceptionFact:
+    week_start: date
+    week_end: date
+    breaches: tuple[VolumeBoundaryBreachFact, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class VolumeExceptionFact:
+    approved: bool
+    rationale: str
+    weeks: tuple[WeeklyVolumeExceptionFact, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class TrainingPlanFact:
     id: int
     parent_plan_id: int | None
@@ -71,3 +93,4 @@ class TrainingPlanFact:
     block_outline: tuple[dict[str, object], ...]
     sessions: tuple[PlanSessionFact, ...]
     coach_assessment: CoachAssessmentFact
+    volume_exception: VolumeExceptionFact | None = None

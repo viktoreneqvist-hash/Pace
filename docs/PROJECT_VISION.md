@@ -21,13 +21,18 @@ Pace supports one athlete per local installation. The source can be shared
 publicly, but each installation owns its own Garmin session, database, OpenAI
 key, settings, plans, and reports.
 
-Version 0.1 does not need:
+Version 0.1 does not need for the canonical coaching application:
 
 - multi-user accounts;
 - cloud storage or hosted authentication;
 - subscription infrastructure;
 - organization or team features;
 - synchronization between devices.
+
+The optional Pace Light companion is a separately decided exception: it may
+store one bounded read-only snapshot for private cross-device viewing. It does
+not host Garmin credentials, AI coaching, application writes, or the canonical
+athlete database.
 
 Single-athlete operation is an intentional architecture boundary, not a claim
 that only the original author can use the software.
@@ -93,6 +98,12 @@ It may use general endurance knowledge, while Pace labels that reasoning as
 coaching judgment rather than observed athlete fact. Python validates every
 plan before it becomes active.
 
+The athlete may set separate weekly base-training ceilings for running
+distance, cycling time, and combined training time. These are hard boundaries,
+not targets or capacity evidence. A race-directed plan may propose a temporary
+exception, but it remains inactive until the athlete reviews the affected
+weeks and explicitly approves that plan version.
+
 ## Coaching principles
 
 ### History, not one flattering week
@@ -146,8 +157,9 @@ and should not need to read raw JSON during normal use.
 
 The database, Garmin session, API key, reports, and private context remain local
 by default. External connections occur only for explicit Garmin and OpenAI
-operations. Garmin credentials, tokens, raw payloads, and database dumps must
-never be sent to the model.
+operations and an explicitly configured Pace Light snapshot upload. Garmin
+credentials, tokens, raw payloads, and database dumps must never be sent to the
+model or Pace Light.
 
 Pace is not medical care. Injury diagnosis, medication, nutrition, and
 supplement advice remain outside v0.1. The application must not be exposed as
@@ -178,8 +190,9 @@ After the local alpha is reliable, Pace may add:
 - broader, versioned scientific coaching knowledge;
 - additional tested platforms and packaging;
 - export to devices or calendars;
-- an optional hosted product only after separate privacy, identity, security,
-  and licensing decisions.
+- a fully hosted, remotely editable coaching product only after separate
+  privacy, identity, security, and licensing decisions. The current Pace Light
+  decision covers only a bounded read-only projection.
 
 ## Engineering-education goal
 

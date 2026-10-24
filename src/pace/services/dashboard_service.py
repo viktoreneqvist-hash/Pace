@@ -6,6 +6,9 @@ from datetime import date, timedelta
 from pace.database.session import session_scope
 from pace.presentation.dashboard import write_dashboard_html
 from pace.repositories.activity_repository import get_activities_in_date_range
+from pace.repositories.activity_performance_detail_repository import (
+    get_details_for_activities,
+)
 from pace.repositories.daily_metric_repository import get_daily_metrics_in_date_range
 from pace.services.athlete_state_service import AthleteStateService
 from pace.state.models import RecoveryDayObservation
@@ -22,17 +25,23 @@ class DashboardData:
     plan: object | None
     activities: tuple
     recovery_observations: tuple
+    performance_details: dict
 
 
 class DashboardService:
-    def get_dashboard_data(self, *, end_date: date) -> DashboardData:
+    def get_dashboard_data(self, *, end_date: date, days: int = 28) -> DashboardData:
+        if days not in {28, 84}:
+            raise ValueError("Dashboard days must be 28 or 84.")
         state = AthleteStateService().get_state(end_date=end_date)
         trends = TrainingResponseTrendService().get_trends(end_date=end_date)
         plans = TrainingPlanService().list_plans()
         plan = next((item for item in plans if item.status == "accepted" and item.block_start_date <= end_date <= item.block_end_date), None)
         with session_scope() as session:
-            activities = get_activities_in_date_range(session, start_date=end_date - timedelta(days=27), end_date=end_date)
-            daily_metrics = get_daily_metrics_in_date_range(session, start_date=end_date - timedelta(days=27), end_date=end_date)
+            activities = get_activities_in_date_range(session, start_date=end_date - timedelta(days=days - 1), end_date=end_date)
+            performance_details = get_details_for_activities(
+                session, activity_ids=[item.id for item in activities]
+            )
+            daily_metrics = get_daily_metrics_in_date_range(session, start_date=end_date - timedelta(days=days - 1), end_date=end_date)
         recovery_observations = tuple(
             RecoveryDayObservation(
                 date=item.date,
@@ -48,6 +57,7 @@ class DashboardService:
             plan=plan,
             activities=tuple(activities),
             recovery_observations=recovery_observations,
+            performance_details=performance_details,
         )
 
     def write_dashboard(self, *, end_date: date):

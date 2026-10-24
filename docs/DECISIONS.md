@@ -2891,6 +2891,9 @@ surface area before Pace has validated its core product with external users.
 
 # Decision 64: Pin the Real-Login-Tested Garmin Client for the First Alpha
 
+**Status: retained for the `v0.1.0-alpha.1` tag and superseded for unreleased
+development by Decisions 74 and 75.**
+
 ## Problem
 
 Pace passed onboarding, Garmin login, bounded history sync, and first-plan
@@ -3080,7 +3083,316 @@ explicit snapshot service; failed uploads never change local Pace data.
   access to ChatGPT conversations, memory, files, tokens or billing data.
 - Multi-user access, public sharing and externally mutable coaching remain out
   of scope.
+# Decision 69: Lovable May Replace the Frontend, Not the Pace Core
 
+## Problem
+
+Pace's local interface is functional and secure, but its server-rendered HTML,
+CSS, and small JavaScript modules make a substantial visual redesign slower
+than a dedicated frontend workflow. Lovable can accelerate design and React
+implementation, but moving Pace's database, Garmin integration, AI calls, or
+coaching validation into Lovable Cloud would create a second product and break
+the local-first privacy model.
+
+## Options
+
+1. Keep the existing server-rendered interface and redesign every view by hand.
+2. Rebuild Pace as a hosted Lovable/Supabase application.
+3. Use Lovable to prototype and generate a React presentation layer while the
+   existing local Python application remains the only system of record.
+
+## Chosen solution
+
+Lovable is a frontend design and implementation tool for Pace. The first
+prototype uses synthetic fixtures and a typed frontend adapter in a separate
+`pace-ui` repository. It has no Lovable Cloud, Supabase, authentication,
+telemetry, real credentials, or direct external integrations.
+
+After visual and interaction review, the exported React source may be
+integrated under `frontend/` in the Pace repository. FastAPI will serve the
+built frontend and a same-origin local API. That API must reuse existing Pace
+services, Python validators, CSRF protection, Host restrictions, and privacy
+boundaries. SQLite, Garmin, OpenAI, metrics, rules, and durable writes remain
+server-side.
+
+## Reason
+
+This captures Lovable's strength — rapid, coherent frontend iteration — without
+discarding the tested system that gives Pace its integrity. Synthetic-first
+design also prevents real athlete data or secrets from entering a hosted design
+environment and allows UI decisions to settle before an API migration begins.
+
+## Future consequences
+
+- `uv run pace serve` remains the normal application entry point.
+- The main Pace repository remains the release source of truth and retains its
+  full Git history.
+- The current server-rendered views remain operational until the React
+  replacement passes feature-parity, security, and browser tests.
+- A local versioned presentation API and frontend build pipeline require a
+  separate implementation review before integration.
+- Cloud accounts, remote persistence, public hosting, multi-user data, and
+  telemetry remain explicitly out of scope.
+
+---
+
+# Decision 70: Ship the Reviewed React UI as Static Local Assets
+
+## Problem
+
+The approved Lovable prototype had a coherent visual system but still used
+synthetic fixtures and a Cloudflare-oriented development runtime. Pace needed
+to adopt the interface without adding a second server, exposing local data, or
+requiring Node.js on an athlete's computer.
+
+## Options
+
+1. Keep the prototype as a separate demo indefinitely.
+2. Run a JavaScript server beside FastAPI and proxy between them.
+3. Build a client-only React application, package its static output with Pace,
+   and connect it to existing Python services through a same-origin API.
+
+## Chosen solution
+
+Option 3. The reviewed source lives under `frontend/`. Production builds use
+`HttpPaceClient` and `/api/v1/*`; synthetic `MockPaceClient` data requires the
+explicit `VITE_PACE_USE_MOCKS=true` development flag. FastAPI serves the built
+files from `src/pace/web/frontend_dist`, keeps loopback binding and the existing
+security middleware, and remains the only process and system of record.
+
+The existing server-rendered setup flow is retained at `/legacy/setup` and is
+also used automatically on a fresh installation. This avoids regressing local
+credential setup while the remaining React onboarding forms are completed.
+
+## Reason
+
+Static assets preserve the one-command local product, eliminate a production
+Node dependency, and allow the visual layer to evolve without duplicating
+Garmin, SQLite, AI, validation, or coaching logic. Reusing CSRF and Python
+services keeps mutations within the already reviewed trust boundary.
+
+## Future consequences
+
+- Frontend changes require rebuilding and copying the static distribution.
+- API contract tests are part of the Python release gate.
+- The server-rendered setup fallback is removed only after React onboarding,
+  credential reconnection, and browser accessibility tests reach parity.
+- The separate prototype repository is upstream design history, not a runtime
+  dependency.
+
+---
+
+# Decision 71: Athlete-Owned Base-Volume Boundaries and Explicit Race Exceptions
+
+## Problem
+
+Ordinary training should not grow indefinitely just because more volume could
+be prescribed. An athlete may have a deliberate lifestyle ceiling for running,
+cycling, or total weekly training. That ceiling is not evidence of capacity.
+
+## Options
+
+1. Use the ceilings as soft prompt guidance.
+2. Enforce permanent ceilings with no exception.
+3. Enforce hard base-training ceilings while allowing a race-directed plan to
+   propose a temporary, reviewable exception.
+
+## Chosen solution
+
+Option 3. The athlete may independently set running kilometres, cycling hours,
+and combined training hours per Monday–Sunday calendar week. Empty means no
+athlete-defined ceiling. General plans may never exceed a configured boundary.
+
+An explicitly selected-race plan may propose a **race-volume exception**. The
+proposal remains inactive and the accepted plan remains unchanged until the
+athlete reviews the affected weeks and explicitly approves that plan version.
+Approval does not alter the saved base boundaries. This is not a marathon-only
+rule, and ambition or race priority never counts as approval.
+
+## Reason
+
+This separates athlete intent from coaching judgment. The athlete owns the
+maximum ordinary commitment; the coach can explain why a particular race build
+may temporarily require more, and the trade-off remains visible.
+
+## Future consequences
+
+- Plans need run distance when a running ceiling exists and duration when a
+  cycling or total-time ceiling exists.
+- Every later revision that exceeds a boundary needs its own approval.
+- Existing capacity, availability, recovery, and structural validation still
+  apply; there is no separate hidden race-build maximum.
+
+---
+
+# Decision 72: Extend Detailed Plans Without Replanning Current Days
+
+## Problem
+
+Creating the next detailed window shortly before the current one ended replaced
+the accepted plan immediately. Because the generated revision began on the
+revision date, remaining sessions from the current window disappeared from the
+active Plan view.
+
+## Options
+
+1. Let every revision regenerate from today.
+2. Keep two simultaneously active plan versions.
+3. Generate only after the current detailed window and create one new version
+   containing both unchanged remaining sessions and the new extension.
+
+## Chosen solution
+
+Option 3. An early revision starts generation on the day after the accepted
+plan's detailed end date. If revision is late, generation starts today instead
+of creating sessions in the past. Uncompleted sessions from today through the
+old detailed end date are copied unchanged into the new immutable version.
+Sessions with recorded outcomes stay in history and are not duplicated.
+
+The new plan version therefore presents the remaining current schedule followed
+by up to 7 or 14 newly generated days. Volume boundaries are validated across
+both the carried schedule and the extension before activation.
+
+## Reason
+
+Generating the future should not silently reconsider already accepted current
+days. A single active version keeps the UI and feedback boundary simple, while
+copying unchanged sessions preserves plan stability and avoids ambiguous
+overlapping active plans.
+
+## Future consequences
+
+- Carried sessions retain their exact purpose, target display, heart-rate zone,
+  and workout blocks.
+- The AI receives only the extension dates as its writable detailed window.
+- A revision cannot extend beyond the longer block end; a new draft is required
+  after the block is fully detailed.
+
+---
+
+# Decision 73: Give Coach Dialogue Bounded Same-Plan Revision History
+
+## Problem
+
+After a plan revision, coach dialogue saw only the newest accepted version. It
+could therefore call a date a rest day even when an earlier accepted plan had
+scheduled a session on that date.
+
+## Options
+
+1. Keep exposing only the active plan.
+2. Expose every stored plan and session.
+3. Expose the active revision plus a bounded window of its ancestor revisions.
+
+## Chosen solution
+
+Option 3. The active plan remains the latest accepted revision. Coach dialogue
+additionally receives sessions within 28 days before and 14 days after the
+conversation date from at most six ancestor revisions in the same parent chain.
+Unrelated plans are excluded. Every revision carries its status and an explicit
+statement that an earlier prescription is not proof of completion.
+
+Because the schema has no explicit session-cancellation fact, omission from a
+child revision does not prove that an ancestor session was cancelled. Python
+therefore builds an effective schedule: the newest revision wins on dates it
+specifies, while missing dates inherit the nearest ancestor session. The coach
+uses that schedule directly instead of reasoning about a conflict.
+
+## Reason
+
+Version history is required to answer what Pace previously scheduled, while a
+bounded window controls prompt size. Keeping prescription history separate from
+Garmin observations and athlete feedback prevents planned sessions from being
+misrepresented as completed training.
+
+## Future consequences
+
+- Date-specific answers must inspect both the active revision and its bounded
+  lineage.
+- The coach must identify the relevant revision while describing all ancestors
+  as versions of the same logical plan.
+- Questions about today's prescription use the deterministic effective schedule,
+  not the model's interpretation of version precedence.
+- Feedback and RPE may be stored on an inherited ancestor session only when no
+  newer revision has replaced that date in the effective schedule.
+- Completed training continues to require Garmin or explicit feedback evidence.
+
+---
+
+# Decision 74: Separate Detailed Garmin Facts From Normal Sync
+
+## Problem
+
+Garmin exposes aggregate activity heart-rate-zone time through a separate
+endpoint. Fetching it for every historical activity during every normal sync
+would substantially increase request volume and rate-limit risk.
+
+## Options
+
+1. Fetch detailed activity facts during every normal sync.
+2. Never import time in zones.
+3. Add a separate, explicit, seven-day detail sync.
+
+## Chosen solution
+
+Option 3. The ordinary activity/recovery sync remains unchanged. A separate UI
+action imports normalized activity detail, split summaries, and aggregate time
+in heart-rate zones for at most seven days. Pace stores no route, coordinate,
+chart stream, or second-by-second heart-rate data. Failed zone requests preserve
+previously valid zone facts.
+
+## Reason
+
+This provides useful intensity distribution while keeping Garmin request volume,
+local data retention, and partial-failure behavior bounded and understandable.
+
+## Future consequences
+
+- Dashboard and session detail may show normalized zone minutes.
+- These zone facts remain local and are not added to OpenAI prompts without a
+  separate privacy decision.
+- Longer backfills require repeated explicit seven-day detail syncs.
+
+---
+
+# Decision 75: Explicit, Idempotent Garmin Workout Export
+
+## Problem
+
+Pace sessions were readable but could not be placed on a Garmin calendar or
+sent to a device. Automatic export would create external state silently, and
+retries could create duplicates.
+
+## Options
+
+1. Export every accepted plan automatically.
+2. Export only after explicit session selection and confirmation.
+3. Keep Garmin export outside Pace.
+
+## Chosen solution
+
+Option 2. The Plan page lists every session and its export status. The athlete
+selects sessions, confirms the external write, and separately chooses whether
+to push them to the last-used device. Pace uploads typed running/cycling
+workouts, schedules them by date, and stores one local mapping per planned
+session. A retry reuses that mapping instead of creating a duplicate.
+
+RPE remains human-readable workout guidance. Pace does not invent a Garmin
+numeric target from an RPE value. Structured time/distance/repeat/recovery
+blocks and athlete-confirmed cycling heart-rate zones are exported when present.
+
+## Reason
+
+The workflow makes external mutations visible and recoverable while preserving
+Pace's existing principle that AI output never writes external state directly.
+
+## Future consequences
+
+- Garmin calendar scheduling and device push are unofficial-provider features
+  and can break independently.
+- Plan revisions do not silently delete previously scheduled Garmin workouts.
+  A future reconciliation feature must present removals explicitly.
+- The local export table is the source of idempotency and audit status.
 ---
 
 # Current Core Decisions Summary
@@ -3092,17 +3404,17 @@ explicit snapshot service; failed uploads never change local Pace data.
 | Package management | uv |
 | Data source | Garmin only |
 | Database | SQLite |
-| Interface | Loopback coach UI with CLI fallback; first-run onboarding and Finder launcher |
+| Interface | Packaged React loopback UI over FastAPI `/api/v1`, with CLI and hardened setup fallbacks |
 | Architecture style | Layered application |
 | Metrics | Deterministic Python |
 | Memory | Structured context events |
 | AI | Explicit stateless questions, plans, dialogue, and weekly reviews over selected facts; no direct writes |
 | Product | Persistent coach |
-| Deployment | Open-source, local-first, single-athlete; never internet-facing in v0.1 |
+| Deployment | Open-source, local-first, single-athlete core; optional private read-only Pace Light projection |
 | Athlete timezone | Europe/Stockholm |
 | Included sports | Run and ride only |
 | Sync batch | Maximum seven days, repeatable by end date |
 | Recovery merge | Latest successful snapshot per endpoint |
 | Local privacy | Owner-only files; no application encryption |
 | Provider deletions | Local append/update archive; no inferred deletes |
-| Plan activation | Explicit create/revise action, complete Python validation, atomic accepted version |
+| Plan activation | Explicit create/revise action and complete Python validation; race-volume exceptions require separate approval |

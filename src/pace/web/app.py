@@ -41,7 +41,10 @@ from pace.presentation.weekly_review import (
 from pace.services.context_service import ContextEventInput, ContextService
 from pace.services.heart_rate_zone_service import HeartRateZoneService
 from pace.services.heart_rate_zone_service import HeartRateZoneInput
-from pace.services.personalization_evidence_service import PersonalizationEvidenceService
+from pace.services.personalization_evidence_service import (
+    PersonalizationEvidenceService,
+)
+from pace.services.performance_history_service import PerformanceHistoryService
 from pace.services.plan_checkpoint_service import PlanCheckpointService
 from pace.services.plan_readiness_service import PlanReadinessService
 from pace.services.race_service import RaceInput, RaceService, resolved_taper
@@ -56,6 +59,7 @@ from pace.services.transparent_training_analysis_service import (
 from pace.services.coach_dialogue_service import CoachDialogueService
 from pace.services.dashboard_service import DashboardService
 from pace.services.garmin_sync_service import GarminSyncService
+from pace.services.garmin_workout_export_service import GarminWorkoutExportService
 from pace.services.weekly_review_service import WeeklyReviewService
 from pace.web.presentation import (
     render_plan_revision_control,
@@ -64,13 +68,17 @@ from pace.web.presentation import (
     render_web_report_page,
     render_web_settings,
 )
+from pace.web.api_v1 import install_api_v1
 from pace.weekly_review.client import WeeklyReviewClient
 
 
 STATIC_DIR = Path(__file__).with_name("static")
+FRONTEND_DIR = Path(__file__).with_name("frontend_dist")
 REPORTS_DIRECTORY = PROJECT_ROOT / "reports"
 MAX_CONVERSATION_MESSAGES = 8
-SAFE_REPORT_NAME = re.compile(r"(?:dashboard|home|weekly-review|plan-[1-9][0-9]*)\.html")
+SAFE_REPORT_NAME = re.compile(
+    r"(?:dashboard|home|weekly-review|plan-[1-9][0-9]*)\.html"
+)
 
 
 class ChatRequest(BaseModel):
@@ -130,6 +138,11 @@ class PreferenceSetup(BaseModel):
     sport_role: str
     coaching_ambition: str
     available_days: list[str] = Field(min_length=1, max_length=7)
+    base_running_distance_ceiling_km: float | None = Field(default=None, gt=0, le=1_000)
+    base_cycling_duration_ceiling_hours: float | None = Field(
+        default=None, gt=0, le=168
+    )
+    base_total_duration_ceiling_hours: float | None = Field(default=None, gt=0, le=168)
 
 
 class ZoneSetup(BaseModel):
@@ -156,6 +169,17 @@ class HistorySyncConfirmation(BaseModel):
     days: int = Field(default=80, ge=1, le=80)
 
 
+def _react_index() -> FileResponse:
+    index = FRONTEND_DIR / "index.html"
+    if not index.is_file():
+        raise HTTPException(
+            status_code=503, detail="The Pace frontend has not been built."
+        )
+    return FileResponse(
+        index, media_type="text/html", headers={"Cache-Control": "no-store"}
+    )
+
+
 @dataclass(slots=True)
 class WebServices:
     """Dependency bundle that keeps HTTP thin and makes synthetic tests simple."""
@@ -175,6 +199,8 @@ class WebServices:
     sync_service_factory: Callable[[], GarminSyncService] | None = None
     weekly_review_service_factory: Callable[[], WeeklyReviewService] | None = None
     plan_generation_service_factory: Callable[[], TrainingPlanService] | None = None
+    workout_export_service_factory: Callable[[], GarminWorkoutExportService] | None = None
+    performance_service_factory: Callable[[], PerformanceHistoryService] | None = None
     today: Callable[[], date] = date.today
 
     def coach_service(self) -> CoachDialogueService:
@@ -218,15 +244,40 @@ class WebServices:
             generator=OpenAIPlanClient(api_key=api_key, model=settings.openai_model)
         )
 
+    def workout_export_service(self) -> GarminWorkoutExportService:
+        """Create the Garmin writer only after an explicit browser confirmation."""
+
+        if self.workout_export_service_factory is not None:
+            return self.workout_export_service_factory()
+        client = GarminConnectClient.from_saved_tokens(settings.garmin_token_dir)
+        return GarminWorkoutExportService(
+            destination=client,
+            plan_service=self.plan_service,
+        )
+
+    def performance_service(self) -> PerformanceHistoryService:
+        """Create the bounded detail importer only after explicit confirmation."""
+
+        if self.performance_service_factory is not None:
+            return self.performance_service_factory()
+        client = GarminConnectClient.from_saved_tokens(settings.garmin_token_dir)
+        return PerformanceHistoryService(client)
+
 
 def create_app(
     *,
     services: WebServices | None = None,
     allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost"),
+    react_frontend: bool | None = None,
 ) -> FastAPI:
     """Create a same-origin UI, bound by the CLI command to loopback only."""
 
     dependencies = services or WebServices()
+    use_react_frontend = (
+        FRONTEND_DIR.joinpath("index.html").is_file() and services is None
+        if react_frontend is None
+        else react_frontend
+    )
     conversations: dict[str, list[dict[str, str]]] = {}
     app = FastAPI(title="Pace Local Coach", docs_url=None, redoc_url=None)
     app.add_middleware(
@@ -275,15 +326,41 @@ def create_app(
         return response
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    if FRONTEND_DIR.joinpath("assets").is_dir():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=FRONTEND_DIR / "assets"),
+            name="frontend-assets",
+        )
 
+    install_api_v1(
+        app,
+        services=dependencies,
+        session_value=_session_value,
+        require_csrf=_require_csrf,
+    )
+
+    @app.get("/legacy/setup", response_class=HTMLResponse)
     @app.get("/", response_class=HTMLResponse)
-    def home(request: Request) -> HTMLResponse:
+    def home(request: Request):
+        if use_react_frontend and request.url.path == "/":
+            state = _home_state(dependencies)
+            if state["onboarding"]["active"]:
+                csrf_token = _session_value(request, "csrf_token")
+                return HTMLResponse(
+                    render_web_onboarding(state=state, csrf_token=csrf_token)
+                )
+            return _react_index()
         csrf_token = _session_value(request, "csrf_token")
         conversation_id = _session_value(request, "conversation_id")
         state = _home_state(dependencies)
         state["conversation"] = conversations.get(conversation_id, [])
+        if request.url.path == "/legacy/setup":
+            state["onboarding"]["active"] = True
         if state["onboarding"]["active"]:
-            return HTMLResponse(render_web_onboarding(state=state, csrf_token=csrf_token))
+            return HTMLResponse(
+                render_web_onboarding(state=state, csrf_token=csrf_token)
+            )
         return HTMLResponse(render_web_home(state=state, csrf_token=csrf_token))
 
     @app.get("/api/home")
@@ -292,13 +369,17 @@ def create_app(
         return _home_state(dependencies)
 
     @app.get("/settings", response_class=HTMLResponse)
-    def settings_page(request: Request) -> HTMLResponse:
+    def settings_page(request: Request):
+        if use_react_frontend:
+            return _react_index()
         csrf_token = _session_value(request, "csrf_token")
         state = _home_state(dependencies)
         return _html_response(render_web_settings(state=state, csrf_token=csrf_token))
 
     @app.get("/dashboard", response_class=HTMLResponse)
-    def dashboard(request: Request) -> HTMLResponse:
+    def dashboard(request: Request):
+        if use_react_frontend:
+            return _react_index()
         _session_value(request, "csrf_token")
         state = _home_state(dependencies)
         data = dependencies.dashboard_service.get_dashboard_data(
@@ -322,7 +403,9 @@ def create_app(
         )
 
     @app.get("/plan", response_class=HTMLResponse)
-    def plan(request: Request) -> HTMLResponse:
+    def plan(request: Request):
+        if use_react_frontend:
+            return _react_index()
         csrf_token = _session_value(request, "csrf_token")
         state = _home_state(dependencies)
         plans = dependencies.plan_service.list_plans()
@@ -341,9 +424,11 @@ def create_app(
             if draft_plan is None:
                 body_html = (
                     '<section class="report-section"><h2>No active plan</h2>'
-                    '<p>Open Coach to create a plan when the planning data is ready.</p></section>'
+                    "<p>Open Coach to create a plan when the planning data is ready.</p></section>"
                 )
-                subtitle = "This view shows your active plan and previous plan versions."
+                subtitle = (
+                    "This view shows your active plan and previous plan versions."
+                )
             title = "Plan"
             kicker = "PLAN"
         else:
@@ -361,7 +446,9 @@ def create_app(
                 subtitle=subtitle,
                 body_html=body_html,
                 csrf_token=csrf_token if active_plan is not None else None,
-                action_script="/static/plan.js?v=20260915-1" if active_plan is not None else None,
+                action_script="/static/plan.js?v=20260915-1"
+                if active_plan is not None
+                else None,
                 footer_text=(
                     "PACE RUNS ON YOUR COMPUTER · A NEW PLAN VERSION IS CREATED ONLY "
                     "WHEN YOU EXPLICITLY REQUEST IT"
@@ -372,7 +459,9 @@ def create_app(
         )
 
     @app.get("/weekly-review", response_class=HTMLResponse)
-    def weekly_review(request: Request) -> HTMLResponse:
+    def weekly_review(request: Request):
+        if use_react_frontend:
+            return _react_index()
         _session_value(request, "csrf_token")
         state = _home_state(dependencies)
         snapshot = load_weekly_review_snapshot(
@@ -381,8 +470,8 @@ def create_app(
         if snapshot is None:
             body_html = (
                 '<section class="report-section"><h2>No compatible weekly review yet</h2>'
-                '<p>Create a new explicit review to display it here. '
-                'Pace does not make an AI call automatically when you open this page.</p>'
+                "<p>Create a new explicit review to display it here. "
+                "Pace does not make an AI call automatically when you open this page.</p>"
                 '<p class="notice">Use /review weekly in Coach.</p></section>'
             )
             subtitle = "A weekly review is saved as an explicit AI snapshot."
@@ -416,6 +505,14 @@ def create_app(
             media_type="text/html",
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.get("/races", include_in_schema=False)
+    @app.get("/onboarding", include_in_schema=False)
+    @app.get("/sessions/{session_id}", include_in_schema=False)
+    def react_only_pages(session_id: str | None = None):
+        if not use_react_frontend:
+            raise HTTPException(status_code=404, detail="Page not found.")
+        return _react_index()
 
     @app.post("/api/command")
     def command(request: Request, payload: CommandRequest) -> dict[str, object]:
@@ -501,9 +598,7 @@ def create_app(
                     end_date=dependencies.today()
                 )
             except (PaceAIError, ValueError) as error:
-                raise HTTPException(
-                    status_code=422, detail=str(error)
-                ) from error
+                raise HTTPException(status_code=422, detail=str(error)) from error
             return {
                 "status": "completed",
                 "action": "weekly_review",
@@ -541,7 +636,9 @@ def create_app(
         return _coach_answer_payload(answer)
 
     @app.post("/api/context/confirm")
-    def confirm_context(request: Request, payload: ContextConfirmation) -> dict[str, object]:
+    def confirm_context(
+        request: Request, payload: ContextConfirmation
+    ) -> dict[str, object]:
         _require_csrf(request)
         try:
             event = dependencies.context_service.add_event(
@@ -558,7 +655,9 @@ def create_app(
         return {"status": "saved", "event_id": event.id}
 
     @app.post("/api/feedback/confirm")
-    def confirm_feedback(request: Request, payload: FeedbackConfirmation) -> dict[str, object]:
+    def confirm_feedback(
+        request: Request, payload: FeedbackConfirmation
+    ) -> dict[str, object]:
         _require_csrf(request)
         try:
             dependencies.plan_service.add_feedback(
@@ -589,7 +688,7 @@ def create_app(
         except (ValueError, PaceAIError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         return {
-            "status": "accepted",
+            "status": getattr(plan, "status", "accepted"),
             "plan": {
                 "id": plan.id,
                 "goal_mode": plan.goal_mode,
@@ -611,7 +710,9 @@ def create_app(
                 status_code=409,
                 detail="This plan is no longer the active plan for today.",
             )
-        checkpoint = dependencies.checkpoint_service.get_checkpoint(as_of_date=as_of_date)
+        checkpoint = dependencies.checkpoint_service.get_checkpoint(
+            as_of_date=as_of_date
+        )
         if (
             checkpoint.status != "revision_due"
             or checkpoint.active_plan_id != active_plan.id
@@ -629,7 +730,7 @@ def create_app(
         except (ValueError, PaceAIError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         return {
-            "status": "accepted",
+            "status": getattr(plan, "status", "accepted"),
             "plan": {
                 "id": plan.id,
                 "parent_plan_id": plan.parent_plan_id,
@@ -658,7 +759,9 @@ def create_app(
                 password=payload.password.get_secret_value(),
                 token_dir=settings.garmin_token_dir,
                 prompt_mfa=lambda: (
-                    "" if payload.mfa_code is None else payload.mfa_code.get_secret_value()
+                    ""
+                    if payload.mfa_code is None
+                    else payload.mfa_code.get_secret_value()
                 ),
             )
         except GarminRateLimitError as error:
@@ -668,14 +771,37 @@ def create_app(
         return _home_state(dependencies)
 
     @app.post("/api/setup/preferences")
-    def setup_preferences(request: Request, payload: PreferenceSetup) -> dict[str, object]:
+    def setup_preferences(
+        request: Request, payload: PreferenceSetup
+    ) -> dict[str, object]:
         _require_csrf(request)
         try:
+            existing = dependencies.preference_service.get_preference()
+            fields_set = payload.model_fields_set
             dependencies.preference_service.set_preference(
                 TrainingPreferenceInput(
                     sport_role=payload.sport_role,
                     coaching_ambition=payload.coaching_ambition,
                     available_days=tuple(payload.available_days),
+                    base_running_distance_ceiling_km=(
+                        payload.base_running_distance_ceiling_km
+                        if "base_running_distance_ceiling_km" in fields_set
+                        else getattr(existing, "base_running_distance_ceiling_km", None)
+                    ),
+                    base_cycling_duration_ceiling_hours=(
+                        payload.base_cycling_duration_ceiling_hours
+                        if "base_cycling_duration_ceiling_hours" in fields_set
+                        else getattr(
+                            existing, "base_cycling_duration_ceiling_hours", None
+                        )
+                    ),
+                    base_total_duration_ceiling_hours=(
+                        payload.base_total_duration_ceiling_hours
+                        if "base_total_duration_ceiling_hours" in fields_set
+                        else getattr(
+                            existing, "base_total_duration_ceiling_hours", None
+                        )
+                    ),
                 )
             )
         except ValueError as error:
@@ -708,7 +834,11 @@ def create_app(
             )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
-        return {"status": "saved", "race": _race_payload(race), "state": _home_state(dependencies)}
+        return {
+            "status": "saved",
+            "race": _race_payload(race),
+            "state": _home_state(dependencies),
+        }
 
     @app.put("/api/settings/races/{race_id}")
     def update_race(
@@ -726,7 +856,11 @@ def create_app(
             )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
-        return {"status": "updated", "race": _race_payload(race), "state": _home_state(dependencies)}
+        return {
+            "status": "updated",
+            "race": _race_payload(race),
+            "state": _home_state(dependencies),
+        }
 
     @app.delete("/api/settings/races/{race_id}")
     def remove_race(request: Request, race_id: int) -> dict[str, object]:
@@ -755,15 +889,23 @@ def create_app(
             ):
                 results.append(
                     sync_service.sync(
-                        start_date=start_date, end_date=batch_end,
+                        start_date=start_date,
+                        end_date=batch_end,
                     )
                 )
         except GarminAuthenticationRequiredError as error:
-            raise HTTPException(status_code=422, detail=f"The history import could not start: {error}") from error
+            raise HTTPException(
+                status_code=422, detail=f"The history import could not start: {error}"
+            ) from error
         except GarminRateLimitError as error:
-            raise HTTPException(status_code=429, detail=f"Garmin rate-limited the history import: {error}") from error
+            raise HTTPException(
+                status_code=429,
+                detail=f"Garmin rate-limited the history import: {error}",
+            ) from error
         except (GarminIntegrationError, ValueError) as error:
-            raise HTTPException(status_code=422, detail=f"The history import failed: {error}") from error
+            raise HTTPException(
+                status_code=422, detail=f"The history import failed: {error}"
+            ) from error
         return {
             "status": "completed",
             "batches": [_sync_command_result(item) for item in results],
@@ -809,7 +951,9 @@ def create_app(
                         },
                     )
             except GarminRateLimitError as error:
-                yield _sse("error", {"message": f"Garmin rate-limited the sync: {error}"})
+                yield _sse(
+                    "error", {"message": f"Garmin rate-limited the sync: {error}"}
+                )
                 return
             except GarminAuthenticationRequiredError as error:
                 yield _sse("error", {"message": f"The sync cannot continue: {error}"})
@@ -891,7 +1035,9 @@ def _home_state(services: WebServices) -> dict[str, object]:
         "onboarding": {
             "active": onboarding_active,
             "openai_configured": bool(resolve_openai_api_key(settings)),
-            "garmin_connected": (settings.garmin_token_dir / GARMIN_TOKEN_FILENAME).is_file(),
+            "garmin_connected": (
+                settings.garmin_token_dir / GARMIN_TOKEN_FILENAME
+            ).is_file(),
             "preferences_configured": preference_payload is not None,
             "ride_zones_required": needs_ride_zones,
             "ride_zones_configured": zones_payload is not None,
@@ -950,6 +1096,18 @@ def _selected_draft(plans, requested_id: str | None):
     return None
 
 
+def _history_is_ready(analysis: object) -> bool:
+    """The onboarding minimum is 28 locally observed recovery days, never raw data."""
+
+    if not isinstance(analysis, dict):
+        return False
+    coverage = analysis.get("recovery_coverage")
+    if not isinstance(coverage, list):
+        return False
+    observed = [
+        item[1] for item in coverage if isinstance(item, list) and len(item) >= 2
+    ]
+    return bool(observed) and min(observed) >= 28
 def _plan_payload(plan) -> dict[str, object] | None:
     if plan is None:
         return None
@@ -983,6 +1141,15 @@ def _preference_payload(preference) -> dict[str, object] | None:
         "sport_role": preference.sport_role,
         "coaching_ambition": preference.coaching_ambition,
         "available_days": preference.available_days,
+        "base_running_distance_ceiling_km": getattr(
+            preference, "base_running_distance_ceiling_km", None
+        ),
+        "base_cycling_duration_ceiling_hours": getattr(
+            preference, "base_cycling_duration_ceiling_hours", None
+        ),
+        "base_total_duration_ceiling_hours": getattr(
+            preference, "base_total_duration_ceiling_hours", None
+        ),
     }
 
 
@@ -1012,12 +1179,15 @@ def _safe_report_path(reports_directory: Path, report_name: str) -> Path | None:
     return candidate if candidate.parent == directory else None
 
 
-def _reports_payload(reports_directory: Path, active_plan) -> dict[str, dict[str, object]]:
+def _reports_payload(
+    reports_directory: Path, active_plan
+) -> dict[str, dict[str, object]]:
     candidates = {
         "dashboard": ("/dashboard", True, ""),
         "weekly_review": (
             "/weekly-review",
-            load_weekly_review_snapshot(reports_directory=reports_directory) is not None,
+            load_weekly_review_snapshot(reports_directory=reports_directory)
+            is not None,
             "Use /review weekly in Coach.",
         ),
         "plan": (
@@ -1046,7 +1216,11 @@ def _today_command_answer(state: dict[str, object]) -> str:
     if not upcoming:
         return "No detailed sessions remain in the active plan."
     session = upcoming[0]
-    when = "Today" if session["scheduled_date"] == as_of_date else session["scheduled_date"]
+    when = (
+        "Today"
+        if session["scheduled_date"] == as_of_date
+        else session["scheduled_date"]
+    )
     return (
         f"{when}: {session['sport_type']} · {session['purpose']} · "
         f"{session['target_display']}."
