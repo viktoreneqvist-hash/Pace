@@ -106,15 +106,7 @@ class FakeWeeklyReviewService:
         return self.output_path
 
 
-def _web_client(
-    tmp_path,
-    *,
-    secure_cookies=False,
-    allowed_hosts=("testserver",),
-    base_url="http://testserver",
-    tailscale_host=None,
-    tailscale_user=None,
-):
+def _web_client(tmp_path):
     session = SimpleNamespace(
         id=12,
         scheduled_date=date(2026, 7, 27),
@@ -273,16 +265,7 @@ def _web_client(
         today=lambda: date(2026, 7, 27),
     )
     return (
-        TestClient(
-            create_app(
-                services=services,
-                allowed_hosts=allowed_hosts,
-                secure_cookies=secure_cookies,
-                tailscale_host=tailscale_host,
-                tailscale_user=tailscale_user,
-            ),
-            base_url=base_url,
-        ),
+        TestClient(create_app(services=services, allowed_hosts=("testserver",))),
         plan_service,
         context,
         coach,
@@ -324,46 +307,6 @@ def test_phone_layout_styles_are_available_to_the_local_web_app(tmp_path):
     assert "grid-template-columns:repeat(3,minmax(0,1fr))" in response.text
     assert "min-height:44px" in response.text
     assert "font-size:16px" in response.text
-
-
-def test_private_https_session_cookie_is_secure_and_tailscale_host_is_allowed(tmp_path):
-    client, *_ = _web_client(
-        tmp_path,
-        secure_cookies=True,
-        allowed_hosts=("pace.home-net.ts.net",),
-        base_url="https://pace.home-net.ts.net",
-        tailscale_host="pace.home-net.ts.net",
-        tailscale_user="owner@example.com",
-    )
-
-    response = client.get(
-        "/", headers={"Tailscale-User-Login": "owner@example.com"}
-    )
-
-    assert response.status_code == 200
-    assert "pace_session=" in response.headers["set-cookie"]
-    assert "; secure" in response.headers["set-cookie"].lower()
-
-
-def test_unapproved_host_is_rejected_in_private_access_mode(tmp_path):
-    client, *_ = _web_client(
-        tmp_path,
-        secure_cookies=True,
-        allowed_hosts=("pace.home-net.ts.net",),
-        base_url="https://pace.home-net.ts.net",
-        tailscale_host="pace.home-net.ts.net",
-        tailscale_user="owner@example.com",
-    )
-
-    response = client.get(
-        "/",
-        headers={
-            "host": "pace.home-net.ts.net",
-            "Tailscale-User-Login": "collaborator@example.com",
-        },
-    )
-
-    assert response.status_code == 403
 
 
 def test_local_web_rejects_untrusted_hosts_and_sets_security_headers(tmp_path):

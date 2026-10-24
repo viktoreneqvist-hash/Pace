@@ -2933,55 +2933,12 @@ enforces owner-only permissions for its token and data directories.
 
 # Decision 65: Private Phone Access Through Tailscale Serve
 
-## Problem
+**Status: superseded by Decision 68; implementation removed.**
 
-The owner wants to access one local Pace installation from a phone without
-publishing athlete data on the public internet. Binding Pace directly to a
-network interface would bypass its loopback-only security boundary.
-
-## Options
-
-1. Bind Pace to the local network or VPN interface.
-2. Add a hosted application, identity system, and cloud data store.
-3. Keep Pace on loopback and use an explicit Tailscale Serve HTTPS proxy
-   reachable only within the owner's private tailnet.
-
-## Chosen solution
-
-The opt-in `pace serve --tailscale` mode validates the connected device's
-Tailscale status and exact MagicDNS hostname. It allows that hostname through
-the existing Host-header middleware, sets the session cookie's Secure flag,
-and explicitly trusts forwarded headers only from the local proxy address.
-Pace continues binding only to `127.0.0.1`; the owner starts Tailscale Serve as
-a separate foreground command targeting `http://127.0.0.1:<port>`. Tailscale
-Serve provides HTTPS within the tailnet. Tailscale Funnel is not supported.
-
-Tailnet membership is the only remote access control for this single-user
-pilot. Any authorized device or user in the tailnet can access the same Pace
-installation's network endpoint, but the application additionally checks the
-Tailscale Serve identity header and allows only the owner login reported by the
-server's Tailscale status. Other tailnet identities are denied. This does not
-add accounts, multi-user isolation, synchronization, or public hosting.
-
-## Reason
-
-This reuses the established loopback server and local data store instead of
-creating a cloud copy or opening Pace directly to a network. The proxy is
-explicit and separately started, so the owner can stop remote access without
-changing Pace's default startup.
-
-## Consequences
-
-- Default `pace serve` remains loopback-only with its existing local behavior.
-- Remote mode accepts only the MagicDNS name returned by the local Tailscale
-  status command, checks requests against the local owner's Tailscale login,
-  keeps Secure cookies, and requires a local HTTPS proxy for working remote
-  browser sessions.
-- The owner must keep the Mac awake, Pace running, Tailscale connected, and
-  tailnet membership limited to trusted personal devices.
-- Do not use Funnel, router port forwarding, or direct non-loopback binding.
-- This is a pilot and must be validated on the owner's Mac and phone before
-  relying on it. It is not a supported multi-user or public deployment.
+The private-network proxy pilot was replaced by the hosted, read-only Pace
+Light snapshot. The `pace serve` command is again strictly loopback-only and
+contains no remote-proxy mode or identity-header handling. The responsive local
+UI remains because it is independent of the removed access mechanism.
 
 ---
 

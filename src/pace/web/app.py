@@ -10,12 +10,7 @@ import re
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import (
-    FileResponse,
-    HTMLResponse,
-    PlainTextResponse,
-    StreamingResponse,
-)
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AliasChoices, BaseModel, Field, SecretStr
 from starlette.middleware.sessions import SessionMiddleware
@@ -228,9 +223,6 @@ def create_app(
     *,
     services: WebServices | None = None,
     allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost"),
-    secure_cookies: bool = False,
-    tailscale_host: str | None = None,
-    tailscale_user: str | None = None,
 ) -> FastAPI:
     """Create a same-origin UI, bound by the CLI command to loopback only."""
 
@@ -242,23 +234,9 @@ def create_app(
         secret_key=secrets.token_urlsafe(32),
         session_cookie="pace_session",
         same_site="lax",
-        https_only=secure_cookies,
+        https_only=False,
     )
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
-
-    @app.middleware("http")
-    async def authorize_tailscale_identity(request: Request, call_next):
-        """Restrict the private proxy hostname to this device owner's identity."""
-
-        if tailscale_host and request.url.hostname:
-            requested_host = request.url.hostname.rstrip(".").casefold()
-            if requested_host == tailscale_host.casefold():
-                supplied_user = request.headers.get("Tailscale-User-Login", "")
-                if not tailscale_user or not secrets.compare_digest(
-                    supplied_user.casefold(), tailscale_user.casefold()
-                ):
-                    return PlainTextResponse("Access denied.", status_code=403)
-        return await call_next(request)
 
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next):

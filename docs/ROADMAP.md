@@ -73,9 +73,6 @@ credentials are never distributed through Git.
 - [x] Information-rich charts and structured plan presentation
 - [x] Phone-friendly navigation, coaching controls, and responsive report layouts
 - [x] Browser settings for normal operations so the terminal is optional
-- [ ] Pilot private phone access through Tailscale Serve while retaining
-  loopback binding; verify the HTTPS proxy, trusted-host and session-cookie
-  behavior on the owner's devices before enabling it for normal use
 
 ## Release L0 — public alpha hardening
 
